@@ -14,9 +14,9 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 
-from .data import load_transactions
+from .data import load_internal_ids, load_spending_transactions
 from .deps import get_client, get_settings
-from .enrich import categorize, internal_transfer_ids, merchant_key
+from .enrich import CONSUMPTION_TYPES, categorize, merchant_key
 from .helpers import bar_chart, donut_chart, month_key, month_label_fr
 from .recurring import detect_recurring
 from .web import templates
@@ -50,9 +50,14 @@ async def analysis(
     client=Depends(get_client),  # noqa: B008
     settings=Depends(get_settings),  # noqa: B008
 ):
-    txns = await load_transactions(client, months=settings.history_months)
-    internal = internal_transfer_ids(txns)
-    spend = [t for t in txns if t.value and t.value < 0 and t.id not in internal]
+    txns = await load_spending_transactions(client, months=settings.history_months)
+    internal = await load_internal_ids(client, months=settings.history_months)
+    spend = [
+        t
+        for t in txns
+        if t.value and t.value < 0 and t.id not in internal and t.type in CONSUMPTION_TYPES
+    ]
+    # Income keeps transfers (salary is a SEPA transfer), only internal moves excluded.
     income = [t for t in txns if t.value and t.value > 0 and t.id not in internal]
 
     ctx: dict[str, object] = {"request": request, "active": "analysis", "has_spend": bool(spend)}
@@ -100,7 +105,9 @@ async def analysis(
     cat_donut = donut_chart([(name, float(val)) for name, val in top])
 
     # --- 4. Recurring vs one-off (monthly view) -------------------------------
-    recurring_items = detect_recurring(txns, internal_ids=internal, kind="debit")
+    recurring_items = detect_recurring(
+        txns, internal_ids=internal, kind="debit", allowed_types=CONSUMPTION_TYPES
+    )
     recurring_monthly = sum((r.monthly_equiv for r in recurring_items), Decimal(0))
     ponctuel_monthly = avg_spend - recurring_monthly
     if ponctuel_monthly < 0:

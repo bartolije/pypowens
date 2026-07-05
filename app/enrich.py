@@ -23,6 +23,16 @@ class Txn(Protocol):
     original_wording: str | None
 
 
+# ------------------------------------------------------------- transaction types
+
+# Everyday consumption (money actually spent), excluding transfers/investment.
+CONSUMPTION_TYPES = frozenset(
+    {"card", "deferred_card", "order", "withdrawal", "bank", "fee", "payment", "check"}
+)
+# Rails used by real subscriptions / recurring bills (prélèvement auto + carte).
+SUBSCRIPTION_TYPES = frozenset({"order", "card", "deferred_card"})
+
+
 # --------------------------------------------------------------- merchant key
 
 _CB_SUFFIX = re.compile(r"\s+CB\*.*$", re.IGNORECASE)

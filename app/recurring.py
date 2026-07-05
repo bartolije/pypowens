@@ -21,9 +21,9 @@ from decimal import ROUND_HALF_UP, Decimal
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 
-from .data import load_transactions
+from .data import load_internal_ids, load_spending_transactions
 from .deps import get_client, get_settings
-from .enrich import categorize, internal_transfer_ids, merchant_key
+from .enrich import SUBSCRIPTION_TYPES, categorize, merchant_key
 from .helpers import donut_chart
 from .web import templates
 
@@ -203,6 +203,7 @@ def detect_recurring(
     internal_ids: set[int] | None = None,
     min_occurrences: int = 3,
     kind: str = "debit",
+    allowed_types: frozenset[str] | set[str] | None = None,
 ) -> list[RecurringItem]:
     """Detect recurring payments (``kind="debit"``) or income (``kind="credit"``).
 
@@ -223,6 +224,8 @@ def detect_recurring(
         if t.id is not None and t.id in excluded:
             continue
         if t.value is None or t.date is None:
+            continue
+        if allowed_types is not None and t.type not in allowed_types:
             continue
         value = t.value
         if kind == "credit":
@@ -264,9 +267,9 @@ async def recurring_page(
     client=Depends(get_client),
     settings=Depends(get_settings),
 ):
-    txns = await load_transactions(client, months=settings.history_months)
-    internal = internal_transfer_ids(txns)
-    items = detect_recurring(txns, internal_ids=internal)
+    txns = await load_spending_transactions(client, months=settings.history_months)
+    internal = await load_internal_ids(client, months=settings.history_months)
+    items = detect_recurring(txns, internal_ids=internal, allowed_types=SUBSCRIPTION_TYPES)
 
     total_monthly = sum((it.monthly_equiv for it in items), Decimal("0"))
     total_annual = total_monthly * 12

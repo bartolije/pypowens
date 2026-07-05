@@ -4,7 +4,7 @@
 {% macro sorth(key, label) %}
   {% set arrow = ' ↓' if sort == key else '' %}
   <th class="num">
-    <a href="/recurrences?sort={{ key }}&kind={{ kind }}&min_count={{ min_count }}&date_from={{ date_from }}&date_to={{ date_to }}">{{ label }}{{ arrow }}</a>
+    <a href="/recurrences?sort={{ key }}&kind={{ kind }}&scope={{ scope }}&min_count={{ min_count }}&date_from={{ date_from }}&date_to={{ date_to }}">{{ label }}{{ arrow }}</a>
   </th>
 {% endmacro %}
 
@@ -21,6 +21,12 @@ combien de fois ça revient et combien ça pèse. Trie par nombre ou par montant
     <select name="kind">
       <option value="debit" {{ 'selected' if kind == 'debit' }}>Dépenses</option>
       <option value="credit" {{ 'selected' if kind == 'credit' }}>Revenus</option>
+    </select>
+  </label>
+  <label>Périmètre
+    <select name="scope">
+      <option value="spending" {{ 'selected' if scope == 'spending' }}>Comptes courants</option>
+      <option value="all" {{ 'selected' if scope == 'all' }}>Tous les comptes</option>
     </select>
   </label>
   <input type="hidden" name="sort" value="{{ sort }}">

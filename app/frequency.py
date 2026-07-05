@@ -17,9 +17,9 @@ from fastapi.responses import HTMLResponse
 from pypowens import PowensClient
 
 from .config import Settings
-from .data import load_transactions
+from .data import load_internal_ids, load_spending_transactions
 from .deps import get_client, get_settings
-from .enrich import categorize, internal_transfer_ids, merchant_key
+from .enrich import categorize, merchant_key
 from .helpers import bar_chart
 from .web import templates
 
@@ -127,6 +127,7 @@ async def recurrences(
     sort: str = Query(default="count"),
     min_count: int = Query(default=2, ge=1),
     kind: str = Query(default="debit"),
+    scope: str = Query(default="spending"),
 ):
     """Recurring lines grouped by label over a date range, ranked by count/amount."""
     d_from = _parse_date(date_from)
@@ -135,14 +136,18 @@ async def recurrences(
         sort = "count"
     if kind not in ("debit", "credit"):
         kind = "debit"
+    if scope not in ("spending", "all"):
+        scope = "spending"
 
     # Load a window that covers the requested range (default: configured history).
     if d_from:
         months = max(1, math.ceil((date.today() - d_from).days / 30) + 1)
     else:
         months = settings.history_months
-    txns = await load_transactions(client, months=months)
-    internal = internal_transfer_ids(txns)
+    txns = await load_spending_transactions(
+        client, months=months, include_investment=(scope == "all")
+    )
+    internal = await load_internal_ids(client, months=months)
 
     groups = group_by_label(
         txns,
@@ -176,6 +181,7 @@ async def recurrences(
             "sort": sort,
             "sorts": SORTS,
             "kind": kind,
+            "scope": scope,
             "min_count": min_count,
             "date_from": date_from or "",
             "date_to": date_to or "",
