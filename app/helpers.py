@@ -101,8 +101,13 @@ def donut_chart(
     *,
     size: int = 220,
     unit: str = "€",
+    center_top: str | None = None,
+    center_bottom: str | None = None,
 ) -> str:
-    """Donut chart with legend. ``items`` = list of (label, value)."""
+    """Donut chart with legend. ``items`` = list of (label, value).
+
+    Optional ``center_top`` / ``center_bottom`` render two lines inside the hole.
+    """
     items = [(lbl, abs(float(v))) for lbl, v in items if v]
     total = sum(v for _, v in items)
     if total <= 0:
@@ -133,9 +138,24 @@ def donut_chart(
             f'<span class="muted">{value:,.0f} {unit}</span></li>'
         )
         angle = end
+    center = ""
+    if center_top or center_bottom:
+        top = (
+            f'<text x="{cx}" y="{cy - 4}" text-anchor="middle" class="donut-c1">'
+            f"{_e(center_top)}</text>"
+            if center_top
+            else ""
+        )
+        bottom = (
+            f'<text x="{cx}" y="{cy + 16}" text-anchor="middle" class="donut-c2">'
+            f"{_e(center_bottom)}</text>"
+            if center_bottom
+            else ""
+        )
+        center = top + bottom
     svg = (
         f'<svg viewBox="0 0 {size} {size}" width="{size}" height="{size}" '
         f'role="img">{"".join(segments)}'
-        f'<circle cx="{cx}" cy="{cy}" r="{inner}" class="donut-hole"/></svg>'
+        f'<circle cx="{cx}" cy="{cy}" r="{inner}" class="donut-hole"/>{center}</svg>'
     )
     return f'<div class="donut">{svg}<ul class="legend">{"".join(legend)}</ul></div>'

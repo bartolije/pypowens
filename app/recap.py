@@ -11,7 +11,7 @@ from pypowens import Account, PowensClient
 
 from .data import load_accounts, load_connections
 from .deps import get_client
-from .helpers import donut_chart
+from .helpers import PALETTE, donut_chart
 from .web import templates
 
 router = APIRouter()
@@ -77,7 +77,29 @@ async def recap(request: Request, client: PowensClient = Depends(get_client)):  
     ]
 
     # Donut of the repartition by family (floats for the chart helper).
-    donut = donut_chart([(fam["name"], float(fam["subtotal"])) for fam in families])
+    donut = donut_chart(
+        [(fam["name"], float(fam["subtotal"])) for fam in families],
+        center_top="Total",
+        center_bottom=f"{net / 1000:,.0f} k€".replace(",", " "),
+    )
+
+    # Colored allocation bars (share of net worth per family), palette aligned
+    # with the donut order.
+    total_pct = float(net) or 1.0
+    allocation = [
+        {
+            "name": fam["name"],
+            "subtotal": fam["subtotal"],
+            "pct": float(fam["subtotal"]) / total_pct * 100,
+            "color": PALETTE[i % len(PALETTE)],
+        }
+        for i, fam in enumerate(families)
+    ]
+
+    # Net-worth variation from investment valuation change (raw "diff" field).
+    net_diff = sum((Decimal(str(a.raw.get("diff") or 0)) for a in accounts), Decimal(0))
+    base = net - net_diff
+    net_diff_pct = float(net_diff / base * 100) if base else 0.0
 
     # A healthy Powens connection has no state and no error message.
     conns = []
@@ -103,6 +125,9 @@ async def recap(request: Request, client: PowensClient = Depends(get_client)):  
             "request": request,
             "active": "recap",
             "net": net,
+            "net_diff": net_diff,
+            "net_diff_pct": net_diff_pct,
+            "allocation": allocation,
             "n_accounts": len(accounts),
             "n_connections": len(connections),
             "families": families,

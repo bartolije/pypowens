@@ -2,10 +2,6 @@
 {% block title %}Récap · Powens Finance{% endblock %}
 {% block content %}
 
-<div class="page-head">
-  <h1>Récapitulatif patrimoine</h1>
-</div>
-
 {% if not has_accounts %}
   <div class="card empty">
     <div class="big">Aucun compte pour le moment</div>
@@ -14,33 +10,34 @@
   </div>
 {% else %}
 
-  <div class="stats">
-    <div class="stat">
-      <div class="k">Patrimoine net</div>
-      <div class="v accent">{{ net | money }}</div>
-    </div>
-    <div class="stat">
-      <div class="k">Comptes</div>
-      <div class="v">{{ n_accounts }}</div>
-    </div>
-    <div class="stat">
-      <div class="k">Connexions</div>
-      <div class="v">{{ n_connections }}</div>
+  <div class="hero">
+    <div class="label">Patrimoine net</div>
+    <div class="balance">{{ net | money }}</div>
+    <div class="hero-meta">
+      {% if net_diff %}
+      <span class="trend {{ 'pos' if net_diff >= 0 else 'neg' }}">
+        {{ '▲' if net_diff >= 0 else '▼' }} {{ net_diff | money }} ({{ '%+.1f'|format(net_diff_pct) }} %)
+      </span>
+      {% endif %}
+      <span class="chip">{{ n_accounts }} comptes</span>
+      <span class="chip">{{ n_connections }} connexion{{ 's' if n_connections > 1 }}</span>
     </div>
   </div>
 
-  <div class="grid2" style="margin-top:16px">
+  <div class="grid2">
     <div class="card">
-      <h2>Répartition par famille</h2>
+      <h2>Répartition</h2>
       {{ donut | safe }}
     </div>
     <div class="card">
-      <h2>Comptes par famille</h2>
-      <div class="stack">
-        {% for fam in families %}
-        <div class="split" style="justify-content:space-between">
-          <span>{{ fam.name }}</span>
-          <span class="badge">{{ fam.subtotal | money }}</span>
+      <h2>Allocation</h2>
+      <div class="alloc">
+        {% for a in allocation %}
+        <div class="row">
+          <span class="name"><span class="dot" style="background:{{ a.color }}"></span>{{ a.name }}</span>
+          <span class="amt">{{ a.subtotal | money }}</span>
+          <span class="pct">{{ '%.0f'|format(a.pct) }} %</span>
+          <div class="track"><div class="fill" style="width:{{ a.pct }}%;background:{{ a.color }}"></div></div>
         </div>
         {% endfor %}
       </div>
@@ -71,7 +68,7 @@
   {% endfor %}
 
   <div class="card">
-    <h2>État des connexions</h2>
+    <h2>Connexions</h2>
     <div class="table-wrap">
       <table>
         <thead>
