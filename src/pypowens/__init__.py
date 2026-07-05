@@ -14,8 +14,10 @@ from .models import (
     Account,
     AccountsList,
     AuthToken,
+    Category,
     Connection,
     Connector,
+    Indicators,
     Transaction,
     User,
 )
@@ -36,5 +38,7 @@ __all__ = [
     "Account",
     "AccountsList",
     "Transaction",
+    "Category",
+    "Indicators",
     "__version__",
 ]

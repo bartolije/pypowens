@@ -137,6 +137,38 @@ async def test_missing_token_raises_auth_error():
             await p.get_current_user()
 
 
+@respx.mock
+async def test_get_indicators_handles_null():
+    respx.get(f"{BASE}/users/me/indicators").mock(
+        return_value=httpx.Response(200, json={"id_user": 5, "indicators": None})
+    )
+    async with PowensClient("myapp-sandbox", access_token="TOK") as p:
+        ind = await p.get_indicators()
+        assert ind.id_user == 5
+        assert ind.available is False
+
+
+@respx.mock
+async def test_list_categories():
+    respx.get(f"{BASE}/banks/categories").mock(
+        return_value=httpx.Response(
+            200, json={"bank_category": [{"id": 3, "name": "Insurance"}]}
+        )
+    )
+    async with PowensClient("myapp-sandbox", access_token="TOK") as p:
+        cats = await p.list_categories()
+        assert cats[0].name == "Insurance"
+
+
+def test_build_webview_url():
+    client = PowensClient("myapp-sandbox", client_id="cid")
+    url = client.build_webview_url("http://127.0.0.1:8000/callback", "CODE123")
+    assert url.startswith("https://webview.powens.com/connect?")
+    assert "domain=myapp-sandbox.biapi.pro" in url
+    assert "client_id=cid" in url
+    assert "code=CODE123" in url
+
+
 def test_from_env_treats_empty_values_as_unset(monkeypatch):
     monkeypatch.setenv("POWENS_DOMAIN", "myapp-sandbox")
     monkeypatch.setenv("POWENS_CLIENT_ID", "cid")

@@ -233,6 +233,52 @@ class Transaction:
 
 
 @dataclass(slots=True)
+class Category:
+    """A bank category from the ``/banks/categories`` catalog."""
+
+    id: int | None
+    name: str | None = None
+    parent_id: int | None = None
+    color: str | None = None
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def from_api(cls, data: dict[str, Any]) -> Category:
+        return cls(
+            id=data.get("id"),
+            name=data.get("name"),
+            parent_id=data.get("id_parent_category") or data.get("parent_id"),
+            color=data.get("color"),
+            raw=data,
+        )
+
+
+@dataclass(slots=True)
+class Indicators:
+    """Result of ``GET /users/{id}/indicators``.
+
+    ``indicators`` is ``None`` when the product is not enabled/computed for the
+    app (checked via :attr:`available`).
+    """
+
+    id_user: int | None
+    indicators: dict[str, Any] | None = None
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @property
+    def available(self) -> bool:
+        return self.indicators is not None
+
+    @classmethod
+    def from_api(cls, data: dict[str, Any]) -> Indicators:
+        return cls(
+            id_user=data.get("id_user"),
+            indicators=data.get("indicators"),
+            raw=data,
+        )
+
+
+@dataclass(slots=True)
 class AccountsList:
     """Result of ``GET /users/{id}/accounts``."""
 

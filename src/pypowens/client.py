@@ -9,6 +9,7 @@ import os
 from collections.abc import AsyncIterator
 from types import TracebackType
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 
@@ -22,8 +23,10 @@ from .models import (
     Account,
     AccountsList,
     AuthToken,
+    Category,
     Connection,
     Connector,
+    Indicators,
     Transaction,
     User,
 )
@@ -254,6 +257,36 @@ class PowensClient:
         """Create a short-lived code, e.g. to hand off to the Webview (``/auth/token/code``)."""
         return await self._request("GET", "auth/token/code", params={"type": type})
 
+    def build_webview_url(
+        self,
+        redirect_uri: str,
+        temporary_code: str,
+        *,
+        connector_ids: list[int] | None = None,
+        extra: dict[str, str] | None = None,
+    ) -> str:
+        """Build a Powens Webview *connect* URL to link a new bank.
+
+        Combine with :meth:`get_temporary_code`. The ``redirect_uri`` must be
+        whitelisted in the Powens console. Requires ``client_id``.
+
+        Note: exact Webview parameters can vary by setup — see
+        https://docs.powens.com/ (Webview).
+        """
+        if not self.client_id:
+            raise PowensConfigError("client_id is required to build a Webview URL.")
+        params: dict[str, str] = {
+            "domain": self._host.replace("https://", "").replace("http://", ""),
+            "client_id": self.client_id,
+            "redirect_uri": redirect_uri,
+            "code": temporary_code,
+        }
+        if connector_ids:
+            params["connector_ids"] = ",".join(str(i) for i in connector_ids)
+        if extra:
+            params.update(extra)
+        return f"https://webview.powens.com/connect?{urlencode(params)}"
+
     async def exchange_code(self, code: str) -> AuthToken:
         """Exchange an authorization ``code`` for a permanent token (``/auth/token/access``)."""
         self._require_app_credentials()
@@ -283,6 +316,21 @@ class PowensClient:
     async def get_current_user(self) -> User:
         """Return the user tied to the current token (``GET /users/me``)."""
         return User.from_api(await self._request("GET", "users/me"))
+
+    async def get_indicators(self, user_id: int | str = "me") -> Indicators:
+        """Return computed banking indicators (``GET /users/{id}/indicators``).
+
+        ``Indicators.available`` is ``False`` when the product is not enabled.
+        """
+        return Indicators.from_api(await self._request("GET", f"users/{user_id}/indicators"))
+
+    async def list_categories(self) -> list[Category]:
+        """List the bank category catalog (``GET /banks/categories``)."""
+        data = await self._request(
+            "GET", "banks/categories", auth=self._access_token is not None
+        )
+        items = data.get("bank_category") if isinstance(data, dict) else data
+        return [Category.from_api(c) for c in (items or [])]
 
     async def list_connectors(
         self,
