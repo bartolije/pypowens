@@ -1,33 +1,41 @@
-// Powens Finance — client interactions (no build step, vanilla JS).
+// Powens Finance — client interactions (vanilla JS, no build step).
 
-// --- Theme toggle (light "corporate" <-> dark "business") -------------------
+// --- Theme (light <-> dark) ------------------------------------------------
 function initTheme() {
   const btn = document.getElementById("theme-toggle");
+  const root = document.documentElement;
+  const icon = () => {
+    const dark = root.getAttribute("data-theme") === "dark";
+    if (btn) btn.textContent = dark ? "☀️" : "🌙";
+  };
+  icon();
   if (!btn) return;
   btn.addEventListener("click", () => {
-    const cur = document.documentElement.getAttribute("data-theme");
-    const next = cur === "business" ? "corporate" : "business";
-    document.documentElement.setAttribute("data-theme", next);
+    const next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", next);
     localStorage.setItem("pf-theme", next);
+    icon();
   });
 }
 
-// --- Reveal sensitive amounts ----------------------------------------------
-function initReveal() {
-  const btn = document.getElementById("reveal-btn");
-  if (!btn) return;
+// --- Mask amounts globally (persisted) -------------------------------------
+function initMask() {
+  const btn = document.getElementById("mask-toggle");
+  const root = document.documentElement;
   const sync = () => {
-    const on = document.body.classList.contains("reveal");
-    btn.textContent = on ? "🙈 Masquer les montants" : "👁 Afficher les montants";
+    const hidden = root.classList.contains("hide-amounts");
+    if (btn) btn.textContent = hidden ? "🙈 Montants" : "👁 Montants";
   };
+  sync();
+  if (!btn) return;
   btn.addEventListener("click", () => {
-    document.body.classList.toggle("reveal");
+    const hidden = root.classList.toggle("hide-amounts");
+    localStorage.setItem("pf-hide", hidden ? "1" : "0");
     sync();
   });
-  sync();
 }
 
-// --- Sortable tables (class="sortable") ------------------------------------
+// --- Sortable tables (table.sortable) --------------------------------------
 function cellValue(row, i) {
   const td = row.cells[i];
   if (!td) return "";
@@ -73,9 +81,9 @@ function initSortable() {
   });
 }
 
-// --- Search filter (input.table-search[data-target="#id"]) -----------------
+// --- Search filter (input.search[data-target="#id"]) -----------------------
 function initSearch() {
-  document.querySelectorAll("input.table-search").forEach((input) => {
+  document.querySelectorAll("input.search[data-target]").forEach((input) => {
     const table = document.querySelector(input.dataset.target);
     if (!table) return;
     input.addEventListener("input", () => {
@@ -88,6 +96,6 @@ function initSearch() {
 }
 
 initTheme();
-initReveal();
+initMask();
 initSortable();
 initSearch();

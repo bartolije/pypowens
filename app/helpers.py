@@ -12,21 +12,26 @@ from decimal import Decimal
 
 # Colour-blind-friendly categorical palette (used across charts for consistency).
 PALETTE = [
-    "#4e79a7", "#f28e2b", "#59a14f", "#e15759", "#b07aa1",
-    "#76b7b2", "#edc948", "#ff9da7", "#9c755f", "#bab0ac",
+    "#635bff", "#0ca678", "#f28e2b", "#e15759", "#7c8bff",
+    "#12b886", "#f59f00", "#ff8787", "#9775fa", "#868e96",
 ]
 
 Number = int | float | Decimal | None
 
+# Narrow no-break space (thousands) and no-break space (before currency): keep an
+# amount on a single line so it never wraps inside a table cell.
+_THIN_NBSP = " "
+_NBSP = " "
+
 
 def format_money(value: Number, currency: str = "€", precision: int = 2) -> str:
-    """French-formatted amount: ``-1 234,56 €``."""
+    """French-formatted amount that never line-wraps: ``-1 234,56 €``."""
     if value is None:
         return "—"
     value = float(value)
     neg = value < 0
-    s = f"{abs(value):,.{precision}f}".replace(",", " ").replace(".", ",")
-    return f"{'-' if neg else ''}{s} {currency}"
+    s = f"{abs(value):,.{precision}f}".replace(",", _THIN_NBSP).replace(".", ",")
+    return f"{'-' if neg else ''}{s}{_NBSP}{currency}"
 
 
 def mask_iban(iban: str | None) -> str:
@@ -65,7 +70,7 @@ def bar_chart(
     bar_height: int = 22,
     gap: int = 8,
     unit: str = "€",
-    color: str = "#4e79a7",
+    color: str = "#635bff",
 ) -> str:
     """Horizontal bar chart. ``items`` = list of (label, value)."""
     if not items:
@@ -80,7 +85,7 @@ def bar_chart(
         rows.append(
             f'<text x="0" y="{y + bar_height * 0.7}" class="cl">{_e(label)}</text>'
             f'<rect x="{label_w}" y="{y}" width="{w}" height="{bar_height}" '
-            f'rx="4" fill="{color}"><title>{_e(label)}: {value:,.2f} {unit}</title></rect>'
+            f'rx="5" fill="{color}"><title>{_e(label)}: {value:,.2f} {unit}</title></rect>'
             f'<text x="{label_w + w + 6}" y="{y + bar_height * 0.7}" class="cv">'
             f'{value:,.0f} {unit}</text>'
         )
@@ -104,7 +109,7 @@ def donut_chart(
         return '<p class="muted">Aucune donnée.</p>'
     cx = cy = size / 2
     r = size / 2 - 4
-    inner = r * 0.58
+    inner = r * 0.60
     import math
 
     segments = []

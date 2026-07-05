@@ -1,111 +1,100 @@
 {% extends "base.html" %}
-{% block title %}Récapitulatif patrimoine · Powens Finance{% endblock %}
+{% block title %}Récap · Powens Finance{% endblock %}
 {% block content %}
 
-<div class="flex items-center justify-between flex-wrap gap-3 mb-4">
-  <h1 class="text-2xl font-bold">Récapitulatif patrimoine</h1>
-  <button id="reveal-btn" class="btn btn-sm btn-outline">👁 Afficher les montants</button>
+<div class="page-head">
+  <h1>Récapitulatif patrimoine</h1>
 </div>
 
 {% if not has_accounts %}
-  <div class="hero bg-base-100 rounded-box py-16">
-    <div class="hero-content text-center">
-      <div>
-        <p class="text-lg">Aucun compte pour le moment.</p>
-        <p class="text-base-content/60 mt-1">Connectez une banque pour voir votre patrimoine.</p>
-        <a class="btn btn-primary mt-4" href="/connect">+ Connecter une banque</a>
-      </div>
-    </div>
+  <div class="card empty">
+    <div class="big">Aucun compte pour le moment</div>
+    <p>Connectez une banque pour voir votre patrimoine.</p>
+    <p><a class="btn btn-primary" href="/connect">+ Connecter une banque</a></p>
   </div>
 {% else %}
 
-  <div class="stats stats-vertical sm:stats-horizontal shadow bg-base-100 w-full">
+  <div class="stats">
     <div class="stat">
-      <div class="stat-title">Patrimoine net</div>
-      <div class="stat-value text-primary text-2xl"><span class="sensitive">{{ net | money }}</span></div>
+      <div class="k">Patrimoine net</div>
+      <div class="v accent">{{ net | money }}</div>
     </div>
     <div class="stat">
-      <div class="stat-title">Comptes</div>
-      <div class="stat-value text-2xl">{{ n_accounts }}</div>
+      <div class="k">Comptes</div>
+      <div class="v">{{ n_accounts }}</div>
     </div>
     <div class="stat">
-      <div class="stat-title">Connexions</div>
-      <div class="stat-value text-2xl">{{ n_connections }}</div>
+      <div class="k">Connexions</div>
+      <div class="v">{{ n_connections }}</div>
     </div>
   </div>
 
-  <div class="card bg-base-100 shadow mt-4">
-    <div class="card-body">
-      <h2 class="card-title">Répartition par famille</h2>
-      <div class="sensitive">{{ donut | safe }}</div>
+  <div class="grid2" style="margin-top:16px">
+    <div class="card">
+      <h2>Répartition par famille</h2>
+      {{ donut | safe }}
+    </div>
+    <div class="card">
+      <h2>Comptes par famille</h2>
+      <div class="stack">
+        {% for fam in families %}
+        <div class="split" style="justify-content:space-between">
+          <span>{{ fam.name }}</span>
+          <span class="badge">{{ fam.subtotal | money }}</span>
+        </div>
+        {% endfor %}
+      </div>
     </div>
   </div>
 
   {% for fam in families %}
-  {% set courant = fam.name == "Comptes courants" %}
-  <div class="card bg-base-100 shadow mt-4">
-    <div class="card-body">
-      <h2 class="card-title flex-wrap">
-        {{ fam.name }}
-        <span class="badge badge-ghost {{ '' if courant else 'sensitive' }}">{{ fam.subtotal | money }}</span>
-      </h2>
-      <div class="overflow-x-auto">
-        <table class="table table-zebra sortable">
-          <thead>
-            <tr>
-              <th>Compte</th>
-              <th>IBAN</th>
-              <th>Type</th>
-              <th class="num">Solde</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for acc in fam.accounts %}
-            <tr>
-              <td>{{ acc.name or "—" }}</td>
-              <td class="text-base-content/60">{{ acc.iban | iban }}</td>
-              <td class="text-base-content/60">{{ acc.type or "—" }}</td>
-              <td class="num" data-sort="{{ acc.balance or 0 }}">
-                <span class="{{ '' if courant else 'sensitive' }}">{{ acc.balance | money }}</span>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+  <div class="card">
+    <h2>{{ fam.name }} <span class="badge">{{ fam.subtotal | money }}</span></h2>
+    <div class="table-wrap">
+      <table class="sortable">
+        <thead>
+          <tr><th>Compte</th><th>IBAN</th><th>Type</th><th class="num">Solde</th></tr>
+        </thead>
+        <tbody>
+          {% for acc in fam.accounts %}
+          <tr>
+            <td>{{ acc.name or "—" }}</td>
+            <td class="muted">{{ acc.iban | iban }}</td>
+            <td class="muted">{{ acc.type or "—" }}</td>
+            <td class="num" data-sort="{{ acc.balance or 0 }}">{{ acc.balance | money }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   </div>
   {% endfor %}
 
-  <div class="card bg-base-100 shadow mt-4">
-    <div class="card-body">
-      <h2 class="card-title">État des connexions</h2>
-      <div class="overflow-x-auto">
-        <table class="table">
-          <thead>
-            <tr><th>Banque</th><th class="num">Comptes</th><th>Dernière synchro</th><th>État</th></tr>
-          </thead>
-          <tbody>
-            {% for c in connections %}
-            <tr>
-              <td class="font-medium">{{ c.name }}</td>
-              <td class="num">{{ c.nb_accounts }}</td>
-              <td class="text-base-content/60">{{ c.last_update }}</td>
-              <td>
-                {% if c.ok %}
-                  <span class="badge badge-success badge-sm">OK</span>
-                {% else %}
-                  <span class="badge badge-error badge-sm">À reconnecter</span>
-                  {% if c.message %}<span class="text-base-content/60 text-xs"> {{ c.message }}</span>{% endif %}
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      <a href="/connect" class="link link-primary text-sm mt-2">+ connecter une banque</a>
+  <div class="card">
+    <h2>État des connexions</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Banque</th><th class="num">Comptes</th><th>Dernière synchro</th><th>État</th></tr>
+        </thead>
+        <tbody>
+          {% for c in connections %}
+          <tr>
+            <td>{{ c.name }}</td>
+            <td class="num">{{ c.nb_accounts }}</td>
+            <td class="muted">{{ c.last_update }}</td>
+            <td>
+              {% if c.ok %}<span class="badge pos">OK</span>
+              {% else %}<span class="badge warn">À reconnecter</span>
+                {% if c.message %}<span class="muted small"> {{ c.message }}</span>{% endif %}
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
+    <p style="margin-top:12px"><a href="/connect">+ connecter une banque</a></p>
   </div>
 
 {% endif %}
