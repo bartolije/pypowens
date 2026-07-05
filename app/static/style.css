@@ -94,5 +94,20 @@ tbody tr:hover { background: var(--panel-2); }
 .bars .bar .fill { background: var(--accent); border-radius: 5px 5px 0 0; min-height: 2px; }
 .bars .bar .xl { font-size: .68rem; color: var(--muted); text-align: center; margin-top: 4px; }
 
+/* Filters form */
+.filters { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+.filters label { display: flex; flex-direction: column; gap: 4px; font-size: .8rem; color: var(--muted); }
+.filters input, .filters select {
+  padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel-2); color: var(--ink); font: inherit;
+}
+button, .btn {
+  padding: 8px 16px; border: 1px solid var(--accent); border-radius: 8px;
+  background: var(--accent); color: #fff; font-weight: 600; cursor: pointer;
+}
+button:hover, .btn:hover { filter: brightness(1.05); }
+th a { color: inherit; }
+th a:hover { color: var(--accent); }
+
 .empty { text-align: center; padding: 50px 20px; color: var(--muted); }
 .foot { text-align: center; padding: 24px; }

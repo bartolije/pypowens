@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Abonnements · Powens Finance{% endblock %}
+
+{% block content %}
+<h1>Abonnements &amp; prélèvements récurrents</h1>
+<p class="muted">Séries de paiements détectées automatiquement à partir de l'historique.</p>
+
+<section class="tiles">
+  <div class="tile">
+    <div class="k">Total mensuel</div>
+    <div class="v big">{{ total_monthly|money }}</div>
+  </div>
+  <div class="tile">
+    <div class="k">Total annualisé</div>
+    <div class="v">{{ total_annual|money }}</div>
+  </div>
+  <div class="tile">
+    <div class="k">Abonnements détectés</div>
+    <div class="v">{{ count }}</div>
+  </div>
+</section>
+
+{% if items %}
+<div class="card">
+  <h2>Répartition mensuelle par catégorie</h2>
+  {{ donut|safe }}
+</div>
+
+<div class="card">
+  <h2>Détail des abonnements</h2>
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Marchand</th>
+          <th>Catégorie</th>
+          <th>Périodicité</th>
+          <th class="num">Montant</th>
+          <th class="num">€/mois</th>
+          <th class="num">Occurrences</th>
+          <th>Dernier</th>
+          <th>Prochain</th>
+          <th class="num">Confiance</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td>
+            {{ it.merchant }}
+            {% if it.variable %}<span class="muted" title="Montant variable">(variable)</span>{% endif %}
+          </td>
+          <td class="muted">{{ it.category }}</td>
+          <td>{{ it.periodicity }}</td>
+          <td class="num">{% if it.variable %}~{% endif %}{{ it.amount|money }}</td>
+          <td class="num">{{ it.monthly_equiv|money }}</td>
+          <td class="num">{{ it.occurrences }}</td>
+          <td>{{ it.last_date.strftime('%d/%m/%Y') }}</td>
+          <td>{{ it.next_date.strftime('%d/%m/%Y') if it.next_date else '—' }}</td>
+          <td class="num">
+            <span class="badge {{ 'ok' if it.confidence >= 0.66 else '' }}">
+              {{ (it.confidence * 100)|round|int }} %
+            </span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <p class="empty">Aucun abonnement récurrent détecté sur la période analysée.</p>
+</div>
+{% endif %}
+{% endblock %}

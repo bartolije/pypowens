@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Analyse des dépenses · Powens Finance{% endblock %}
+
+{% block content %}
+<h1>Analyse des dépenses</h1>
+<p class="muted">Sur les 12 derniers mois complets.</p>
+
+{% if not has_spend %}
+  <div class="empty">
+    Aucune dépense à analyser pour l'instant.<br>
+    Connectez une banque pour alimenter cette page.
+  </div>
+{% else %}
+
+  <div class="tiles">
+    <div class="tile">
+      <div class="k">Dépenses moy. / mois</div>
+      <div class="v neg">{{ avg_spend|money }}</div>
+    </div>
+    <div class="tile">
+      <div class="k">Revenus moy. / mois</div>
+      <div class="v pos">{{ avg_income|money }}</div>
+    </div>
+    <div class="tile">
+      <div class="k">Épargne moy. / mois</div>
+      <div class="v {{ 'pos' if avg_savings >= 0 else 'neg' }}">{{ avg_savings|money }}</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Revenus vs dépenses (12 derniers mois)</h2>
+    <p class="muted">Revenus</p>
+    {{ income_chart|safe }}
+    <p class="muted">Dépenses</p>
+    {{ spend_chart|safe }}
+  </div>
+
+  <div class="card">
+    <h2>Dépenses par catégorie</h2>
+    {{ cat_donut|safe }}
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Catégorie</th>
+            <th class="num">Total</th>
+            <th class="num">%</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in cat_rows %}
+          <tr>
+            <td>{{ row.name }}</td>
+            <td class="num">{{ row.total|money }}</td>
+            <td class="num">{{ '%.1f'|format(row.pct) }} %</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Récurrent vs ponctuel</h2>
+    <p class="muted">
+      Part des dépenses mensuelles couverte par
+      {{ recurring_count }} poste{{ 's' if recurring_count > 1 else '' }} récurrent{{ 's' if recurring_count > 1 else '' }}.
+    </p>
+    {{ rec_donut|safe }}
+    <div class="tiles">
+      <div class="tile">
+        <div class="k">Récurrent / mois</div>
+        <div class="v">{{ recurring_monthly|money }}</div>
+      </div>
+      <div class="tile">
+        <div class="k">Ponctuel / mois</div>
+        <div class="v">{{ ponctuel_monthly|money }}</div>
+      </div>
+      <div class="tile">
+        <div class="k">Dépenses moy. / mois</div>
+        <div class="v">{{ avg_spend|money }}</div>
+      </div>
+    </div>
+  </div>
+
+  {% if indicator_rows %}
+  <div class="card">
+    <h2>Indicateurs Powens</h2>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Indicateur</th>
+            <th class="num">Valeur</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for key, value in indicator_rows %}
+          <tr>
+            <td>{{ key }}</td>
+            <td class="num">{{ value }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+{% endif %}
+{% endblock %}

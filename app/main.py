@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from pypowens import PowensClient
 
-from . import analysis, recap, recurring
+from . import analysis, frequency, recap, recurring
 from .config import Settings, get_settings
 from .data import clear_cache
 from .deps import get_client
@@ -38,6 +38,7 @@ app.mount(
 )
 
 app.include_router(recap.router)
+app.include_router(frequency.router)
 app.include_router(recurring.router)
 app.include_router(analysis.router)
 

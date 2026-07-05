@@ -97,6 +97,7 @@ async def recap(request: Request, client: PowensClient = Depends(get_client)):  
         )
 
     return templates.TemplateResponse(
+        request,
         "recap.html",
         {
             "request": request,
