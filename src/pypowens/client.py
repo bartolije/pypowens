@@ -87,16 +87,23 @@ class PowensClient:
 
         Reads ``POWENS_DOMAIN``, ``POWENS_CLIENT_ID``, ``POWENS_CLIENT_SECRET``
         and ``POWENS_ACCESS_TOKEN``. Keyword arguments override the environment.
+        Empty environment variables are treated as unset.
         """
-        domain = kwargs.pop("domain", None) or os.environ.get("POWENS_DOMAIN")
+
+        def _env(name: str, override: Any) -> Any:
+            if override is not None:
+                return override
+            value = os.environ.get(name)
+            return value.strip() if value and value.strip() else None
+
+        domain = _env("POWENS_DOMAIN", kwargs.pop("domain", None))
         if not domain:
             raise PowensConfigError("POWENS_DOMAIN is not set.")
         return cls(
             domain,
-            client_id=kwargs.pop("client_id", None) or os.environ.get("POWENS_CLIENT_ID"),
-            client_secret=kwargs.pop("client_secret", None)
-            or os.environ.get("POWENS_CLIENT_SECRET"),
-            access_token=kwargs.pop("access_token", None) or os.environ.get("POWENS_ACCESS_TOKEN"),
+            client_id=_env("POWENS_CLIENT_ID", kwargs.pop("client_id", None)),
+            client_secret=_env("POWENS_CLIENT_SECRET", kwargs.pop("client_secret", None)),
+            access_token=_env("POWENS_ACCESS_TOKEN", kwargs.pop("access_token", None)),
             **kwargs,
         )
 
@@ -168,7 +175,12 @@ class PowensClient:
         code = message = None
         if isinstance(data, dict):
             code = data.get("code")
-            message = data.get("message") or data.get("error_description") or data.get("error")
+            message = (
+                data.get("message")
+                or data.get("description")
+                or data.get("error_description")
+                or data.get("error")
+            )
 
         if response.status_code in (401, 403):
             exc: type[PowensAPIError] = PowensAuthError

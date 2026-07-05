@@ -116,7 +116,32 @@ async def test_api_error_is_raised():
         assert excinfo.value.code == "badRequest"
 
 
+@respx.mock
+async def test_api_error_uses_description_field():
+    # Powens sometimes returns the human message under "description".
+    respx.get(f"{BASE}/users/me/transactions").mock(
+        return_value=httpx.Response(
+            400, json={"code": "noAccount", "description": "At least one bank account is required."}
+        )
+    )
+    async with PowensClient("myapp-sandbox", access_token="TOK") as p:
+        with pytest.raises(PowensAPIError) as excinfo:
+            await p.list_transactions()
+        assert excinfo.value.code == "noAccount"
+        assert excinfo.value.message == "At least one bank account is required."
+
+
 async def test_missing_token_raises_auth_error():
     async with PowensClient("myapp-sandbox") as p:
         with pytest.raises(PowensAuthError):
             await p.get_current_user()
+
+
+def test_from_env_treats_empty_values_as_unset(monkeypatch):
+    monkeypatch.setenv("POWENS_DOMAIN", "myapp-sandbox")
+    monkeypatch.setenv("POWENS_CLIENT_ID", "cid")
+    monkeypatch.setenv("POWENS_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("POWENS_ACCESS_TOKEN", "")  # empty must not become ""
+    client = PowensClient.from_env()
+    assert client.access_token is None
+    assert client.client_id == "cid"

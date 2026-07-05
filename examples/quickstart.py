@@ -38,7 +38,14 @@ async def main() -> None:
         accounts = await powens.list_accounts()
         print(f"{len(accounts.accounts)} account(s). Balances by currency: {accounts.balances}")
 
-        # 4. Stream the 10 most recent transactions.
+        # 4. Stream the 10 most recent transactions (needs at least one account).
+        if not accounts.accounts:
+            print(
+                "\nNo bank account yet — connect one via the Powens Webview first, "
+                "then transactions will be available."
+            )
+            return
+
         print("\nRecent transactions:")
         txns = await powens.list_transactions(max_transactions=10)
         for txn in txns:
