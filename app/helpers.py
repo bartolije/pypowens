@@ -7,8 +7,8 @@ page stays self-contained (no JS charting lib).
 from __future__ import annotations
 
 import html
-from decimal import Decimal
 from datetime import date
+from decimal import Decimal
 
 # Colour-blind-friendly categorical palette (used across charts for consistency).
 PALETTE = [

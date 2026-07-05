@@ -118,6 +118,33 @@ pytest          # run tests (respx-mocked, no network)
 ruff check .    # lint
 ```
 
+## Application (analyse de finances perso)
+
+Le dépôt embarque une **application web locale** (FastAPI) construite sur le wrapper,
+dans le dossier `app/` (non incluse dans le wheel publié). Trois pages :
+
+- **Récap** — patrimoine net, comptes groupés par famille (courant / épargne /
+  investissement / assurance-vie / retraite), état des connexions.
+- **Abonnements** — détection des prélèvements/paiements récurrents avec
+  périodicité (mensuel → biennal), marchand, catégorie, montant et **€/mois**.
+- **Analyse** — revenus vs dépenses par mois, répartition par catégorie,
+  part récurrent vs ponctuel.
+
+```bash
+uv pip install -e ".[app]"     # dépendances de l'app
+# .env : POWENS_DOMAIN, POWENS_CLIENT_ID/SECRET, POWENS_ACCESS_TOKEN
+python -m app                  # http://127.0.0.1:8000
+```
+
+Le token est résolu par priorité : `POWENS_ACCESS_TOKEN` (.env) → `.powens_state.json`
+→ `create_user()`. Le token et l'état local ne sont **jamais** versionnés.
+Pour connecter une banque via le Webview Powens, whitelister le
+`redirect_uri` `http://127.0.0.1:8000/callback` dans la console Powens.
+
+> La catégorisation native Powens et le produit *indicators* n'étant pas
+> alimentés sur toutes les apps, la catégorisation est faite localement
+> (mots-clés) et l'analyse repose sur les transactions.
+
 ## Roadmap
 
 - Webview / connect flow helpers (temporary code → hosted URL → redirect handling).
