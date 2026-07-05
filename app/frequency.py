@@ -132,6 +132,9 @@ async def recurrences(
     """Recurring lines grouped by label over a date range, ranked by count/amount."""
     d_from = _parse_date(date_from)
     d_to = _parse_date(date_to)
+    # Default range = year-to-date (since Jan 1 of the current year).
+    if d_from is None:
+        d_from = date(date.today().year, 1, 1)
     if sort not in SORTS:
         sort = "count"
     if kind not in ("debit", "credit"):
@@ -183,7 +186,7 @@ async def recurrences(
             "kind": kind,
             "scope": scope,
             "min_count": min_count,
-            "date_from": date_from or "",
-            "date_to": date_to or "",
+            "date_from": d_from.isoformat(),
+            "date_to": d_to.isoformat() if d_to else "",
         },
     )

@@ -275,11 +275,25 @@ async def recurring_page(
     total_annual = total_monthly * 12
 
     by_category: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    by_category_count: dict[str, int] = defaultdict(int)
     for it in items:
         by_category[it.category] += it.monthly_equiv
-    donut = donut_chart(
-        sorted(((cat, float(v)) for cat, v in by_category.items()), key=lambda x: -x[1])
-    )
+        by_category_count[it.category] += 1
+    ordered_cats = sorted(by_category.items(), key=lambda kv: kv[1], reverse=True)
+    donut = donut_chart([(cat, float(v)) for cat, v in ordered_cats])
+    cat_rows = [
+        {
+            "name": cat,
+            "count": by_category_count[cat],
+            "monthly": v,
+            "annual": v * 12,
+            "pct": float(v / total_monthly * 100) if total_monthly else 0.0,
+        }
+        for cat, v in ordered_cats
+    ]
+
+    period_from = date.today() - timedelta(days=int(settings.history_months * 30.5))
+    period_to = date.today()
 
     return templates.TemplateResponse(
         request,
@@ -292,5 +306,8 @@ async def recurring_page(
             "total_annual": total_annual,
             "count": len(items),
             "donut": donut,
+            "cat_rows": cat_rows,
+            "period_from": period_from,
+            "period_to": period_to,
         },
     )
