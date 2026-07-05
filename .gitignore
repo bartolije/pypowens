@@ -13,6 +13,10 @@ venv/
 .env.*
 !.env.example
 
+# App local state (persisted Powens token / id_user) — never commit
+.powens_state.json
+powens_state.json
+
 # Tooling caches
 .pytest_cache/
 .ruff_cache/

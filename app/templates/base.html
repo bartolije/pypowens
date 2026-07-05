@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Powens Finance{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">💰 Powens Finance</div>
+    <nav>
+      <a href="/" class="{{ 'on' if active == 'recap' }}">Récap</a>
+      <a href="/abonnements" class="{{ 'on' if active == 'recurring' }}">Abonnements</a>
+      <a href="/analyse" class="{{ 'on' if active == 'analysis' }}">Analyse</a>
+    </nav>
+    <a class="btn-connect" href="/connect" title="Connecter une banque">+ Banque</a>
+  </header>
+
+  <main class="wrap">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="foot">
+    <span class="muted">Données via Powens · usage personnel</span>
+  </footer>
+</body>
+</html>
