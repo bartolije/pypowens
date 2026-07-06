@@ -134,8 +134,9 @@ def donut_chart(
         )
         legend.append(
             f'<li><span class="dot" style="background:{color}"></span>'
-            f'{_e(label)} <b>{frac * 100:.0f}%</b> '
-            f'<span class="muted">{value:,.0f} {unit}</span></li>'
+            f'<span class="lg-name">{_e(label)}</span>'
+            f'<span class="lg-pct">{frac * 100:.0f} %</span>'
+            f'<span class="lg-val">{value:,.0f} {unit}</span></li>'
         )
         angle = end
     center = ""

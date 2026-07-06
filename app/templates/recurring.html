@@ -3,8 +3,28 @@
 
 {% block content %}
 <h2 class="mb-1">Abonnements & prélèvements</h2>
-<div class="text-secondary mb-1">Séries de paiements récurrents détectées automatiquement.</div>
-<div class="text-secondary mb-3">Période analysée : {{ period_from.strftime('%d/%m/%Y') }} → {{ period_to.strftime('%d/%m/%Y') }}</div>
+<div class="text-secondary mb-3">Séries de paiements récurrents détectées automatiquement.</div>
+
+<form method="get" action="/abonnements" class="card mb-3">
+  <div class="card-body">
+    <div class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label">Du</label>
+        <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-auto">
+        <label class="form-label">Au</label>
+        <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-primary">Filtrer</button>
+      </div>
+      <div class="col-auto">
+        <span class="text-secondary small">Période analysée : {{ period_from.strftime('%d/%m/%Y') }} → {{ period_to.strftime('%d/%m/%Y') }}</span>
+      </div>
+    </div>
+  </div>
+</form>
 
 <div class="row row-cards">
   <div class="col-sm-6 col-lg-4">

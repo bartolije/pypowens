@@ -12,13 +12,14 @@ empty on this app) through the shared :mod:`app.enrich` helpers.
 
 from __future__ import annotations
 
+import math
 import statistics
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 
 from .data import load_internal_ids, load_spending_transactions
@@ -261,14 +262,38 @@ def detect_recurring(
 router = APIRouter()
 
 
+def _parse_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value[:10])
+    except ValueError:
+        return None
+
+
 @router.get("/abonnements", response_class=HTMLResponse)
 async def recurring_page(
     request: Request,
-    client=Depends(get_client),
-    settings=Depends(get_settings),
+    client=Depends(get_client),  # noqa: B008
+    settings=Depends(get_settings),  # noqa: B008
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
 ):
-    txns = await load_spending_transactions(client, months=settings.history_months)
-    internal = await load_internal_ids(client, months=settings.history_months)
+    d_from = _parse_date(date_from)
+    d_to = _parse_date(date_to)
+    # Window covering the requested range (default: configured history).
+    if d_from:
+        months = max(1, math.ceil((date.today() - d_from).days / 30) + 1)
+    else:
+        months = settings.history_months
+
+    txns = await load_spending_transactions(client, months=months)
+    internal = await load_internal_ids(client, months=months)
+    if d_from or d_to:
+        txns = [
+            t for t in txns
+            if t.date and (not d_from or t.date >= d_from) and (not d_to or t.date <= d_to)
+        ]
     items = detect_recurring(txns, internal_ids=internal, allowed_types=SUBSCRIPTION_TYPES)
 
     total_monthly = sum((it.monthly_equiv for it in items), Decimal("0"))
@@ -292,8 +317,8 @@ async def recurring_page(
         for cat, v in ordered_cats
     ]
 
-    period_from = date.today() - timedelta(days=int(settings.history_months * 30.5))
-    period_to = date.today()
+    period_from = d_from or (date.today() - timedelta(days=int(settings.history_months * 30.5)))
+    period_to = d_to or date.today()
 
     return templates.TemplateResponse(
         request,
@@ -309,5 +334,7 @@ async def recurring_page(
             "cat_rows": cat_rows,
             "period_from": period_from,
             "period_to": period_to,
+            "date_from": date_from or "",
+            "date_to": date_to or "",
         },
     )
