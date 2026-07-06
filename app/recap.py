@@ -70,6 +70,10 @@ async def recap(request: Request, client: PowensClient = Depends(get_client)):  
         subtotals[fam] += balance
         net += balance
 
+    # Sort accounts within each family by balance, largest first (last column).
+    for name in FAMILY_ORDER:
+        grouped[name].sort(key=lambda a: a.balance or Decimal(0), reverse=True)
+
     families = [
         {"name": name, "accounts": grouped[name], "subtotal": subtotals[name]}
         for name in FAMILY_ORDER

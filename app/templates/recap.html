@@ -44,28 +44,34 @@
     </div>
   </div>
 
-  {% for fam in families %}
   <div class="card">
-    <h2>{{ fam.name }} <span class="badge">{{ fam.subtotal | money }}</span></h2>
-    <div class="table-wrap">
-      <table class="sortable">
-        <thead>
-          <tr><th>Compte</th><th>IBAN</th><th>Type</th><th class="num">Solde</th></tr>
-        </thead>
-        <tbody>
-          {% for acc in fam.accounts %}
-          <tr>
-            <td>{{ acc.name or "—" }}</td>
-            <td class="muted">{{ acc.iban | iban }}</td>
-            <td class="muted">{{ acc.type or "—" }}</td>
-            <td class="num" data-sort="{{ acc.balance or 0 }}">{{ acc.balance | money }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <h2>Comptes</h2>
+    {% for fam in families %}
+    <div class="fam">
+      <div class="fam-head">
+        <span>{{ fam.name }}</span>
+        <span class="badge">{{ fam.subtotal | money }}</span>
+      </div>
+      <div class="table-wrap">
+        <table class="sortable">
+          <thead>
+            <tr><th>Compte</th><th>IBAN</th><th>Type</th><th class="num">Solde</th></tr>
+          </thead>
+          <tbody>
+            {% for acc in fam.accounts %}
+            <tr>
+              <td>{{ acc.name or "—" }}</td>
+              <td class="muted">{{ acc.iban | iban }}</td>
+              <td class="muted">{{ acc.type or "—" }}</td>
+              <td class="num" data-sort="{{ acc.balance or 0 }}">{{ acc.balance | money }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
+    {% endfor %}
   </div>
-  {% endfor %}
 
   <div class="card">
     <h2>Connexions</h2>

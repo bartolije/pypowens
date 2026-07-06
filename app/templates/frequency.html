@@ -51,15 +51,11 @@
     <div class="k">Occurrences totales</div>
     <div class="v">{{ occ_all }}</div>
   </div>
-  <div class="stat">
-    <div class="k">Montant cumulé</div>
-    <div class="v accent">{{ total_all | money }}</div>
-  </div>
 </div>
 
 {% if groups %}
 <div class="card" style="margin-top:16px">
-  <h2>Top 15 par montant cumulé</h2>
+  <h2>Top 15 par montant</h2>
   {{ chart | safe }}
 </div>
 

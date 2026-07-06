@@ -24,29 +24,6 @@
   --glow: 0 0 0 1px rgba(124,108,255,.08), 0 20px 60px -28px rgba(124,108,255,.5);
   --r-xl: 22px; --r-lg: 18px; --r: 14px; --r-sm: 10px;
 }
-[data-theme="light"] {
-  --bg: #f5f6f9;
-  --bg-grad:
-    radial-gradient(900px 500px at 92% -10%, rgba(124,108,255,.16), transparent 60%),
-    radial-gradient(700px 440px at 0% 0%, rgba(47,230,168,.12), transparent 58%);
-  --panel: #ffffff;
-  --panel-2: #f1f3f7;
-  --panel-3: #e9ecf2;
-  --ink: #0f1220;
-  --muted: #5f6b7e;
-  --line: #e6e9f0;
-  --line-2: #eef0f4;
-  --accent: #6a5cff;
-  --accent-2: #10b981;
-  --accent-ink: #ffffff;
-  --pos: #0ca678;
-  --neg: #e03a5a;
-  --grad-hero: linear-gradient(135deg, rgba(106,92,255,.14), rgba(16,185,129,.10) 70%);
-  --grad-text: linear-gradient(90deg, #1a1440, #4b3fd6);
-  --shadow: 0 1px 2px rgba(16,24,40,.04), 0 12px 30px -14px rgba(16,24,40,.18);
-  --glow: 0 10px 40px -18px rgba(106,92,255,.35);
-}
-
 * { box-sizing: border-box; }
 body {
   margin: 0;
@@ -93,7 +70,7 @@ h3 { font-size: .82rem; font-weight: 600; color: var(--muted); margin: 0 0 8px;
 .btn-sm { padding: 6px 12px; font-size: .85rem; }
 
 /* Layout */
-.wrap { max-width: 1120px; margin: 0 auto; padding: clamp(16px, 3vw, 32px); }
+.wrap { max-width: 1320px; margin: 0 auto; padding: clamp(16px, 3vw, 32px); }
 .page-head { display: flex; align-items: center; justify-content: space-between;
   flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
 .stack > * + * { margin-top: 16px; }
@@ -148,6 +125,11 @@ h3 { font-size: .82rem; font-weight: 600; color: var(--muted); margin: 0 0 8px;
 .alloc .track { grid-column: 1 / -1; height: 8px; border-radius: 999px; background: var(--panel-2);
   overflow: hidden; }
 .alloc .fill { height: 100%; border-radius: 999px; }
+
+/* Account family sub-sections (recap) */
+.fam + .fam { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+.fam-head { display: flex; align-items: center; justify-content: space-between;
+  margin: 2px 0 10px; font-weight: 700; }
 
 /* Tables */
 .table-wrap { overflow-x: auto; border-radius: var(--r); }

@@ -124,7 +124,7 @@ async def recurrences(
     settings: Settings = Depends(get_settings),
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
-    sort: str = Query(default="count"),
+    sort: str = Query(default="total"),
     min_count: int = Query(default=2, ge=1),
     kind: str = Query(default="debit"),
     scope: str = Query(default="spending"),
@@ -136,7 +136,7 @@ async def recurrences(
     if d_from is None:
         d_from = date(date.today().year, 1, 1)
     if sort not in SORTS:
-        sort = "count"
+        sort = "total"
     if kind not in ("debit", "credit"):
         kind = "debit"
     if scope not in ("spending", "all"):
@@ -164,10 +164,10 @@ async def recurrences(
 
     total_all = sum((g.total for g in groups), Decimal("0"))
     occ_all = sum(g.count for g in groups)
-    top = groups[:15]
+    top = sorted(groups, key=lambda g: g.total, reverse=True)[:15]
     chart = bar_chart(
         [(g.label[:22], float(g.total)) for g in top],
-        color="#4e79a7",
+        color="#7c6cff",
     )
 
     return templates.TemplateResponse(
