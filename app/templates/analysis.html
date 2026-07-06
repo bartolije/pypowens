@@ -3,103 +3,119 @@
 
 {% block content %}
 
-<div class="page-head">
-  <div>
-    <h1>Analyse des dépenses</h1>
-    <p class="muted">Moyennes sur les 12 derniers mois.</p>
-  </div>
-</div>
+<h2 class="mb-1">Analyse des dépenses</h2>
+<div class="text-secondary mb-3">Moyennes sur les 12 derniers mois.</div>
 
 {% if not has_spend %}
-  <div class="card empty">
-    <div class="big">Aucune dépense à analyser pour l'instant</div>
-    <p>Connectez une banque pour alimenter cette page.</p>
-    <p><a class="btn btn-primary" href="/connect">+ Banque</a></p>
+  <div class="empty">
+    <p class="empty-title">Aucune dépense à analyser</p>
+    <p class="empty-subtitle text-secondary">Connectez une banque pour alimenter cette page.</p>
+    <div class="empty-action"><a href="/connect" class="btn btn-primary">+ Connecter une banque</a></div>
   </div>
 {% else %}
 
-  <div class="stats">
-    <div class="stat">
-      <div class="k">Dépenses moy. / mois</div>
-      <div class="v">{{ avg_spend | money }}</div>
-    </div>
-    <div class="stat">
-      <div class="k">Revenus moy. / mois</div>
-      <div class="v pos">{{ avg_income | money }}</div>
-    </div>
-    <div class="stat">
-      <div class="k">Épargne moy. / mois</div>
-      <div class="v {{ 'pos' if avg_savings >= 0 else 'neg' }}">{{ avg_savings | money }}</div>
-    </div>
-  </div>
-
-  <div class="card" style="margin-top:16px">
-    <h2>Dépenses vs revenus par mois</h2>
-    <div class="grid2">
-      <div>
-        <h3>Dépenses</h3>
-        {{ spend_chart | safe }}
-      </div>
-      <div>
-        <h3>Revenus</h3>
-        {{ income_chart | safe }}
+  <div class="row row-cards">
+    <div class="col-sm-6 col-lg-4">
+      <div class="card">
+        <div class="card-body">
+          <div class="subheader">Dépenses moy. / mois</div>
+          <div class="h1 mb-0">{{ avg_spend | money }}</div>
+        </div>
       </div>
     </div>
-  </div>
-
-  <div class="card">
-    <h2>Dépenses par catégorie</h2>
-    <div class="split">
-      <div>
-        {{ cat_donut | safe }}
+    <div class="col-sm-6 col-lg-4">
+      <div class="card">
+        <div class="card-body">
+          <div class="subheader">Revenus moy. / mois</div>
+          <div class="h1 mb-0 text-green">{{ avg_income | money }}</div>
+        </div>
       </div>
-      <div>
-        <input type="text" placeholder="Rechercher…" class="search" data-target="#catTable">
-        <div class="table-wrap">
-          <table class="sortable" id="catTable">
-            <thead>
-              <tr>
-                <th>Catégorie</th>
-                <th class="num">Total</th>
-                <th class="num">%</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for r in cat_rows %}
-              <tr>
-                <td>{{ r.name }}</td>
-                <td class="num" data-sort="{{ r.total }}">{{ r.total | money }}</td>
-                <td class="num" data-sort="{{ r.pct }}">{{ '%.1f'|format(r.pct) }} %</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+    </div>
+    <div class="col-sm-6 col-lg-4">
+      <div class="card">
+        <div class="card-body">
+          <div class="subheader">Épargne moy. / mois</div>
+          <div class="h1 mb-0 {{ 'text-green' if avg_savings >= 0 else 'text-red' }}">{{ avg_savings | money }}</div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="card">
-    <h2>Récurrent vs ponctuel</h2>
-    <div class="split">
-      <div>
-        {{ rec_donut | safe }}
+  <div class="card mt-3">
+    <div class="card-header"><h3 class="card-title">Dépenses vs revenus par mois</h3></div>
+    <div class="card-body">
+      <div class="row">
+        <div class="col-lg-6">
+          <h3 class="subheader">Dépenses</h3>
+          {{ spend_chart | safe }}
+        </div>
+        <div class="col-lg-6">
+          <h3 class="subheader">Revenus</h3>
+          {{ income_chart | safe }}
+        </div>
       </div>
-      <div class="stack">
-        <p>Récurrent <strong>{{ recurring_monthly | money }}</strong> /mois <span class="muted">({{ recurring_count }} poste{{ 's' if recurring_count > 1 else '' }})</span></p>
-        <p>Ponctuel <strong>{{ ponctuel_monthly | money }}</strong> /mois</p>
+    </div>
+  </div>
+
+  <div class="card mt-3">
+    <div class="card-header"><h3 class="card-title">Dépenses par catégorie</h3></div>
+    <div class="card-body">
+      <div class="row row-cards">
+        <div class="col-lg-6">
+          {{ cat_donut | safe }}
+        </div>
+        <div class="col-lg-6">
+          <input type="text" class="form-control form-control-sm search mb-3" placeholder="Rechercher…" data-target="#catTable" style="max-width:260px">
+          <div class="table-responsive">
+            <table class="table table-vcenter card-table sortable" id="catTable">
+              <thead>
+                <tr>
+                  <th>Catégorie</th>
+                  <th class="num">Total</th>
+                  <th class="num">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in cat_rows %}
+                <tr>
+                  <td>{{ r.name }}</td>
+                  <td class="num" data-sort="{{ r.total }}">{{ r.total | money }}</td>
+                  <td class="num" data-sort="{{ r.pct }}">{{ '%.1f'|format(r.pct) }} %</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mt-3">
+    <div class="card-header"><h3 class="card-title">Récurrent vs ponctuel</h3></div>
+    <div class="card-body">
+      <div class="row row-cards">
+        <div class="col-lg-6">
+          {{ rec_donut | safe }}
+        </div>
+        <div class="col-lg-6">
+          <p>Récurrent <strong>{{ recurring_monthly | money }}</strong> /mois <span class="text-secondary">({{ recurring_count }} poste{{ 's' if recurring_count > 1 else '' }})</span></p>
+          <p>Ponctuel <strong>{{ ponctuel_monthly | money }}</strong> /mois</p>
+        </div>
       </div>
     </div>
   </div>
 
   {% if indicator_rows %}
-  <div class="card">
-    <h2>Indicateurs Powens</h2>
-    <ul>
-      {% for k, v in indicator_rows %}
-      <li><span class="muted">{{ k }}:</span> {{ v }}</li>
-      {% endfor %}
-    </ul>
+  <div class="card mt-3">
+    <div class="card-header"><h3 class="card-title">Indicateurs Powens</h3></div>
+    <div class="card-body">
+      <ul class="list-unstyled mb-0">
+        {% for k, v in indicator_rows %}
+        <li><span class="text-secondary">{{ k }}:</span> {{ v }}</li>
+        {% endfor %}
+      </ul>
+    </div>
   </div>
   {% endif %}
 

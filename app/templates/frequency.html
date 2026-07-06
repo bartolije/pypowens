@@ -2,106 +2,119 @@
 {% block title %}Récurrences · Powens Finance{% endblock %}
 {% block content %}
 
-<div class="page-head">
-  <h1>Lignes récurrentes par libellé</h1>
-</div>
-<p class="muted">
-  Regroupe les opérations par libellé sur une plage de dates : combien de fois ça revient et combien ça pèse.
-</p>
+<h2 class="mb-1">Lignes récurrentes par libellé</h2>
+<div class="text-secondary mb-3">Regroupe les opérations par libellé sur une plage de dates.</div>
 
-<div class="card">
-  <form method="get" action="/recurrences">
-    <div class="filters">
-      <label class="field">Du
-        <input type="date" name="date_from" value="{{ date_from }}">
-      </label>
-      <label class="field">Au
-        <input type="date" name="date_to" value="{{ date_to }}">
-      </label>
-      <label class="field">Min. occurrences
-        <input type="number" name="min_count" value="{{ min_count }}" min="1">
-      </label>
-      <label class="field">Type
-        <select name="kind">
+<form method="get" action="/recurrences" class="card">
+  <div class="card-body">
+    <div class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label">Du</label>
+        <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-auto">
+        <label class="form-label">Au</label>
+        <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-auto">
+        <label class="form-label">Min. occurrences</label>
+        <input type="number" name="min_count" value="{{ min_count }}" min="1" class="form-control form-control-sm">
+      </div>
+      <div class="col-auto">
+        <label class="form-label">Type</label>
+        <select name="kind" class="form-select form-select-sm">
           <option value="debit" {{ 'selected' if kind == 'debit' }}>Dépenses</option>
           <option value="credit" {{ 'selected' if kind == 'credit' }}>Revenus</option>
         </select>
-      </label>
-      <label class="field">Périmètre
-        <select name="scope">
+      </div>
+      <div class="col-auto">
+        <label class="form-label">Périmètre</label>
+        <select name="scope" class="form-select form-select-sm">
           <option value="spending" {{ 'selected' if scope == 'spending' }}>Comptes courants</option>
           <option value="all" {{ 'selected' if scope == 'all' }}>Tous les comptes</option>
         </select>
-      </label>
+      </div>
       <input type="hidden" name="sort" value="{{ sort }}">
-      <button type="submit" class="btn btn-primary">Filtrer</button>
+      <div class="col-auto">
+        <button class="btn btn-primary">Filtrer</button>
+      </div>
     </div>
-  </form>
-  <p class="period">
-    Période : {{ date_from }} → {{ date_to or "aujourd'hui" }}
-  </p>
-</div>
-
-<div class="stats" style="margin-top:16px">
-  <div class="stat">
-    <div class="k">Libellés récurrents</div>
-    <div class="v">{{ nb_labels }}</div>
   </div>
-  <div class="stat">
-    <div class="k">Occurrences totales</div>
-    <div class="v">{{ occ_all }}</div>
+</form>
+
+<div class="text-secondary mb-3 mt-3">Période : {{ date_from }} → {{ date_to or "aujourd'hui" }}</div>
+
+<div class="row row-cards mb-3">
+  <div class="col-sm-6 col-lg-4">
+    <div class="card">
+      <div class="card-body">
+        <div class="subheader">Libellés récurrents</div>
+        <div class="h1 mb-0 text-primary">{{ nb_labels }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-4">
+    <div class="card">
+      <div class="card-body">
+        <div class="subheader">Occurrences totales</div>
+        <div class="h1 mb-0">{{ occ_all }}</div>
+      </div>
+    </div>
   </div>
 </div>
 
 {% if groups %}
-<div class="card" style="margin-top:16px">
-  <h2>Top 15 par montant</h2>
-  {{ chart | safe }}
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Top 15 par montant</h3></div>
+  <div class="card-body">
+    {{ chart | safe }}
+  </div>
 </div>
 
 <div class="card">
-  <h2>Détail par libellé</h2>
-  <input type="text" placeholder="Rechercher un libellé…"
-         class="search" data-target="#recur-table">
-  <div class="table-wrap">
-    <table class="sortable" id="recur-table">
-      <thead>
-        <tr>
-          <th>Libellé</th>
-          <th>Catégorie</th>
-          <th class="num">Nb</th>
-          <th class="num">Total</th>
-          <th class="num">Moyenne</th>
-          <th class="num">Min</th>
-          <th class="num">Max</th>
-          <th class="num">Intervalle</th>
-          <th>1ère</th>
-          <th>Dernière</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for g in groups %}
-        <tr>
-          <td>{{ g.label }}</td>
-          <td><span class="badge">{{ g.category }}</span></td>
-          <td class="num" data-sort="{{ g.count }}"><b>{{ g.count }}</b></td>
-          <td class="num" data-sort="{{ g.total }}">{{ g.total | money }}</td>
-          <td class="num" data-sort="{{ g.avg }}">{{ g.avg | money }}</td>
-          <td class="num muted" data-sort="{{ g.min_amount }}">{{ g.min_amount | money }}</td>
-          <td class="num muted" data-sort="{{ g.max_amount }}">{{ g.max_amount | money }}</td>
-          <td class="num muted" data-sort="{{ g.avg_interval_days or 0 }}">{{ g.avg_interval_days ~ ' j' if g.avg_interval_days else '—' }}</td>
-          <td class="muted" data-sort="{{ g.first_date.isoformat() }}">{{ g.first_date.strftime('%d/%m/%y') }}</td>
-          <td data-sort="{{ g.last_date.isoformat() }}">{{ g.last_date.strftime('%d/%m/%y') }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div class="card-header"><h3 class="card-title">Détail par libellé</h3></div>
+  <div class="card-body">
+    <input type="text" class="form-control form-control-sm search mb-3" placeholder="Rechercher…" data-target="#recur-table" style="max-width:260px">
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table sortable" id="recur-table">
+        <thead>
+          <tr>
+            <th>Libellé</th>
+            <th>Catégorie</th>
+            <th class="num">Nb</th>
+            <th class="num">Total</th>
+            <th class="num">Moyenne</th>
+            <th class="num">Min</th>
+            <th class="num">Max</th>
+            <th class="num">Intervalle</th>
+            <th>1ère</th>
+            <th>Dernière</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for g in groups %}
+          <tr>
+            <td>{{ g.label }}</td>
+            <td><span class="badge bg-secondary-lt">{{ g.category }}</span></td>
+            <td class="num" data-sort="{{ g.count }}"><b>{{ g.count }}</b></td>
+            <td class="num" data-sort="{{ g.total }}">{{ g.total | money }}</td>
+            <td class="num" data-sort="{{ g.avg }}">{{ g.avg | money }}</td>
+            <td class="num text-secondary" data-sort="{{ g.min_amount }}">{{ g.min_amount | money }}</td>
+            <td class="num text-secondary" data-sort="{{ g.max_amount }}">{{ g.max_amount | money }}</td>
+            <td class="num text-secondary" data-sort="{{ g.avg_interval_days or 0 }}">{{ g.avg_interval_days ~ ' j' if g.avg_interval_days else '—' }}</td>
+            <td class="text-secondary" data-sort="{{ g.first_date.isoformat() }}">{{ g.first_date.strftime('%d/%m/%y') }}</td>
+            <td data-sort="{{ g.last_date.isoformat() }}">{{ g.last_date.strftime('%d/%m/%y') }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 {% else %}
-<div class="card empty" style="margin-top:16px">
-  <div class="big">Aucune ligne récurrente (≥ {{ min_count }} occurrences) sur cette plage.</div>
-  <p>Élargissez la plage de dates ou baissez le minimum d'occurrences.</p>
+<div class="empty">
+  <p class="empty-title">Aucune ligne récurrente (≥ {{ min_count }} occurrences) sur cette plage.</p>
+  <p class="empty-subtitle text-secondary">Élargissez la plage de dates ou baissez le minimum d'occurrences.</p>
 </div>
 {% endif %}
 {% endblock %}

@@ -1,9 +1,11 @@
 <!doctype html>
-<html lang="fr">
+<html lang="fr" data-bs-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Powens Finance{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/@tabler/core@1.4.0/dist/css/tabler.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.34.1/dist/tabler-icons.min.css" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
   <script>
     if (localStorage.getItem("pf-hide") === "1") {
@@ -12,25 +14,38 @@
   </script>
 </head>
 <body>
-  <header class="topbar">
-    <span class="brand"><span class="logo">💰</span> Powens&nbsp;Finance</span>
-    <nav class="tabs">
-      <a href="/" class="{{ 'on' if active == 'recap' }}">Récap</a>
-      <a href="/recurrences" class="{{ 'on' if active == 'frequency' }}">Récurrences</a>
-      <a href="/abonnements" class="{{ 'on' if active == 'recurring' }}">Abonnements</a>
-      <a href="/analyse" class="{{ 'on' if active == 'analysis' }}">Analyse</a>
-    </nav>
-    <span class="spacer"></span>
-    <button id="mask-toggle" class="btn btn-sm" title="Masquer / afficher les montants">👁 Montants</button>
-    <a class="btn btn-primary btn-sm" href="/connect">+ Banque</a>
-  </header>
+  <div class="page">
+    <header class="navbar navbar-expand-md sticky-top d-print-none">
+      <div class="container-xl d-flex align-items-center gap-3">
+        <a href="/" class="navbar-brand m-0 fw-bold">💰 Powens&nbsp;Finance</a>
+        <ul class="navbar-nav flex-row gap-1 d-none d-md-flex">
+          <li class="nav-item"><a class="nav-link {{ 'active' if active == 'recap' }}" href="/">Récap</a></li>
+          <li class="nav-item"><a class="nav-link {{ 'active' if active == 'frequency' }}" href="/recurrences">Récurrences</a></li>
+          <li class="nav-item"><a class="nav-link {{ 'active' if active == 'recurring' }}" href="/abonnements">Abonnements</a></li>
+          <li class="nav-item"><a class="nav-link {{ 'active' if active == 'analysis' }}" href="/analyse">Analyse</a></li>
+        </ul>
+        <div class="ms-auto d-flex align-items-center gap-2">
+          <button id="mask-toggle" class="btn btn-sm">👁 Montants</button>
+          <a class="btn btn-primary btn-sm" href="/connect">+ Banque</a>
+        </div>
+      </div>
+    </header>
 
-  <main class="wrap">
-    {% block content %}{% endblock %}
-  </main>
+    <div class="page-wrapper">
+      <div class="page-body">
+        <div class="container-xl">
+          {% block content %}{% endblock %}
+        </div>
+      </div>
+      <footer class="footer footer-transparent d-print-none">
+        <div class="container-xl text-center text-secondary small">
+          Données via Powens · usage personnel
+        </div>
+      </footer>
+    </div>
+  </div>
 
-  <footer class="foot">Données via Powens · usage personnel</footer>
-
+  <script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.4.0/dist/js/tabler.min.js" defer></script>
   <script src="/static/app.js" defer></script>
 </body>
 </html>

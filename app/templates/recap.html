@@ -3,80 +3,94 @@
 {% block content %}
 
 {% if not has_accounts %}
-  <div class="card empty">
-    <div class="big">Aucun compte pour le moment</div>
-    <p>Connectez une banque pour voir votre patrimoine.</p>
-    <p><a class="btn btn-primary" href="/connect">+ Connecter une banque</a></p>
+  <div class="empty">
+    <p class="empty-title">Aucun compte pour le moment</p>
+    <p class="empty-subtitle text-secondary">Connectez une banque pour voir votre patrimoine.</p>
+    <div class="empty-action"><a href="/connect" class="btn btn-primary">+ Connecter une banque</a></div>
   </div>
 {% else %}
 
-  <div class="hero">
-    <div class="label">Patrimoine net</div>
-    <div class="balance">{{ net | money }}</div>
-    <div class="hero-meta">
-      {% if net_diff %}
-      <span class="trend {{ 'pos' if net_diff >= 0 else 'neg' }}">
-        {{ '▲' if net_diff >= 0 else '▼' }} {{ net_diff | money }} ({{ '%+.1f'|format(net_diff_pct) }} %)
-      </span>
-      {% endif %}
-      <span class="chip">{{ n_accounts }} comptes</span>
-      <span class="chip">{{ n_connections }} connexion{{ 's' if n_connections > 1 }}</span>
+  <div class="card hero-balance mb-3">
+    <div class="card-body">
+      <div class="subheader">Patrimoine net</div>
+      <div class="balance mt-1">{{ net | money }}</div>
+      <div class="mt-2 d-flex flex-wrap gap-2 align-items-center">
+        {% if net_diff %}
+        <span class="badge {{ 'bg-green-lt' if net_diff >= 0 else 'bg-red-lt' }}">
+          {{ '↑' if net_diff >= 0 else '↓' }} {{ net_diff | money }} ({{ '%+.1f'|format(net_diff_pct) }} %)
+        </span>
+        {% endif %}
+        <span class="badge bg-secondary-lt">{{ n_accounts }} comptes</span>
+        <span class="badge bg-secondary-lt">{{ n_connections }} connexion{{ 's' if n_connections > 1 }}</span>
+      </div>
     </div>
   </div>
 
-  <div class="grid2">
-    <div class="card">
-      <h2>Répartition</h2>
-      {{ donut | safe }}
-    </div>
-    <div class="card">
-      <h2>Allocation</h2>
-      <div class="alloc">
-        {% for a in allocation %}
-        <div class="row">
-          <span class="name"><span class="dot" style="background:{{ a.color }}"></span>{{ a.name }}</span>
-          <span class="amt">{{ a.subtotal | money }}</span>
-          <span class="pct">{{ '%.0f'|format(a.pct) }} %</span>
-          <div class="track"><div class="fill" style="width:{{ a.pct }}%;background:{{ a.color }}"></div></div>
+  <div class="row row-cards">
+    <div class="col-lg-6">
+      <div class="card">
+        <div class="card-body">
+          <h3 class="card-title">Répartition</h3>
+          {{ donut | safe }}
         </div>
-        {% endfor %}
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card">
+        <div class="card-body">
+          <h3 class="card-title">Allocation</h3>
+          {% for a in allocation %}
+          <div class="mb-3">
+            <div class="d-flex justify-content-between mb-1">
+              <span class="alloc-name"><span class="alloc-dot" style="background:{{ a.color }}"></span>{{ a.name }}</span>
+              <span><span class="amount fw-bold">{{ a.subtotal | money }}</span>
+                <span class="text-secondary ms-1">{{ '%.0f'|format(a.pct) }} %</span></span>
+            </div>
+            <div class="progress progress-sm">
+              <div class="progress-bar" style="width:{{ a.pct }}%;background:{{ a.color }}"></div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
       </div>
     </div>
   </div>
 
-  <div class="card">
-    <h2>Comptes</h2>
-    {% for fam in families %}
-    <div class="fam">
-      <div class="fam-head">
-        <span>{{ fam.name }}</span>
-        <span class="badge">{{ fam.subtotal | money }}</span>
+  <div class="card mt-3">
+    <div class="card-header"><h3 class="card-title">Comptes</h3></div>
+    <div class="card-body">
+      {% for fam in families %}
+      <div class="{{ '' if loop.first else 'mt-4' }}">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="fw-bold">{{ fam.name }}</span>
+          <span class="badge bg-secondary-lt"><span class="amount">{{ fam.subtotal | money }}</span></span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-vcenter card-table sortable">
+            <thead>
+              <tr><th>Compte</th><th>IBAN</th><th>Type</th><th class="num">Solde</th></tr>
+            </thead>
+            <tbody>
+              {% for acc in fam.accounts %}
+              <tr>
+                <td>{{ acc.name or "—" }}</td>
+                <td class="text-secondary">{{ acc.iban | iban }}</td>
+                <td class="text-secondary">{{ acc.type or "—" }}</td>
+                <td class="num" data-sort="{{ acc.balance or 0 }}">{{ acc.balance | money }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
       </div>
-      <div class="table-wrap">
-        <table class="sortable">
-          <thead>
-            <tr><th>Compte</th><th>IBAN</th><th>Type</th><th class="num">Solde</th></tr>
-          </thead>
-          <tbody>
-            {% for acc in fam.accounts %}
-            <tr>
-              <td>{{ acc.name or "—" }}</td>
-              <td class="muted">{{ acc.iban | iban }}</td>
-              <td class="muted">{{ acc.type or "—" }}</td>
-              <td class="num" data-sort="{{ acc.balance or 0 }}">{{ acc.balance | money }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+      {% endfor %}
     </div>
-    {% endfor %}
   </div>
 
-  <div class="card">
-    <h2>Connexions</h2>
-    <div class="table-wrap">
-      <table>
+  <div class="card mt-3">
+    <div class="card-header"><h3 class="card-title">Connexions</h3></div>
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table">
         <thead>
           <tr><th>Banque</th><th class="num">Comptes</th><th>Dernière synchro</th><th>État</th></tr>
         </thead>
@@ -85,11 +99,11 @@
           <tr>
             <td>{{ c.name }}</td>
             <td class="num">{{ c.nb_accounts }}</td>
-            <td class="muted">{{ c.last_update }}</td>
+            <td class="text-secondary">{{ c.last_update }}</td>
             <td>
-              {% if c.ok %}<span class="badge pos">OK</span>
-              {% else %}<span class="badge warn">À reconnecter</span>
-                {% if c.message %}<span class="muted small"> {{ c.message }}</span>{% endif %}
+              {% if c.ok %}<span class="badge bg-green-lt">OK</span>
+              {% else %}<span class="badge bg-red-lt">À reconnecter</span>
+                {% if c.message %}<span class="text-secondary small ms-1">{{ c.message }}</span>{% endif %}
               {% endif %}
             </td>
           </tr>
@@ -97,7 +111,7 @@
         </tbody>
       </table>
     </div>
-    <p style="margin-top:12px"><a href="/connect">+ connecter une banque</a></p>
+    <div class="card-footer"><a href="/connect">+ connecter une banque</a></div>
   </div>
 
 {% endif %}

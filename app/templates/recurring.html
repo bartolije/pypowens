@@ -2,113 +2,126 @@
 {% block title %}Abonnements & prélèvements · Powens Finance{% endblock %}
 
 {% block content %}
-<div class="page-head">
-  <h1>Abonnements & prélèvements</h1>
-</div>
+<h2 class="mb-1">Abonnements & prélèvements</h2>
+<div class="text-secondary mb-1">Séries de paiements récurrents détectées automatiquement.</div>
+<div class="text-secondary mb-3">Période analysée : {{ period_from.strftime('%d/%m/%Y') }} → {{ period_to.strftime('%d/%m/%Y') }}</div>
 
-<p class="muted">Séries de paiements récurrents détectées automatiquement à partir de votre historique.</p>
-<p class="period">Période analysée : {{ period_from.strftime('%d/%m/%Y') }} → {{ period_to.strftime('%d/%m/%Y') }}</p>
-
-<div class="stats">
-  <div class="stat">
-    <div class="k">Total /mois</div>
-    <div class="v accent">{{ total_monthly | money }}</div>
-  </div>
-  <div class="stat">
-    <div class="k">Total annualisé</div>
-    <div class="v">{{ total_annual | money }}</div>
-  </div>
-  <div class="stat">
-    <div class="k">Nombre d'abonnements</div>
-    <div class="v">{{ count }}</div>
-  </div>
-</div>
-
-{% if items %}
-<div class="card">
-  <h2>Par catégorie</h2>
-  <div class="split">
-    <div>
-      {{ donut | safe }}
+<div class="row row-cards">
+  <div class="col-sm-6 col-lg-4">
+    <div class="card">
+      <div class="card-body">
+        <div class="subheader">Total /mois</div>
+        <div class="h1 mb-0 text-primary"><span class="amount">{{ total_monthly | money }}</span></div>
+      </div>
     </div>
-    <div>
-      <div class="table-wrap">
-        <table class="sortable" id="catTable">
-          <thead>
-            <tr>
-              <th>Catégorie</th>
-              <th class="num">Nb</th>
-              <th class="num">€/mois</th>
-              <th class="num">€/an</th>
-              <th class="num">%</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in cat_rows %}
-            <tr>
-              <td>{{ row.name }}</td>
-              <td class="num" data-sort="{{ row.count }}">{{ row.count }}</td>
-              <td class="num" data-sort="{{ row.monthly }}">{{ row.monthly | money }}</td>
-              <td class="num" data-sort="{{ row.annual }}">{{ row.annual | money }}</td>
-              <td class="num" data-sort="{{ row.pct }}">{{ '%.1f'|format(row.pct) }} %</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+  </div>
+  <div class="col-sm-6 col-lg-4">
+    <div class="card">
+      <div class="card-body">
+        <div class="subheader">Total annualisé</div>
+        <div class="h1 mb-0"><span class="amount">{{ total_annual | money }}</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-4">
+    <div class="card">
+      <div class="card-body">
+        <div class="subheader">Nombre d'abonnements</div>
+        <div class="h1 mb-0">{{ count }}</div>
       </div>
     </div>
   </div>
 </div>
 
-<div class="card">
-  <h2>Détail des abonnements</h2>
-  <input type="text" placeholder="Rechercher…" class="search" data-target="#subsTable">
-  <div class="table-wrap">
-    <table class="sortable" id="subsTable">
-      <thead>
-        <tr>
-          <th>Marchand</th>
-          <th>Catégorie</th>
-          <th>Périodicité</th>
-          <th class="num">Montant</th>
-          <th class="num">€/mois</th>
-          <th class="num">Occurrences</th>
-          <th>Dernier</th>
-          <th>Prochain</th>
-          <th class="num">Confiance</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for it in items %}
-        <tr>
-          <td>{{ it.merchant }}</td>
-          <td class="muted">{{ it.category }}</td>
-          <td data-sort="{{ it.period_months }}">{{ it.periodicity }}</td>
-          <td class="num" data-sort="{{ it.amount }}">
-            {{ it.amount | money }}
-            {% if it.variable %}<span class="badge">variable</span>{% endif %}
-          </td>
-          <td class="num" data-sort="{{ it.monthly_equiv }}">{{ it.monthly_equiv | money }}</td>
-          <td class="num" data-sort="{{ it.occurrences }}">{{ it.occurrences }}</td>
-          <td data-sort="{{ it.last_date.isoformat() }}">{{ it.last_date.strftime('%d/%m/%y') }}</td>
-          <td data-sort="{{ it.next_date.isoformat() if it.next_date else '' }}">
-            {{ it.next_date.strftime('%d/%m/%y') if it.next_date else '—' }}
-          </td>
-          <td class="num" data-sort="{{ it.confidence }}">
-            <span class="badge {{ 'pos' if it.confidence >= 0.66 else '' }}">
-              {{ (it.confidence * 100)|round|int }}%
-            </span>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+{% if items %}
+<div class="card mt-3">
+  <div class="card-header"><h3 class="card-title">Par catégorie</h3></div>
+  <div class="card-body">
+    <div class="row row-cards">
+      <div class="col-lg-5">
+        {{ donut | safe }}
+      </div>
+      <div class="col-lg-7">
+        <div class="table-responsive">
+          <table class="table table-vcenter card-table sortable" id="catTable">
+            <thead>
+              <tr>
+                <th>Catégorie</th>
+                <th class="num">Nb</th>
+                <th class="num">€/mois</th>
+                <th class="num">€/an</th>
+                <th class="num">%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in cat_rows %}
+              <tr>
+                <td>{{ row.name }}</td>
+                <td class="num" data-sort="{{ row.count }}">{{ row.count }}</td>
+                <td class="num" data-sort="{{ row.monthly }}"><span class="amount">{{ row.monthly | money }}</span></td>
+                <td class="num" data-sort="{{ row.annual }}"><span class="amount">{{ row.annual | money }}</span></td>
+                <td class="num" data-sort="{{ row.pct }}">{{ '%.1f'|format(row.pct) }} %</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mt-3">
+  <div class="card-header"><h3 class="card-title">Détail des abonnements</h3></div>
+  <div class="card-body">
+    <input type="text" class="form-control form-control-sm search mb-3" placeholder="Rechercher…" data-target="#subsTable" style="max-width:260px">
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table sortable" id="subsTable">
+        <thead>
+          <tr>
+            <th>Marchand</th>
+            <th>Catégorie</th>
+            <th>Périodicité</th>
+            <th class="num">Montant</th>
+            <th class="num">€/mois</th>
+            <th class="num">Occurrences</th>
+            <th>Dernier</th>
+            <th>Prochain</th>
+            <th class="num">Confiance</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for it in items %}
+          <tr>
+            <td>{{ it.merchant }}</td>
+            <td><span class="badge bg-secondary-lt">{{ it.category }}</span></td>
+            <td data-sort="{{ it.period_months }}">{{ it.periodicity }}</td>
+            <td class="num" data-sort="{{ it.amount }}">
+              <span class="amount">{{ it.amount | money }}</span>
+              {% if it.variable %}<span class="badge bg-secondary-lt ms-1">variable</span>{% endif %}
+            </td>
+            <td class="num" data-sort="{{ it.monthly_equiv }}"><span class="amount">{{ it.monthly_equiv | money }}</span></td>
+            <td class="num" data-sort="{{ it.occurrences }}">{{ it.occurrences }}</td>
+            <td data-sort="{{ it.last_date.isoformat() }}">{{ it.last_date.strftime('%d/%m/%y') }}</td>
+            <td data-sort="{{ it.next_date.isoformat() if it.next_date else '' }}">
+              {{ it.next_date.strftime('%d/%m/%y') if it.next_date else '—' }}
+            </td>
+            <td class="num" data-sort="{{ it.confidence }}">
+              <span class="badge {{ 'bg-green-lt' if it.confidence >= 0.66 else 'bg-secondary-lt' }}">
+                {{ (it.confidence * 100)|round|int }}%
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 {% else %}
-<div class="card empty">
-  <div class="big">Aucun abonnement détecté</div>
-  <p>Aucun prélèvement récurrent n'a été identifié sur la période analysée.</p>
+<div class="empty">
+  <p class="empty-title">Aucun abonnement détecté</p>
+  <p class="empty-subtitle text-secondary">Aucun prélèvement récurrent n'a été identifié sur la période analysée.</p>
 </div>
 {% endif %}
 {% endblock %}
