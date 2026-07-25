@@ -19,22 +19,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
+      - name: Install uv and Python ${{ matrix.python-version }}
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+          python-version: ${{ matrix.python-version }}
 
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
-
+      # A venv, not --system: the runner's system Python is externally managed.
       - name: Install project
-        run: uv pip install --system -e ".[app,dev]"
+        run: |
+          uv venv
+          uv pip install -e ".[app,dev]"
 
       - name: Lint
-        run: ruff check .
+        run: uv run ruff check .
 
       - name: Types (library only — the app is not type-gated yet)
-        run: mypy src/pypowens
+        run: uv run mypy src/pypowens
 
       - name: Tests
-        run: pytest -q
+        run: uv run pytest -q
