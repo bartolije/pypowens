@@ -25,11 +25,10 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
 
-      # A venv, not --system: the runner's system Python is externally managed.
+      # setup-uv already provisions a venv and exports VIRTUAL_ENV; installing
+      # --system would target the runner's apt-managed Python and fail.
       - name: Install project
-        run: |
-          uv venv
-          uv pip install -e ".[app,dev]"
+        run: uv pip install -e ".[app,dev]"
 
       - name: Lint
         run: uv run ruff check .
