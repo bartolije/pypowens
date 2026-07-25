@@ -44,6 +44,10 @@ packages = ["src/pypowens"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# The app lives at the repo root and is not installed (it stays out of the wheel),
+# so the root must be importable however pytest is invoked — `pytest` alone does
+# not add the cwd to sys.path, only `python -m pytest` does.
+pythonpath = ["."]
 
 [tool.mypy]
 python_version = "3.11"
