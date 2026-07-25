@@ -1,0 +1,6 @@
+{
+  "_comment": "Copy to categories.local.json (gitignored) and add the merchants specific to YOUR statements. Keys are category labels (free text, reuse the ones from app/enrich.py CATEGORY_RULES to merge), values are uppercase keywords matched against the cleaned wording. These rules are evaluated BEFORE the generic ones, so they can also override a default classification.",
+  "Restauration": ["LE PETIT BISTROT", "CHEZ MARCEL"],
+  "Assurance / Mutuelle": ["MON COURTIER", "MON ASSUREUR NICHE"],
+  "Logement": ["NOM DU SYNDIC"]
+}

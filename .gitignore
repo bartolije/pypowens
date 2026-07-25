@@ -17,6 +17,14 @@ venv/
 .powens_state.json
 powens_state.json
 
+# Private category rules (real merchant names) — never commit
+categories.local.json
+
+# Local store: balance history, category overrides, series state — never commit
+.powens_finance.db
+*.db-journal
+*.db-wal
+
 # Tooling caches
 .pytest_cache/
 .ruff_cache/

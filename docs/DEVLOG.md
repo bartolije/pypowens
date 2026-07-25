@@ -1,7 +1,8 @@
 # DEVLOG — Application finance Powens (sur `pypowens`)
 
-Journal d'avancement pour reprise facile. Aucun secret ici (tokens/IBAN/soldes
-restent hors git). Plan complet : `~/.claude/plans/indexed-exploring-snowflake.md`.
+Journal d'avancement pour reprise facile. **Aucune donnée personnelle ici** :
+montants, soldes, IBAN, identifiants d'app, noms de fournisseurs réels et tokens
+restent hors git (voir « Sécurité / secrets » en bas).
 
 ## Objectif
 
@@ -16,44 +17,54 @@ App web locale (FastAPI) par-dessus le wrapper `pypowens`, dans **ce même repo*
 
 | Étape | Sujet | État |
 |---|---|---|
-| 1 | Extensions lib (`get_indicators`, `list_categories`, `build_webview_url`) | ✅ fait (commit `1b9e6c2`) |
-| 2 | Socle app (config, state token, deps, main, scaffold) | 🚧 en cours |
-| 4 | Récap patrimoine | ⏳ |
-| 5 | Détecteur récurrents | ⏳ |
-| 6 | Analyse dépenses | ⏳ |
-| 3+7 | Webview (non bloquant), UI/doc | ⏳ |
+| 1 | Extensions lib (`get_indicators`, `list_categories`, `build_webview_url`) | ✅ |
+| 2 | Socle app (config, state token, deps, main, scaffold) | ✅ |
+| 4 | Récap patrimoine | ✅ |
+| 5 | Détecteur récurrents (`/abonnements`) + vue brute par libellé (`/recurrences`) | ✅ |
+| 6 | Analyse dépenses (`/analyse`) | ✅ |
+| 7 | UI (Tabler, thème sombre, masquage des montants) | ✅ |
+| 3 | Webview : `/connect` + `/callback` (erreurs, `connection_id`, échange de code) | ✅ |
+| 8 | Persistance locale (historisation des soldes, overrides de catégorie, alertes) | ✅ |
+| 9 | Robustesse : retries 429/5xx, renouvellement de token, pages d'erreur, cache unifié | ✅ |
+| 10 | Investissements (lignes de titres) + synchronisation manuelle des connexions | ✅ |
+| 11 | Webhooks, budgets par catégorie | ⏳ |
 
-## Découvertes données RÉELLES (sandbox jbartoli, user 5, BoursoBank)
+## Découvertes données RÉELLES (vérifiées en live sur une app sandbox)
 
-**Vérifié en live — ces points conditionnent l'implémentation :**
+**Ces points conditionnent l'implémentation :**
 
-- **6 579 transactions**, historique **2018-08 → 2026-07** (~8 ans). 5 478 débits.
-- Répartition `type` : `card`=4079, `transfer`=1578, `order`=597, puis bank,
-  payback, withdrawal, profit, market_*, deposit, check, arbitrage, unknown.
+- Volume observé : plusieurs milliers de transactions sur ~8 ans d'historique,
+  large majorité de débits.
+- Répartition des `type`, du plus fréquent au plus rare : `card` ≫ `transfer` >
+  `order` > `bank`, `payback`, `withdrawal`, `profit`, `market_*`, `deposit`,
+  `check`, `arbitrage`, `unknown`.
 - ⚠️ **`categories` VIDE sur 100 % des transactions** → catégorisation native
-  Powens non alimentée ici → **catégoriseur local (mots-clés) obligatoire**.
+  Powens non alimentée sur cette app → **catégoriseur local (mots-clés) obligatoire**.
 - ⚠️ **`counterparty` = null partout** → normalisation marchand basée sur `wording`.
-- ⚠️ **`indicators` = null** (produit non calculé) → feature analyse s'appuie sur
+- ⚠️ **`indicators` = null** (produit non calculé) → la feature analyse s'appuie sur
   les transactions, `get_indicators` en bonus si un jour dispo.
-- **12 comptes**, patrimoine ~649 k€ : checking×2, csl×2, ldds, livret_a, market,
-  pea×2, lifeinsurance×2, per. `currency` arrive en **objet** `{id:"EUR",...}`.
+- Types de comptes rencontrés : `checking`, `csl`, `ldds`, `livret_a`, `market`,
+  `pea`, `lifeinsurance`, `per` (→ table `TYPE_TO_FAMILY` dans `app/recap.py`).
+- `currency` arrive en **objet** `{id:"EUR",...}` et non en chaîne → normalisé
+  dans `Account.from_api`.
 
 **Formats de `wording` (pour la normalisation marchand) :**
-- Carte : `MARCHAND\VILLE\ FR` (ex `CARREFOUR\PELUSSIN\ FR`) OU `MARCHAND CB*1234`
-  (ex `DELIVEROO CB*8409`). → clé marchand = 1er segment avant `\` ou ` CB*`.
-- Prélèvement SEPA (`type=order`) : préfixe `PRLV SEPA` (dans `original`),
-  ex `EDF clients particuliers ... Numero de client : ...`,
-  `BOUYGUES TELECOM ...`, `AXA ...CONTRAT... RUM ...`, `Kereis France ...`,
-  `SATEC REG ...`, `SAS MULTI IMPACT Assurance de pret (Contrat n ...)`,
-  `AM GESTION-APRIL MOTO ...`. → nettoyer : réfs longues de chiffres, `RUM`,
+- Carte : `MARCHAND\VILLE\ FR` (ex `ENSEIGNE\LA-VILLE\ FR`) OU `MARCHAND CB*1234`
+  (ex `ENSEIGNE CB*0000`). → clé marchand = 1er segment avant `\` ou ` CB*`.
+- Prélèvement SEPA (`type=order`) : préfixe `PRLV SEPA` (dans `original`), puis
+  un libellé émetteur suivi de références. Formes rencontrées :
+  `<FOURNISSEUR ÉNERGIE> ... Numero de client : ...`,
+  `<OPÉRATEUR TÉLÉCOM> ...`, `<ASSUREUR> ...CONTRAT... RUM ...`,
+  `<COURTIER> ...`, `<SAS ...> Assurance de pret (Contrat n ...)`,
+  `<GESTIONNAIRE>-<PRODUIT> ...`. → nettoyer : réfs longues de chiffres, `RUM`,
   `Réf`, `Contrat/CONTRAT`, `Numero`, `Fact`, `--NNNN--` ; garder les 1ers mots.
-- Virements internes (`type=transfer`) entre ses propres comptes :
-  `EPGN -Voiture`, `EPGN - Livret`, `Virement depuis COMPTE SUR LIVRET`,
-  `Vir Epgn - Livret Bourso+`. → **à EXCLURE** des dépenses et abonnements
+- Virements internes (`type=transfer`) entre comptes du même utilisateur :
+  `EPGN -<libellé>`, `EPGN - <libellé>`, `Virement depuis COMPTE SUR LIVRET`,
+  `Vir Epgn - <libellé>`. → **à EXCLURE** des dépenses et abonnements
   (détection par transaction miroir montant opposé/même date sur autre compte).
 
 **Signaux récurrents utiles :** `type=order` corrèle fortement avec les
-prélèvements récurrents (EDF, télécom, assurances). `type=card` contient aussi
+prélèvements récurrents (énergie, télécom, assurances). `type=card` contient aussi
 des abonnements (à détecter par régularité). Fenêtre détecteur : 18-24 mois
 glissants + n'afficher que les abos avec occurrence récente (≤ ~2 périodes).
 
@@ -64,19 +75,25 @@ glissants + n'afficher que les abos avec occurrence récente (≤ ~2 périodes).
 - `GET /users/me/indicators` → 200 mais `indicators:null`
 - `GET /banks/categories` → 200 (`bank_category:[{id,name}]`) ; `GET /categories` → 404
 
-## Infra / API (fournis par la console Powens)
+## Infra / API
 
-- API URL : `https://jbartoli-sandbox.biapi.pro/2.0/`
-- IPs inbound/outbound (allowlisting webhooks/prod) : 13.37.70.131, 13.38.157.67,
-  15.188.101.71, 13.39.29.243, 15.188.68.198, 13.39.95.239.
-- Clé publique de chiffrement (RSA JWK, kid `K4zTutSx0hOAnoiCZ2GlzhdHiWJyp83H-LAochBgNdk`)
-  — publique, pour chiffrer données sensibles (transferts/paiements). Non requise
-  pour l'agrégation lecture. (Stockée côté console, pas dans git.)
+Tout ce qui suit est **propre à chaque application** et se lit dans la console
+Powens (<https://console.powens.com/>) — rien n'est recopié ici :
+
+- API URL : `https://<votre-domaine>.biapi.pro/2.0/` (→ `POWENS_DOMAIN`).
+- IPs inbound/outbound à allowlister (webhooks/prod) : voir la console.
+- Clé publique de chiffrement (RSA JWK) : voir la console. Publique, utile pour
+  chiffrer des données sensibles (transferts/paiements). **Non requise** pour
+  l'agrégation en lecture.
 
 ## Sécurité / secrets
 
-- `.env` (dont `POWENS_ACCESS_TOKEN`) et `.powens_state.json` → **gitignorés**,
-  jamais poussés. Repo public → ne jamais commiter token/IBAN/soldes.
+- `.env` (dont `POWENS_ACCESS_TOKEN`), `.powens_state.json` et
+  `categories.local.json` → **gitignorés**, jamais poussés.
+- Repo public → ne jamais commiter : token, `client_id`/`client_secret`, domaine
+  d'app, IBAN, soldes, montants réels, noms de fournisseurs/marchands personnels.
+  Les règles de catégorisation propres à ses propres relevés vont dans
+  `categories.local.json` (voir `categories.local.example.json`).
 - Token sandbox à régénérer côté console après les tests si besoin.
 
 ## Lancer / reprendre
@@ -89,5 +106,5 @@ pytest -q && ruff check .          # vérifs sans réseau
 python -m app                       # lance l'app sur http://127.0.0.1:8000
 ```
 
-`.env` doit contenir `POWENS_DOMAIN=jbartoli-sandbox`, `POWENS_CLIENT_ID`,
-`POWENS_CLIENT_SECRET`, `POWENS_ACCESS_TOKEN`.
+`.env` doit contenir `POWENS_DOMAIN`, `POWENS_CLIENT_ID`, `POWENS_CLIENT_SECRET`
+et (optionnel) `POWENS_ACCESS_TOKEN` — voir `.env.example`.
