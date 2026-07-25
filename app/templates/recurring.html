@@ -53,6 +53,28 @@
   </div>
 </div>
 
+{% if alerts %}
+<div class="card mt-3 border-warning">
+  <div class="card-header">
+    <h3 class="card-title">⚠️ Changements depuis la dernière visite</h3>
+  </div>
+  <div class="list-group list-group-flush">
+    {% for a in alerts %}
+    <div class="list-group-item d-flex flex-wrap align-items-center gap-2">
+      {% if a.new %}<span class="badge bg-azure-lt">nouveau</span>{% endif %}
+      {% if a.increase_pct %}<span class="badge bg-orange-lt">+{{ '%.0f'|format(a.increase_pct) }} %</span>{% endif %}
+      <a href="/transactions?label={{ a.item.key | urlencode }}" class="fw-bold">{{ a.item.merchant }}</a>
+      <span class="text-secondary">{{ a.item.periodicity | lower }}</span>
+      <span class="ms-auto">
+        {% if a.previous_amount %}<span class="text-secondary"><span class="amount">{{ a.previous_amount | money }}</span> →</span>{% endif %}
+        <strong><span class="amount">{{ a.item.amount | money }}</span></strong>
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 {% if items %}
 <div class="card mt-3">
   <div class="card-header"><h3 class="card-title">Par catégorie</h3></div>
@@ -113,12 +135,16 @@
         <tbody>
           {% for it in items %}
           <tr>
-            <td>{{ it.merchant }}</td>
+            <td>
+              <a href="/transactions?label={{ it.key | urlencode }}">{{ it.merchant }}</a>
+              {% if flags[it.key].new %}<span class="badge bg-azure-lt ms-1">nouveau</span>{% endif %}
+            </td>
             <td><span class="badge bg-secondary-lt">{{ it.category }}</span></td>
             <td data-sort="{{ it.period_months }}">{{ it.periodicity }}</td>
             <td class="num" data-sort="{{ it.amount }}">
               <span class="amount">{{ it.amount | money }}</span>
               {% if it.variable %}<span class="badge bg-secondary-lt ms-1">variable</span>{% endif %}
+              {% if flags[it.key].increase_pct %}<span class="badge bg-orange-lt ms-1" title="Hausse détectée">↑ {{ '%.0f'|format(flags[it.key].increase_pct) }} %</span>{% endif %}
             </td>
             <td class="num" data-sort="{{ it.monthly_equiv }}"><span class="amount">{{ it.monthly_equiv | money }}</span></td>
             <td class="num" data-sort="{{ it.occurrences }}">{{ it.occurrences }}</td>

@@ -10,7 +10,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, TypeAlias
+
+# ``Transaction`` and ``Investment`` both declare a field named ``date``, which
+# shadows the imported type for every annotation that follows in the class body.
+# Annotating with this alias keeps those annotations resolvable (and mypy happy).
+DateType: TypeAlias = date
 
 
 def _parse_decimal(value: Any) -> Decimal | None:
@@ -199,8 +204,8 @@ class Transaction:
 
     id: int | None
     id_account: int | None = None
-    date: date | None = None
-    application_date: date | None = None
+    date: DateType | None = None
+    application_date: DateType | None = None
     value: Decimal | None = None
     type: str | None = None
     wording: str | None = None
@@ -228,6 +233,54 @@ class Transaction:
             coming=bool(data.get("coming", False)),
             active=bool(data.get("active", True)),
             deleted=_parse_datetime(data.get("deleted")),
+            raw=data,
+        )
+
+
+@dataclass(slots=True)
+class Investment:
+    """A security line held in a market/PEA/life-insurance account.
+
+    Balances alone say nothing about *what* is held: this is what makes an
+    investment account auditable (line, quantity, unit price, gain).
+    """
+
+    id: int | None
+    id_account: int | None = None
+    label: str | None = None
+    code: str | None = None          # ISIN when available
+    code_type: str | None = None
+    quantity: Decimal | None = None
+    unit_price: Decimal | None = None
+    unit_value: Decimal | None = None
+    valuation: Decimal | None = None
+    diff: Decimal | None = None      # unrealized gain/loss, absolute
+    diff_percent: Decimal | None = None
+    portfolio_share: Decimal | None = None
+    currency: str | None = None
+    vdate: DateType | None = None    # valuation date
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def from_api(cls, data: dict[str, Any]) -> Investment:
+        currency = data.get("currency")
+        if isinstance(currency, dict):
+            currency = currency.get("id")
+        return cls(
+            id=data.get("id"),
+            id_account=data.get("id_account"),
+            label=data.get("label"),
+            code=data.get("code"),
+            code_type=data.get("code_type"),
+            quantity=_parse_decimal(data.get("quantity")),
+            unit_price=_parse_decimal(data.get("unitprice")),
+            unit_value=_parse_decimal(data.get("unitvalue")),
+            valuation=_parse_decimal(data.get("valuation")),
+            diff=_parse_decimal(data.get("diff")),
+            diff_percent=_parse_decimal(data.get("diff_percent")),
+            portfolio_share=_parse_decimal(data.get("portfolio_share")),
+            currency=currency,
+            vdate=_parse_date(data.get("vdate")),
             raw=data,
         )
 

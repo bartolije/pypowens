@@ -24,6 +24,20 @@ _THIN_NBSP = " "
 _NBSP = " "
 
 
+_CURRENCY_SYMBOLS = {"EUR": "€", "USD": "$", "GBP": "£", "JPY": "¥"}
+
+
+def currency_symbol(code: str | None) -> str:
+    """Map an ISO code to a symbol, passing through anything already symbolic.
+
+    ``"EUR"`` -> ``"€"``, ``"CHF"`` -> ``"CHF"``, ``"€"`` -> ``"€"``, ``None`` -> ``"€"``.
+    """
+    if not code:
+        return "€"
+    code = code.strip()
+    return _CURRENCY_SYMBOLS.get(code.upper(), code)
+
+
 def format_money(value: Number, currency: str = "€", precision: int = 2) -> str:
     """French-formatted amount that never line-wraps: ``-1 234,56 €``."""
     if value is None:
@@ -86,13 +100,79 @@ def bar_chart(
             f'<text x="0" y="{y + bar_height * 0.7}" class="cl">{_e(label)}</text>'
             f'<rect x="{label_w}" y="{y}" width="{w}" height="{bar_height}" '
             f'rx="5" fill="{color}"><title>{_e(label)}: {value:,.2f} {unit}</title></rect>'
-            f'<text x="{label_w + w + 6}" y="{y + bar_height * 0.7}" class="cv">'
+            f'<text x="{label_w + w + 6}" y="{y + bar_height * 0.7}" class="cv amount">'
             f'{value:,.0f} {unit}</text>'
         )
     height = len(items) * (bar_height + gap)
     return (
         f'<svg viewBox="0 0 {width} {height}" class="chart" role="img" '
         f'width="100%" preserveAspectRatio="xMinYMin meet">{"".join(rows)}</svg>'
+    )
+
+
+def line_chart(
+    items: list[tuple[str, float]],
+    *,
+    width: int = 720,
+    height: int = 200,
+    unit: str = "€",
+    color: str = "#635bff",
+) -> str:
+    """Time series as an SVG area+line chart. ``items`` = list of (label, value).
+
+    The Y axis is scaled to the data range (not forced to zero) so a net-worth
+    curve shows its actual movement instead of a flat line at the top.
+    """
+    points = [(label, float(value)) for label, value in items if value is not None]
+    if len(points) < 2:
+        return '<p class="muted">Pas encore assez d\'historique — repassez demain.</p>'
+
+    pad_l, pad_r, pad_t, pad_b = 8, 8, 12, 22
+    plot_w = width - pad_l - pad_r
+    plot_h = height - pad_t - pad_b
+
+    values = [v for _, v in points]
+    lo, hi = min(values), max(values)
+    span = (hi - lo) or (abs(hi) or 1)
+    lo -= span * 0.12
+    hi += span * 0.12
+    span = hi - lo
+
+    def _x(i: int) -> float:
+        return pad_l + plot_w * i / (len(points) - 1)
+
+    def _y(value: float) -> float:
+        return pad_t + plot_h * (1 - (value - lo) / span)
+
+    coords = [(_x(i), _y(v)) for i, (_, v) in enumerate(points)]
+    line = " ".join(f"{x:.1f},{y:.1f}" for x, y in coords)
+    area = (
+        f"{coords[0][0]:.1f},{pad_t + plot_h:.1f} "
+        + line
+        + f" {coords[-1][0]:.1f},{pad_t + plot_h:.1f}"
+    )
+
+    dots = "".join(
+        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="2.5" fill="{color}">'
+        f"<title>{_e(label)}: {value:,.2f} {unit}</title></circle>"
+        for (x, y), (label, value) in zip(coords, points, strict=True)
+    )
+    # Only first / middle / last labels, otherwise the axis becomes unreadable.
+    ticks = ""
+    for i in (0, len(points) // 2, len(points) - 1):
+        anchor = "start" if i == 0 else "end" if i == len(points) - 1 else "middle"
+        ticks += (
+            f'<text x="{_x(i):.1f}" y="{height - 6}" text-anchor="{anchor}" '
+            f'class="cv">{_e(points[i][0])}</text>'
+        )
+
+    return (
+        f'<svg viewBox="0 0 {width} {height}" class="chart" role="img" width="100%" '
+        f'preserveAspectRatio="none">'
+        f'<polygon points="{area}" fill="{color}" opacity="0.14"/>'
+        f'<polyline points="{line}" fill="none" stroke="{color}" stroke-width="2" '
+        f'stroke-linejoin="round" stroke-linecap="round"/>'
+        f"{dots}{ticks}</svg>"
     )
 
 
@@ -136,7 +216,7 @@ def donut_chart(
             f'<li><span class="dot" style="background:{color}"></span>'
             f'<span class="lg-name">{_e(label)}</span>'
             f'<span class="lg-pct">{frac * 100:.0f} %</span>'
-            f'<span class="lg-val">{value:,.0f} {unit}</span></li>'
+            f'<span class="lg-val amount">{value:,.0f} {unit}</span></li>'
         )
         angle = end
     center = ""
@@ -148,7 +228,7 @@ def donut_chart(
             else ""
         )
         bottom = (
-            f'<text x="{cx}" y="{cy + 16}" text-anchor="middle" class="donut-c2">'
+            f'<text x="{cx}" y="{cy + 16}" text-anchor="middle" class="donut-c2 amount">'
             f"{_e(center_bottom)}</text>"
             if center_bottom
             else ""

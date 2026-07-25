@@ -1,36 +1,37 @@
 // Powens Finance — client interactions (vanilla JS, no build step).
 
-// --- Theme (light <-> dark) ------------------------------------------------
-function initTheme() {
-  const btn = document.getElementById("theme-toggle");
-  const root = document.documentElement;
-  const icon = () => {
-    const dark = root.getAttribute("data-theme") === "dark";
-    if (btn) btn.textContent = dark ? "☀️" : "🌙";
-  };
-  icon();
-  if (!btn) return;
-  btn.addEventListener("click", () => {
-    const next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
-    root.setAttribute("data-theme", next);
-    localStorage.setItem("pf-theme", next);
-    icon();
+// --- Mask amounts globally (persisted) -------------------------------------
+// CSS blurs every `.amount`, including the ones inside the server-rendered SVG
+// charts. Native SVG <title> tooltips cannot be styled, so their text is parked
+// in a data attribute while masking is on — otherwise hovering a bar would leak
+// the very figure the mask is meant to hide.
+function setTooltips(hidden) {
+  document.querySelectorAll(".chart title, .donut title").forEach((node) => {
+    if (hidden) {
+      if (node.dataset.text === undefined) node.dataset.text = node.textContent;
+      node.textContent = "•••";
+    } else if (node.dataset.text !== undefined) {
+      node.textContent = node.dataset.text;
+    }
   });
 }
 
-// --- Mask amounts globally (persisted) -------------------------------------
 function initMask() {
   const btn = document.getElementById("mask-toggle");
   const root = document.documentElement;
   const sync = () => {
     const hidden = root.classList.contains("hide-amounts");
     if (btn) btn.textContent = hidden ? "🙈 Montants" : "👁 Montants";
+    setTooltips(hidden);
   };
   sync();
   if (!btn) return;
   btn.addEventListener("click", () => {
-    const hidden = root.classList.toggle("hide-amounts");
-    localStorage.setItem("pf-hide", hidden ? "1" : "0");
+    root.classList.toggle("hide-amounts");
+    localStorage.setItem(
+      "pf-hide",
+      root.classList.contains("hide-amounts") ? "1" : "0"
+    );
     sync();
   });
 }
@@ -95,7 +96,6 @@ function initSearch() {
   });
 }
 
-initTheme();
 initMask();
 initSortable();
 initSearch();

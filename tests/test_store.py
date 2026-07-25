@@ -1,0 +1,164 @@
+"""Local store: balance history, category overrides, series tracking."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date, timedelta
+from decimal import Decimal
+
+import pytest
+
+from app import store
+
+
+@dataclass
+class Acc:
+    id: int | None
+    name: str | None = "Compte"
+    type: str | None = "checking"
+    currency: str | None = "EUR"
+    balance: Decimal | None = Decimal("100")
+
+
+@dataclass
+class Series:
+    key: str
+    merchant: str
+    amount: Decimal
+    period_months: float = 1.0
+    periodicity: str = "Mensuel"
+
+
+@pytest.fixture
+def conn(tmp_path):
+    connection = store.connect(tmp_path / "t.db")
+    yield connection
+    connection.close()
+
+
+# --------------------------------------------------------------- balance history
+
+def test_snapshot_is_idempotent_per_day(conn):
+    accounts = [Acc(1, balance=Decimal("100")), Acc(2, balance=Decimal("50"))]
+    today = date(2026, 7, 25)
+    store.record_snapshot(conn, accounts, day=today)
+    store.record_snapshot(conn, accounts, day=today)  # same day again
+    history = store.net_worth_history(conn)
+    assert history == [(today, Decimal("150"))]
+
+
+def test_net_worth_history_sums_accounts_per_day(conn):
+    day1, day2 = date(2026, 7, 1), date(2026, 7, 2)
+    store.record_snapshot(conn, [Acc(1, balance=Decimal("100"))], day=day1)
+    store.record_snapshot(conn, [Acc(1, balance=Decimal("130"))], day=day2)
+    assert store.net_worth_history(conn) == [(day1, Decimal("100")), (day2, Decimal("130"))]
+
+
+def test_history_separates_currencies(conn):
+    day = date(2026, 7, 1)
+    store.record_snapshot(
+        conn,
+        [Acc(1, balance=Decimal("100")), Acc(2, currency="USD", balance=Decimal("900"))],
+        day=day,
+    )
+    assert store.net_worth_history(conn, currency="EUR") == [(day, Decimal("100"))]
+    assert store.net_worth_history(conn, currency="USD") == [(day, Decimal("900"))]
+
+
+def test_previous_net_worth_ignores_today(conn):
+    today = date(2026, 7, 25)
+    store.record_snapshot(conn, [Acc(1, balance=Decimal("100"))], day=today - timedelta(days=2))
+    store.record_snapshot(conn, [Acc(1, balance=Decimal("120"))], day=today)
+    assert store.previous_net_worth(conn, before=today) == (
+        today - timedelta(days=2),
+        Decimal("100"),
+    )
+
+
+def test_previous_net_worth_is_none_on_first_run(conn):
+    today = date(2026, 7, 25)
+    store.record_snapshot(conn, [Acc(1)], day=today)
+    assert store.previous_net_worth(conn, before=today) is None
+
+
+# ------------------------------------------------------------------- overrides
+
+def test_override_roundtrip(conn):
+    store.set_override(conn, "mon marchand", "Sport")
+    assert store.all_overrides(conn) == {"MON MARCHAND": "Sport"}
+    store.clear_override(conn, "MON MARCHAND")
+    assert store.all_overrides(conn) == {}
+
+
+def test_resolve_category_prefers_override():
+    from app.enrich import resolve_category
+
+    assert resolve_category("CARREFOUR") == "Alimentation"
+    assert resolve_category("CARREFOUR", {"CARREFOUR": "Autre"}) == "Autre"
+
+
+# -------------------------------------------------------------- series tracking
+
+def test_first_run_flags_nothing_as_new(conn):
+    """Everything is unknown on day one — flagging it all would be noise."""
+    items = [Series("NETFLIX", "Netflix", Decimal("13.49"))]
+    changes = store.sync_series(conn, items, today=date(2026, 7, 1))
+    assert changes["NETFLIX|Mensuel"]["new"] is False
+
+
+def test_series_appearing_later_is_new(conn):
+    day1 = date(2026, 7, 1)
+    store.sync_series(conn, [Series("NETFLIX", "Netflix", Decimal("13.49"))], today=day1)
+    changes = store.sync_series(
+        conn,
+        [
+            Series("NETFLIX", "Netflix", Decimal("13.49")),
+            Series("SPOTIFY", "Spotify", Decimal("11.99")),
+        ],
+        today=day1 + timedelta(days=1),
+    )
+    assert changes["SPOTIFY|Mensuel"]["new"] is True
+    assert changes["NETFLIX|Mensuel"]["new"] is False
+
+
+def test_price_increase_is_detected_with_previous_amount(conn):
+    day1 = date(2026, 7, 1)
+    store.sync_series(conn, [Series("NETFLIX", "Netflix", Decimal("13.49"))], today=day1)
+    changes = store.sync_series(
+        conn,
+        [Series("NETFLIX", "Netflix", Decimal("15.99"))],
+        today=day1 + timedelta(days=30),
+    )
+    flag = changes["NETFLIX|Mensuel"]
+    assert flag["previous_amount"] == Decimal("13.49")
+    assert flag["increase_pct"] == pytest.approx(18.5, abs=0.5)
+
+
+def test_small_variation_is_not_flagged(conn):
+    day1 = date(2026, 7, 1)
+    store.sync_series(conn, [Series("EDF", "Edf", Decimal("100.00"))], today=day1)
+    changes = store.sync_series(
+        conn, [Series("EDF", "Edf", Decimal("100.50"))], today=day1 + timedelta(days=30)
+    )
+    assert changes["EDF|Mensuel"]["increase_pct"] is None
+
+
+def test_price_drop_is_not_an_increase(conn):
+    day1 = date(2026, 7, 1)
+    store.sync_series(conn, [Series("EDF", "Edf", Decimal("100.00"))], today=day1)
+    changes = store.sync_series(
+        conn, [Series("EDF", "Edf", Decimal("80.00"))], today=day1 + timedelta(days=30)
+    )
+    assert changes["EDF|Mensuel"]["increase_pct"] is None
+
+
+def test_periodicity_change_is_a_distinct_series(conn):
+    """A yearly plan is not the same commitment as the monthly one."""
+    day1 = date(2026, 7, 1)
+    store.sync_series(conn, [Series("GYM", "Gym", Decimal("30"))], today=day1)
+    changes = store.sync_series(
+        conn,
+        [Series("GYM", "Gym", Decimal("300"), period_months=12.0, periodicity="Annuel")],
+        today=day1 + timedelta(days=1),
+    )
+    assert changes["GYM|Annuel"]["new"] is True

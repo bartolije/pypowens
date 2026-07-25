@@ -22,9 +22,12 @@
   line-height: 1.1;
 }
 
-/* Amounts + global masking */
+/* Amounts + global masking. `.amount` is also set on the value labels inside the
+   server-rendered SVG charts (app/helpers.py), so masking covers them too — a
+   blurred balance next to a readable chart label would be pointless. */
 .amount { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .hide-amounts .amount { filter: blur(8px); user-select: none; transition: filter .12s; }
+.hide-amounts text.amount { filter: blur(5px); }
 
 /* Allocation rows */
 .alloc-name { display: flex; align-items: center; gap: 8px; font-weight: 500; }

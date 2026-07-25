@@ -7,6 +7,7 @@ This is the raw, catalog-free view: what keeps coming back and how much it weigh
 from __future__ import annotations
 
 import math
+import sqlite3
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -16,10 +17,11 @@ from fastapi.responses import HTMLResponse
 
 from pypowens import PowensClient
 
+from . import store
 from .config import Settings
 from .data import load_internal_ids, load_spending_transactions
-from .deps import get_client, get_settings
-from .enrich import categorize, merchant_key
+from .deps import get_client, get_settings, get_store
+from .enrich import merchant_key, resolve_category
 from .helpers import bar_chart
 from .web import templates
 
@@ -36,6 +38,7 @@ SORTS = {
 @dataclass
 class LabelGroup:
     label: str
+    key: str
     category: str
     count: int
     total: Decimal
@@ -75,6 +78,7 @@ def group_by_label(
     date_from: date | None = None,
     date_to: date | None = None,
     min_count: int = 2,
+    overrides: dict[str, str] | None = None,
 ) -> list[LabelGroup]:
     """Group transactions by normalized label, computing count/total/stats."""
     internal_ids = internal_ids or set()
@@ -103,7 +107,8 @@ def group_by_label(
         groups.append(
             LabelGroup(
                 label=label.title(),
-                category=categorize(label),
+                key=label,
+                category=resolve_category(label, overrides),
                 count=len(txns),
                 total=total,
                 avg=(total / len(txns)).quantize(Decimal("0.01")),
@@ -122,6 +127,7 @@ async def recurrences(
     request: Request,
     client: PowensClient = Depends(get_client),
     settings: Settings = Depends(get_settings),
+    conn: sqlite3.Connection = Depends(get_store),
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
     sort: str = Query(default="total"),
@@ -159,6 +165,7 @@ async def recurrences(
         date_from=d_from,
         date_to=d_to,
         min_count=min_count,
+        overrides=store.all_overrides(conn),
     )
     groups.sort(key=SORTS[sort][1], reverse=True)
 

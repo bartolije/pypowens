@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · Powens Finance{% endblock %}
+
+{% block content %}
+<div class="empty">
+  <div class="empty-icon">⚠️</div>
+  <p class="empty-title">{{ title }}</p>
+  <p class="empty-subtitle text-secondary">{{ detail }}</p>
+
+  {% if hints %}
+  <ul class="text-secondary text-start mx-auto" style="max-width:38rem">
+    {% for hint in hints %}<li>{{ hint }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  <div class="empty-action">
+    <a href="{{ retry_url or '/' }}" class="btn btn-primary">Réessayer</a>
+    <a href="/" class="btn">Retour au récap</a>
+  </div>
+
+  {% if technical %}
+  <p class="text-secondary small mt-3 font-monospace">{{ technical }}</p>
+  {% endif %}
+</div>
+{% endblock %}

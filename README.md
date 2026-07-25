@@ -4,18 +4,20 @@ An **async Python wrapper** for the [Powens](https://www.powens.com/) (ex‑Budg
 bank data aggregation API. Built on [`httpx`](https://www.python-httpx.org/), fully typed,
 zero heavy dependencies.
 
-> ⚠️ First release (`0.1.0`, alpha). Covers the **core aggregation** surface:
-> OAuth2 auth, connectors, connections, accounts and transactions.
+> ⚠️ Alpha (`0.2.0`). Covers the **core aggregation** surface: OAuth2 auth,
+> connectors, connections, accounts, transactions and investments.
 
 ## Features
 
 - 🔑 OAuth2 flows: create a user + permanent token, renew, temporary code, code exchange, revoke.
 - 🏦 List connectors (banks/providers).
-- 🔗 List / delete user connections (with `connector` and `accounts` expansion).
+- 🔗 List / delete user connections, and **force a refresh** (`update_connection`).
 - 💳 List accounts with per-currency balances.
 - 📜 List transactions with automatic **pagination** (follows `_links.next`) and filters.
+- 📈 List **investments** (security lines, valuation, unrealized gain).
+- 🔁 **Retries with backoff** on 429/5xx and network errors, honouring `Retry-After`.
 - 🧱 Forgiving models — every object keeps its raw payload in `.raw`.
-- ✅ Typed (`py.typed`), async context manager, tested with `respx`.
+- ✅ Typed (`py.typed`, `mypy --strict`), async context manager, tested with `respx`.
 
 ## Installation
 
@@ -77,9 +79,11 @@ See [`examples/quickstart.py`](examples/quickstart.py) for a full run.
 | `list_connectors()` | `GET /connectors` |
 | `list_connections()` | `GET /users/{id}/connections` |
 | `delete_connection(id)` | `DELETE /users/{id}/connections/{cid}` |
+| `update_connection(id)` | `PUT /users/{id}/connections/{cid}` |
 | `list_accounts()` | `GET /users/{id}/accounts` |
 | `get_account(id)` | `GET /users/{id}/accounts/{aid}` |
 | `list_transactions()` / `iter_transactions()` | `GET /users/{id}/transactions` |
+| `list_investments()` | `GET /users/{id}/investments` |
 
 All authenticated calls send `Authorization: Bearer <access_token>`. The token is
 set automatically after `create_user()` / `renew_token()` / `exchange_code()`, or you
@@ -94,18 +98,23 @@ async for txn in powens.iter_transactions(min_date="2026-01-01", income=True):
     ...
 ```
 
-### Error handling
+### Error handling and retries
+
+429, 5xx and network errors are retried with exponential backoff (3 attempts by
+default, `Retry-After` honoured). Configure with `PowensClient(..., max_retries=…,
+backoff=…)`; `max_retries=0` disables it. Exceptions are raised once the retries
+are exhausted:
 
 ```python
 from pypowens import PowensAPIError, PowensAuthError, PowensRateLimitError
 
 try:
     await powens.get_current_user()
-except PowensAuthError:      # 401 / 403
+except PowensAuthError:           # 401 / 403 — not retried
     ...
-except PowensRateLimitError: # 429
-    ...
-except PowensAPIError as e:  # any other non-2xx
+except PowensRateLimitError as e: # 429 after retries
+    print(e.retry_after)
+except PowensAPIError as e:       # any other non-2xx
     print(e.status_code, e.code, e.message)
 ```
 
@@ -113,22 +122,32 @@ except PowensAPIError as e:  # any other non-2xx
 
 ```bash
 uv venv && source .venv/bin/activate
-uv pip install -e ".[dev]"
-pytest          # run tests (respx-mocked, no network)
-ruff check .    # lint
+uv pip install -e ".[app,dev]"
+pytest              # 99 tests, fully offline (respx + a fake client)
+ruff check .        # lint
+mypy src/pypowens   # strict types on the library
 ```
+
+CI runs the three on Python 3.11, 3.12 and 3.13.
 
 ## Application (analyse de finances perso)
 
 Le dépôt embarque une **application web locale** (FastAPI) construite sur le wrapper,
-dans le dossier `app/` (non incluse dans le wheel publié). Trois pages :
+dans le dossier `app/` (non incluse dans le wheel publié) :
 
-- **Récap** — patrimoine net, comptes groupés par famille (courant / épargne /
-  investissement / assurance-vie / retraite), état des connexions.
-- **Abonnements** — détection des prélèvements/paiements récurrents avec
-  périodicité (mensuel → biennal), marchand, catégorie, montant et **€/mois**.
-- **Analyse** — revenus vs dépenses par mois, répartition par catégorie,
-  part récurrent vs ponctuel.
+- **Récap** (`/`) — patrimoine net, **courbe d'évolution** (historisée en local),
+  comptes groupés par famille, lignes de titres détenues, comptes en devises
+  étrangères listés à part, état des connexions + bouton de synchronisation.
+- **Récurrences** (`/recurrences`) — vue brute par libellé normalisé : nombre
+  d'occurrences, total, moyenne, intervalle moyen.
+- **Abonnements** (`/abonnements`) — détection des prélèvements/paiements récurrents
+  avec périodicité (mensuel → biennal), montant, **€/mois**, et **alertes** sur les
+  nouveaux abonnements et les hausses de prix depuis la dernière visite.
+- **Analyse** (`/analyse`) — revenus vs dépenses par mois, répartition par catégorie,
+  ventilation exacte récurrent / ponctuel. Toutes les figures portent sur la même
+  fenêtre (12 mois complets), affichée en tête de page.
+- **Détail** (`/transactions?label=…`) — les opérations derrière un libellé, leur
+  évolution mensuelle, et la correction de catégorie (mémorisée localement).
 
 ```bash
 uv pip install -e ".[app]"     # dépendances de l'app
@@ -137,19 +156,33 @@ python -m app                  # http://127.0.0.1:8000
 ```
 
 Le token est résolu par priorité : `POWENS_ACCESS_TOKEN` (.env) → `.powens_state.json`
-→ `create_user()`. Le token et l'état local ne sont **jamais** versionnés.
+→ `create_user()`. En cas de 401, l'app tente **un** renouvellement automatique
+(`renew_token`) avant d'afficher une page d'aide.
 Pour connecter une banque via le Webview Powens, whitelister le
 `redirect_uri` `http://127.0.0.1:8000/callback` dans la console Powens.
 
+### Données locales (jamais versionnées)
+
+| Fichier | Contenu |
+|---|---|
+| `.env` | identifiants d'app et token |
+| `.powens_state.json` | `id_user` + token persistés |
+| `.powens_finance.db` | SQLite : historique des soldes, catégories forcées, état des séries |
+| `categories.local.json` | règles de catégorisation propres à vos relevés (voir l'exemple) |
+
+L'app **n'a aucune authentification** : elle refuse de démarrer sur une interface
+autre que loopback sans `APP_ALLOW_REMOTE=1`. Voir `.env.example` pour les réglages
+(`APP_HISTORY_MONTHS`, `APP_BASE_CURRENCY`, `APP_DB_PATH`…).
+
 > La catégorisation native Powens et le produit *indicators* n'étant pas
 > alimentés sur toutes les apps, la catégorisation est faite localement
-> (mots-clés) et l'analyse repose sur les transactions.
+> (mots-clés + overrides) et l'analyse repose sur les transactions.
 
 ## Roadmap
 
-- Webview / connect flow helpers (temporary code → hosted URL → redirect handling).
-- Categories, investments, documents, transfers/payments.
 - Webhooks payload models.
+- Documents, transfers/payments.
+- Budgets et objectifs par catégorie, à partir de l'historique local.
 
 ## Disclaimer
 

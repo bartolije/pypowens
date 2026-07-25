@@ -7,8 +7,10 @@ from the transaction wording. Pure functions, no network — unit-testable.
 
 from __future__ import annotations
 
+import json
 import re
 from collections import defaultdict
+from pathlib import Path
 from typing import Any, Protocol
 
 
@@ -75,6 +77,40 @@ def merchant_key(txn: Txn, *, max_tokens: int = 3) -> str:
 
 # ----------------------------------------------------------------- categories
 
+# Only well-known, generic brands live here (this file is versioned in a public
+# repo). Merchants specific to your own statements — local shops, niche insurers,
+# brokers — belong in ``categories.local.json`` (gitignored), which is loaded
+# first so it can also override a default rule. See categories.local.example.json.
+_LOCAL_RULES_PATH = Path(__file__).resolve().parent.parent / "categories.local.json"
+
+
+def load_local_rules(path: Path | None = None) -> list[tuple[str, tuple[str, ...]]]:
+    """Load private category rules from a JSON ``{"Category": ["KEYWORD", ...]}`` map.
+
+    Missing or malformed file -> no local rule (the app must never fail to start
+    because of it).
+    """
+    path = path or _LOCAL_RULES_PATH
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    if not isinstance(data, dict):
+        return []
+    rules: list[tuple[str, tuple[str, ...]]] = []
+    for label, keywords in data.items():
+        if str(label).startswith("_"):  # "_comment" and friends
+            continue
+        if isinstance(keywords, str):
+            keywords = [keywords]
+        if not isinstance(keywords, list):
+            continue
+        cleaned = tuple(str(k).upper().strip() for k in keywords if str(k).strip())
+        if cleaned:
+            rules.append((str(label), cleaned))
+    return rules
+
+
 # Ordered: first matching rule wins. Keywords matched against the cleaned wording.
 CATEGORY_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("Télécom / Internet", ("BOUYGUES", "SFR", "ORANGE", "SOSH", "FREE", "RED BY", "BYTEL",
@@ -82,8 +118,8 @@ CATEGORY_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("Énergie / Eau", ("EDF", "ENGIE", "TOTALENERGIES", "TOTAL ENERGIES", "ENI", "EKWATEUR",
                        "VEOLIA", "SUEZ", "GRDF", "SAUR")),
     ("Assurance / Mutuelle", ("AXA", "MAIF", "MACIF", "MATMUT", "GMF", "APRIL", "ASSURANCE",
-                              "MUTUELLE", "KEREIS", "SATEC", "MULTI IMPACT", "AM GESTION",
-                              "ALLIANZ", "GENERALI", "MAAF", "GROUPAMA", "SWISSLIFE")),
+                              "MUTUELLE", "ALLIANZ", "GENERALI", "MAAF", "GROUPAMA",
+                              "SWISSLIFE", "PREVOYANCE", "ASSUR")),
     ("Streaming / Loisirs", ("NETFLIX", "SPOTIFY", "DEEZER", "DISNEY", "PRIME VIDEO",
                              "AMAZON PRIME", "CANAL", "YOUTUBE", "APPLE.COM", "ITUNES",
                              "PLAYSTATION", "XBOX", "STEAM", "MOLOTOV", "OCS", "AUDIBLE")),
@@ -96,7 +132,8 @@ CATEGORY_RULES: list[tuple[str, tuple[str, ...]]] = [
                       "FRANPRIX", "PICARD", "BIOCOOP", "GRAND FRAIS", "NATURALIA", "ALDI",
                       "COURSES U")),
     ("Restauration", ("DELIVEROO", "UBER EATS", "UBEREATS", "MCDO", "MC DONALD", "BURGER", "SUBWAY",
-                      "KFC", "RESTAURANT", "BRASSERIE", "GLOBETRINQUEUR", "RIVIERE KWAI")),
+                      "KFC", "RESTAURANT", "BRASSERIE", "PIZZ", "SUSHI", "BOULANGERIE",
+                      "PATISSERIE", "TRAITEUR", "BAR ")),
     ("Transport", ("SNCF", "TRAINLINE", "UBER", "BLABLACAR", "RATP", "TCL", "ESSO", "SHELL", "BP ",
                    "VINCI", "AUTOROUTE", "NAVIGO", "BOLT", "PARKING", "STATION")),
     ("Santé", ("PHARMACIE", "DOCTOLIB", "LABORATOIRE", "MEDECIN", "DENTAIRE", "OPTIC", "HOPITAL",
@@ -107,13 +144,42 @@ CATEGORY_RULES: list[tuple[str, tuple[str, ...]]] = [
 ]
 
 
-def categorize(text: str) -> str:
+# Local (private) rules take precedence over the generic ones.
+_ACTIVE_RULES: list[tuple[str, tuple[str, ...]]] = load_local_rules() + CATEGORY_RULES
+
+
+def categorize(
+    text: str, *, rules: list[tuple[str, tuple[str, ...]]] | None = None
+) -> str:
     """Best-effort category label from a wording (merchant key or raw)."""
     up = (text or "").upper()
-    for label, keywords in CATEGORY_RULES:
+    for label, keywords in rules if rules is not None else _ACTIVE_RULES:
         if any(kw in up for kw in keywords):
             return label
     return "Autre"
+
+
+def resolve_category(merchant: str, overrides: dict[str, str] | None = None) -> str:
+    """Category for a merchant key, letting a stored manual override win.
+
+    Overrides come from the local SQLite store (see :mod:`app.store`): a correction
+    made in the UI must survive restarts without touching the rule tables.
+    """
+    if overrides:
+        found = overrides.get((merchant or "").upper())
+        if found:
+            return found
+    return categorize(merchant)
+
+
+def all_categories() -> list[str]:
+    """Every category label the UI can offer, in rule order, plus ``"Autre"``."""
+    labels: list[str] = []
+    for label, _ in _ACTIVE_RULES:
+        if label not in labels:
+            labels.append(label)
+    labels.append("Autre")
+    return labels
 
 
 # ---------------------------------------------------- internal transfers

@@ -94,7 +94,7 @@
         <tbody>
           {% for g in groups %}
           <tr>
-            <td>{{ g.label }}</td>
+            <td><a href="/transactions?label={{ g.key | urlencode }}">{{ g.label }}</a></td>
             <td><span class="badge bg-secondary-lt">{{ g.category }}</span></td>
             <td class="num" data-sort="{{ g.count }}"><b>{{ g.count }}</b></td>
             <td class="num" data-sort="{{ g.total }}">{{ g.total | money }}</td>

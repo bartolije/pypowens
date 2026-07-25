@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from pypowens import PowensClient
+from pypowens import PowensAPIError, PowensClient
 
 from .config import Settings
 
@@ -59,3 +59,31 @@ async def bootstrap_client(settings: Settings) -> PowensClient:
         {"id_user": token.id_user, "access_token": token.access_token},
     )
     return client
+
+
+async def try_renew(client: PowensClient, settings: Settings) -> bool:
+    """Attempt to mint a fresh token for the known user after a 401/403.
+
+    Needs ``client_id``/``client_secret`` plus a persisted ``id_user`` (or one
+    reachable from the current token). Returns ``True`` when the client now holds
+    a new token. Never raises: a failed renewal just means "ask the user".
+    """
+    if not (settings.client_id and settings.client_secret):
+        return False
+
+    id_user = _load_state(settings.state_path).get("id_user")
+    if id_user is None:
+        return False
+
+    try:
+        token = await client.renew_token(int(id_user))
+    except (PowensAPIError, OSError, ValueError, TypeError):
+        return False
+    if not token.access_token:
+        return False
+
+    _save_state(
+        settings.state_path,
+        {"id_user": token.id_user or id_user, "access_token": token.access_token},
+    )
+    return True

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pypowens"
-version = "0.1.0"
+version = "0.2.0"
 description = "Async Python wrapper for the Powens (ex-Budget Insight) bank data aggregation API"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -24,8 +24,14 @@ classifiers = [
 dependencies = ["httpx>=0.27"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio>=0.24", "respx>=0.21", "ruff>=0.6"]
-app = ["fastapi>=0.115", "uvicorn[standard]>=0.30", "jinja2>=3.1", "python-dotenv>=1.0"]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "respx>=0.21", "ruff>=0.6", "mypy>=1.11"]
+app = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "jinja2>=3.1",
+    "python-dotenv>=1.0",
+    "python-multipart>=0.0.9",  # HTML form posts (category overrides)
+]
 
 [project.urls]
 Homepage = "https://github.com/bartolije/pypowens"
@@ -38,6 +44,12 @@ packages = ["src/pypowens"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+# The published library is type-gated; the local app is not (yet).
+files = ["src/pypowens"]
 
 [tool.ruff]
 line-length = 100

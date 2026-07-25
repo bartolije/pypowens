@@ -12,18 +12,31 @@
 
   <div class="card hero-balance mb-3">
     <div class="card-body">
-      <div class="subheader">Patrimoine net</div>
-      <div class="balance mt-1">{{ net | money }}</div>
+      <div class="subheader">Patrimoine net{% if foreign_accounts %} · {{ net_currency }} uniquement{% endif %}</div>
+      <div class="balance mt-1">{{ net | money(net_currency) }}</div>
       <div class="mt-2 d-flex flex-wrap gap-2 align-items-center">
         {% if net_diff %}
-        <span class="badge {{ 'bg-green-lt' if net_diff >= 0 else 'bg-red-lt' }}">
-          {{ '↑' if net_diff >= 0 else '↓' }} {{ net_diff | money }} ({{ '%+.1f'|format(net_diff_pct) }} %)
+        <span class="badge {{ 'bg-green-lt' if net_diff >= 0 else 'bg-red-lt' }}"
+              {% if diff_since %}title="Depuis le relevé du {{ diff_since }}"{% endif %}>
+          {{ '↑' if net_diff >= 0 else '↓' }} {{ net_diff | money(net_currency) }} ({{ '%+.1f'|format(net_diff_pct) }} %)
+          {% if diff_since %}<span class="text-secondary">depuis le {{ diff_since }}</span>{% endif %}
         </span>
         {% endif %}
         <span class="badge bg-secondary-lt">{{ n_accounts }} comptes</span>
         <span class="badge bg-secondary-lt">{{ n_connections }} connexion{{ 's' if n_connections > 1 }}</span>
       </div>
     </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header">
+      <h3 class="card-title">Évolution du patrimoine</h3>
+      <span class="text-secondary small ms-2">
+        {% if history_points > 1 %}{{ history_points }} relevés enregistrés localement
+        {% else %}un relevé par jour d'utilisation, conservé en local{% endif %}
+      </span>
+    </div>
+    <div class="card-body">{{ net_chart | safe }}</div>
   </div>
 
   <div class="row row-cards">
@@ -43,7 +56,7 @@
           <div class="mb-3">
             <div class="d-flex justify-content-between mb-1">
               <span class="alloc-name"><span class="alloc-dot" style="background:{{ a.color }}"></span>{{ a.name }}</span>
-              <span><span class="amount fw-bold">{{ a.subtotal | money }}</span>
+              <span><span class="amount fw-bold">{{ a.subtotal | money(net_currency) }}</span>
                 <span class="text-secondary ms-1">{{ '%.0f'|format(a.pct) }} %</span></span>
             </div>
             <div class="progress progress-sm">
@@ -63,7 +76,7 @@
       <div class="{{ '' if loop.first else 'mt-4' }}">
         <div class="d-flex justify-content-between align-items-center mb-2">
           <span class="fw-bold">{{ fam.name }}</span>
-          <span class="badge bg-secondary-lt"><span class="amount">{{ fam.subtotal | money }}</span></span>
+          <span class="badge bg-secondary-lt"><span class="amount">{{ fam.subtotal | money(net_currency) }}</span></span>
         </div>
         <div class="table-responsive">
           <table class="table table-vcenter card-table sortable">
@@ -76,7 +89,7 @@
                 <td>{{ acc.name or "—" }}</td>
                 <td class="text-secondary">{{ acc.iban | iban }}</td>
                 <td class="text-secondary">{{ acc.type or "—" }}</td>
-                <td class="num" data-sort="{{ acc.balance or 0 }}">{{ acc.balance | money }}</td>
+                <td class="num" data-sort="{{ acc.balance or 0 }}">{{ acc.balance | money(acc.currency or net_currency) }}</td>
               </tr>
               {% endfor %}
             </tbody>
@@ -87,12 +100,80 @@
     </div>
   </div>
 
+  {% if invest_rows %}
+  <div class="card mt-3">
+    <div class="card-header">
+      <h3 class="card-title">Lignes détenues</h3>
+      <span class="text-secondary small ms-2">
+        plus-value latente
+        <span class="{{ 'text-green' if invest_diff >= 0 else 'text-red' }}">{{ invest_diff | money(net_currency) }}</span>
+      </span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table sortable">
+        <thead>
+          <tr>
+            <th>Ligne</th><th>Compte</th><th class="num">Quantité</th>
+            <th class="num">Valorisation</th><th class="num">+/- value</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in invest_rows %}
+          <tr>
+            <td>{{ row.label }}{% if row.code %}<span class="text-secondary small ms-1">{{ row.code }}</span>{% endif %}</td>
+            <td class="text-secondary">{{ row.account }}</td>
+            <td class="num">{{ '%.4f'|format(row.quantity) if row.quantity is not none else '—' }}</td>
+            <td class="num" data-sort="{{ row.valuation or 0 }}">{{ row.valuation | money(row.currency) }}</td>
+            <td class="num {{ 'text-green' if (row.diff or 0) >= 0 else 'text-red' }}" data-sort="{{ row.diff or 0 }}">
+              {{ row.diff | money(row.currency) }}
+              {% if row.diff_percent is not none %}<span class="text-secondary small">({{ '%+.1f'|format(row.diff_percent) }} %)</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if foreign_accounts %}
+  <div class="card mt-3">
+    <div class="card-header">
+      <h3 class="card-title">Comptes en devises étrangères</h3>
+      <span class="text-secondary small ms-2">exclus du patrimoine net (aucun taux de change n'est appliqué)</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table">
+        <thead>
+          <tr><th>Compte</th><th>Type</th><th>Devise</th><th class="num">Solde</th></tr>
+        </thead>
+        <tbody>
+          {% for acc in foreign_accounts %}
+          <tr>
+            <td>{{ acc.name or "—" }}</td>
+            <td class="text-secondary">{{ acc.type or "—" }}</td>
+            <td class="text-secondary">{{ acc.currency }}</td>
+            <td class="num">{{ acc.balance | money(acc.currency) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          {% for code, total in foreign_totals.items() %}
+          <tr><td colspan="3" class="text-end fw-bold">Total {{ code }}</td>
+            <td class="num fw-bold">{{ total | money(code) }}</td></tr>
+          {% endfor %}
+        </tfoot>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
   <div class="card mt-3">
     <div class="card-header"><h3 class="card-title">Connexions</h3></div>
     <div class="table-responsive">
       <table class="table table-vcenter card-table">
         <thead>
-          <tr><th>Banque</th><th class="num">Comptes</th><th>Dernière synchro</th><th>État</th></tr>
+          <tr><th>Banque</th><th class="num">Comptes</th><th>Dernière synchro</th><th>État</th><th></th></tr>
         </thead>
         <tbody>
           {% for c in connections %}
@@ -104,6 +185,13 @@
               {% if c.ok %}<span class="badge bg-green-lt">OK</span>
               {% else %}<span class="badge bg-red-lt">À reconnecter</span>
                 {% if c.message %}<span class="text-secondary small ms-1">{{ c.message }}</span>{% endif %}
+              {% endif %}
+            </td>
+            <td class="text-end">
+              {% if c.id %}
+              <form method="post" action="/synchroniser/{{ c.id }}" class="d-inline">
+                <button type="submit" class="btn btn-sm">Synchroniser</button>
+              </form>
               {% endif %}
             </td>
           </tr>

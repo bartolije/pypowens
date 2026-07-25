@@ -5,6 +5,7 @@ Reference: https://docs.powens.com/
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import AsyncIterator
 from types import TracebackType
@@ -27,12 +28,32 @@ from .models import (
     Connection,
     Connector,
     Indicators,
+    Investment,
     Transaction,
     User,
 )
 
 DEFAULT_TIMEOUT = 30.0
 API_PATH = "/2.0"
+
+# Transient failures worth retrying: rate limiting and server-side errors.
+RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
+DEFAULT_MAX_RETRIES = 3
+DEFAULT_BACKOFF = 1.0
+# Hard stop for pagination: a misbehaving API repeating the same ``next`` href
+# would otherwise loop forever. 1000 pages x 1000 items covers any real history.
+MAX_PAGES = 1000
+
+
+def _parse_retry_after(value: str | None) -> float | None:
+    """Read a ``Retry-After`` header expressed in seconds (HTTP-date form ignored)."""
+    if not value:
+        return None
+    try:
+        seconds = float(value.strip())
+    except ValueError:
+        return None
+    return seconds if seconds >= 0 else None
 
 
 def _resolve_host(domain: str) -> str:
@@ -74,6 +95,8 @@ class PowensClient:
         access_token: str | None = None,
         timeout: float = DEFAULT_TIMEOUT,
         http_client: httpx.AsyncClient | None = None,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        backoff: float = DEFAULT_BACKOFF,
     ) -> None:
         if not domain:
             raise PowensConfigError("A Powens domain is required (e.g. 'myapp-sandbox').")
@@ -83,6 +106,9 @@ class PowensClient:
         self._access_token = access_token
         self._owns_http = http_client is None
         self._http = http_client or httpx.AsyncClient(timeout=timeout)
+        # Retries apply to 429/5xx and to network errors. Set max_retries=0 to disable.
+        self.max_retries = max(0, max_retries)
+        self.backoff = max(0.0, backoff)
 
     @classmethod
     def from_env(cls, **kwargs: Any) -> PowensClient:
@@ -157,10 +183,36 @@ class PowensClient:
         clean_params = (
             None if params is None else {k: v for k, v in params.items() if v is not None}
         )
-        response = await self._http.request(
-            method, self._url(endpoint), params=clean_params, json=json, headers=headers
-        )
-        return self._handle(response)
+        url = self._url(endpoint)
+
+        attempt = 0
+        while True:
+            try:
+                response = await self._http.request(
+                    method, url, params=clean_params, json=json, headers=headers
+                )
+                return self._handle(response)
+            except (PowensAPIError, httpx.TransportError) as exc:
+                delay = self._retry_delay(exc, attempt)
+                if delay is None:
+                    raise
+                attempt += 1
+                await asyncio.sleep(delay)
+
+    def _retry_delay(self, exc: Exception, attempt: int) -> float | None:
+        """Seconds to wait before retrying ``exc``, or ``None`` to give up.
+
+        Retries 429/5xx and network errors with exponential backoff, honouring
+        ``Retry-After`` when the server provides it.
+        """
+        if attempt >= self.max_retries:
+            return None
+        if isinstance(exc, PowensAPIError):
+            if exc.status_code not in RETRY_STATUSES:
+                return None
+            if exc.retry_after is not None:
+                return exc.retry_after
+        return self.backoff * (2.0**attempt)
 
     @staticmethod
     def _handle(response: httpx.Response) -> Any:
@@ -191,7 +243,13 @@ class PowensClient:
             exc = PowensRateLimitError
         else:
             exc = PowensAPIError
-        raise exc(response.status_code, code=code, message=message, payload=data)
+        raise exc(
+            response.status_code,
+            code=code,
+            message=message,
+            payload=data,
+            retry_after=_parse_retry_after(response.headers.get("Retry-After")),
+        )
 
     async def _paginate(
         self,
@@ -201,16 +259,24 @@ class PowensClient:
         params: dict[str, Any] | None = None,
         auth: bool = True,
     ) -> AsyncIterator[dict[str, Any]]:
-        """Yield raw items across pages, following ``_links.next`` hrefs."""
+        """Yield raw items across pages, following ``_links.next`` hrefs.
+
+        Stops on a repeated or missing href, and after :data:`MAX_PAGES` pages, so a
+        server echoing the same ``next`` link can never spin this loop forever.
+        """
         data = await self._request("GET", endpoint, params=params, auth=auth)
+        seen: set[str] = set()
+        pages = 0
         while isinstance(data, dict):
             for item in data.get(item_key) or []:
                 yield item
             nxt = (data.get("_links") or {}).get("next")
             if isinstance(nxt, dict):
                 nxt = nxt.get("href")
-            if not nxt:
+            pages += 1
+            if not nxt or not isinstance(nxt, str) or nxt in seen or pages >= MAX_PAGES:
                 break
+            seen.add(nxt)
             data = await self._request("GET", nxt, auth=auth)
 
     # ------------------------------------------------------------------- auth
@@ -255,7 +321,8 @@ class PowensClient:
 
     async def get_temporary_code(self, *, type: str = "singleAccess") -> dict[str, Any]:
         """Create a short-lived code, e.g. to hand off to the Webview (``/auth/token/code``)."""
-        return await self._request("GET", "auth/token/code", params={"type": type})
+        data = await self._request("GET", "auth/token/code", params={"type": type})
+        return data if isinstance(data, dict) else {}
 
     def build_webview_url(
         self,
@@ -384,6 +451,34 @@ class PowensClient:
         return Account.from_api(
             await self._request("GET", f"users/{user_id}/accounts/{account_id}")
         )
+
+    async def list_investments(
+        self, user_id: int | str = "me", *, account_id: int | None = None
+    ) -> list[Investment]:
+        """List security lines held across investment accounts.
+
+        ``GET /users/{id}/investments``, or the per-account variant when
+        ``account_id`` is given. Balances alone don't say what is held.
+        """
+        endpoint = (
+            f"users/{user_id}/accounts/{account_id}/investments"
+            if account_id is not None
+            else f"users/{user_id}/investments"
+        )
+        return [
+            Investment.from_api(item)
+            async for item in self._paginate(endpoint, item_key="investments")
+        ]
+
+    async def update_connection(
+        self, connection_id: int, user_id: int | str = "me"
+    ) -> Connection | None:
+        """Ask Powens to refresh a connection now (``PUT .../connections/{id}``).
+
+        Without this the app only ever shows what the last automatic sync brought in.
+        """
+        data = await self._request("PUT", f"users/{user_id}/connections/{connection_id}")
+        return Connection.from_api(data) if isinstance(data, dict) else None
 
     async def iter_transactions(
         self,

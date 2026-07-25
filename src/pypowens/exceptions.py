@@ -28,11 +28,14 @@ class PowensAPIError(PowensError):
         code: str | None = None,
         message: str | None = None,
         payload: Any = None,
+        retry_after: float | None = None,
     ) -> None:
         self.status_code = status_code
         self.code = code
         self.message = message
         self.payload = payload
+        # Seconds to wait before retrying, from the ``Retry-After`` header.
+        self.retry_after: float | None = retry_after
         detail = message or code or "unknown error"
         super().__init__(f"[HTTP {status_code}] {detail}")
 

@@ -13,6 +13,7 @@ empty on this app) through the shared :mod:`app.enrich` helpers.
 from __future__ import annotations
 
 import math
+import sqlite3
 import statistics
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -22,9 +23,10 @@ from decimal import ROUND_HALF_UP, Decimal
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 
+from . import store
 from .data import load_internal_ids, load_spending_transactions
-from .deps import get_client, get_settings
-from .enrich import SUBSCRIPTION_TYPES, categorize, merchant_key
+from .deps import get_client, get_settings, get_store
+from .enrich import SUBSCRIPTION_TYPES, categorize, merchant_key, resolve_category
 from .helpers import donut_chart
 from .web import templates
 
@@ -49,6 +51,9 @@ class RecurringItem:
     confidence: float        # 0..1
     variable: bool           # True if amount varies a lot (high dispersion)
     account_ids: list[int] = field(default_factory=list)
+    # Ids of the transactions forming the series: lets callers split real spending
+    # into recurring vs one-off exactly, instead of comparing estimates.
+    txn_ids: list[int] = field(default_factory=list)
 
 
 # ------------------------------------------------------------------- tuning
@@ -194,6 +199,7 @@ def _analyze(
         confidence=confidence,
         variable=variable,
         account_ids=sorted({t.id_account for t in txns if t.id_account is not None}),
+        txn_ids=[t.id for t in txns if t.id is not None],
     )
 
 
@@ -276,6 +282,7 @@ async def recurring_page(
     request: Request,
     client=Depends(get_client),  # noqa: B008
     settings=Depends(get_settings),  # noqa: B008
+    conn: sqlite3.Connection = Depends(get_store),  # noqa: B008
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
 ):
@@ -295,6 +302,25 @@ async def recurring_page(
             if t.date and (not d_from or t.date >= d_from) and (not d_to or t.date <= d_to)
         ]
     items = detect_recurring(txns, internal_ids=internal, allowed_types=SUBSCRIPTION_TYPES)
+
+    # Apply stored manual categories, then diff against the previously known state
+    # to surface what is new or got more expensive since the last visit.
+    overrides = store.all_overrides(conn)
+    for it in items:
+        it.category = resolve_category(it.key, overrides)
+    changes = store.sync_series(conn, items)
+    alerts = [
+        {
+            "item": it,
+            "new": changes[store.series_key(it)]["new"],
+            "increase_pct": changes[store.series_key(it)]["increase_pct"],
+            "previous_amount": changes[store.series_key(it)]["previous_amount"],
+        }
+        for it in items
+        if changes[store.series_key(it)]["new"]
+        or changes[store.series_key(it)]["increase_pct"]
+    ]
+    flags = {it.key: changes[store.series_key(it)] for it in items}
 
     total_monthly = sum((it.monthly_equiv for it in items), Decimal("0"))
     total_annual = total_monthly * 12
@@ -327,6 +353,8 @@ async def recurring_page(
             "request": request,
             "active": "recurring",
             "items": items,
+            "alerts": alerts,
+            "flags": flags,
             "total_monthly": total_monthly,
             "total_annual": total_annual,
             "count": len(items),

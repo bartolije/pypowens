@@ -7,6 +7,7 @@ pre-computed values and the ``|safe`` chart markup.
 
 from __future__ import annotations
 
+import sqlite3
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
@@ -14,9 +15,10 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 
+from . import store
 from .data import load_internal_ids, load_spending_transactions
-from .deps import get_client, get_settings
-from .enrich import CONSUMPTION_TYPES, categorize, merchant_key
+from .deps import get_client, get_settings, get_store
+from .enrich import CONSUMPTION_TYPES, merchant_key, resolve_category
 from .helpers import bar_chart, donut_chart, month_key, month_label_fr
 from .recurring import detect_recurring
 from .web import templates
@@ -49,23 +51,33 @@ async def analysis(
     request: Request,
     client=Depends(get_client),  # noqa: B008
     settings=Depends(get_settings),  # noqa: B008
+    conn: sqlite3.Connection = Depends(get_store),  # noqa: B008
 ):
+    # Full history window: needed by the recurring detector (yearly/biennial series).
     txns = await load_spending_transactions(client, months=settings.history_months)
     internal = await load_internal_ids(client, months=settings.history_months)
-    spend = [
+    all_spend = [
         t
         for t in txns
         if t.value and t.value < 0 and t.id not in internal and t.type in CONSUMPTION_TYPES
     ]
     # Income keeps transfers (salary is a SEPA transfer), only internal moves excluded.
-    income = [t for t in txns if t.value and t.value > 0 and t.id not in internal]
+    all_income = [t for t in txns if t.value and t.value > 0 and t.id not in internal]
+
+    # Every figure on this page is computed on the SAME window: the last WINDOW
+    # complete calendar months. Mixing windows (tiles on 12 months, categories on
+    # the whole history) made the blocks silently incomparable.
+    recent = _recent_months(WINDOW)
+    recent_set = set(recent)
+    spend = [t for t in all_spend if month_key(t.date) in recent_set]
+    income = [t for t in all_income if month_key(t.date) in recent_set]
 
     ctx: dict[str, object] = {"request": request, "active": "analysis", "has_spend": bool(spend)}
 
     if not spend:
         return templates.TemplateResponse(request, "analysis.html", ctx)
 
-    # --- 1 & 2. Monthly income vs spending over the last 12 full months --------
+    # --- 1 & 2. Monthly income vs spending over the window --------------------
     spend_by_month: dict[str, Decimal] = defaultdict(Decimal)
     income_by_month: dict[str, Decimal] = defaultdict(Decimal)
     for t in spend:
@@ -73,9 +85,8 @@ async def analysis(
     for t in income:
         income_by_month[month_key(t.date)] += t.value
 
-    recent = _recent_months(WINDOW)
-    total_spend = sum((spend_by_month.get(k, Decimal(0)) for k in recent), Decimal(0))
-    total_income = sum((income_by_month.get(k, Decimal(0)) for k in recent), Decimal(0))
+    total_spend = sum(spend_by_month.values(), Decimal(0))
+    total_income = sum(income_by_month.values(), Decimal(0))
     avg_spend = (total_spend / WINDOW).quantize(Decimal("0.01"))
     avg_income = (total_income / WINDOW).quantize(Decimal("0.01"))
     avg_savings = avg_income - avg_spend
@@ -86,9 +97,10 @@ async def analysis(
     income_chart = bar_chart(income_bars, color=_INCOME_COLOR)
 
     # --- 3. Spending by category (top 8 + "Autre") ----------------------------
+    overrides = store.all_overrides(conn)
     cat_totals: dict[str, Decimal] = defaultdict(Decimal)
     for t in spend:
-        cat_totals[categorize(merchant_key(t))] += abs(t.value)
+        cat_totals[resolve_category(merchant_key(t), overrides)] += abs(t.value)
     ordered = sorted(cat_totals.items(), key=lambda kv: kv[1], reverse=True)
     top = ordered[:TOP_CATEGORIES]
     if ordered[TOP_CATEGORIES:]:
@@ -104,16 +116,25 @@ async def analysis(
     ]
     cat_donut = donut_chart([(name, float(val)) for name, val in top])
 
-    # --- 4. Recurring vs one-off (monthly view) -------------------------------
+    # --- 4. Recurring vs one-off ----------------------------------------------
+    # The detector runs on the full history (a yearly series needs > 12 months),
+    # then its transactions are matched against the window to split actual
+    # spending exactly — no more "average minus estimate" clamped at zero.
     recurring_items = detect_recurring(
         txns, internal_ids=internal, kind="debit", allowed_types=CONSUMPTION_TYPES
     )
-    recurring_monthly = sum((r.monthly_equiv for r in recurring_items), Decimal(0))
-    ponctuel_monthly = avg_spend - recurring_monthly
-    if ponctuel_monthly < 0:
-        ponctuel_monthly = Decimal(0)
+    recurring_ids = {tid for item in recurring_items for tid in item.txn_ids}
+    recurring_spend = sum(
+        (abs(t.value) for t in spend if t.id in recurring_ids), Decimal(0)
+    )
+    ponctuel_spend = total_spend - recurring_spend
+    recurring_monthly = (recurring_spend / WINDOW).quantize(Decimal("0.01"))
+    ponctuel_monthly = (ponctuel_spend / WINDOW).quantize(Decimal("0.01"))
+    # Contractual commitment (sum of the €/month of each active series): a
+    # forward-looking figure, deliberately distinct from what was actually spent.
+    committed_monthly = sum((r.monthly_equiv for r in recurring_items), Decimal(0))
     rec_donut = donut_chart(
-        [("Récurrent", float(recurring_monthly)), ("Ponctuel", float(ponctuel_monthly))]
+        [("Récurrent", float(recurring_spend)), ("Ponctuel", float(ponctuel_spend))]
     )
 
     # --- 5. Optional Powens indicators (null on this app) ---------------------
@@ -127,6 +148,9 @@ async def analysis(
 
     ctx.update(
         {
+            "window_months": WINDOW,
+            "period_from": month_label_fr(recent[0]),
+            "period_to": month_label_fr(recent[-1]),
             "avg_spend": avg_spend,
             "avg_income": avg_income,
             "avg_savings": avg_savings,
@@ -134,9 +158,13 @@ async def analysis(
             "spend_chart": spend_chart,
             "cat_donut": cat_donut,
             "cat_rows": cat_rows,
+            "total_spend": total_spend,
             "rec_donut": rec_donut,
+            "recurring_spend": recurring_spend,
+            "ponctuel_spend": ponctuel_spend,
             "recurring_monthly": recurring_monthly,
             "ponctuel_monthly": ponctuel_monthly,
+            "committed_monthly": committed_monthly,
             "recurring_count": len(recurring_items),
             "indicator_rows": indicator_rows,
         }
