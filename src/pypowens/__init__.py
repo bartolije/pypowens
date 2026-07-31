@@ -20,6 +20,7 @@ from .models import (
     Connector,
     Indicators,
     Investment,
+    InvestmentValue,
     Transaction,
     User,
 )
@@ -41,6 +42,7 @@ __all__ = [
     "AccountsList",
     "Transaction",
     "Investment",
+    "InvestmentValue",
     "Category",
     "ClientConfig",
     "Indicators",

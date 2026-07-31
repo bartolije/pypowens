@@ -12,7 +12,17 @@ from fastapi.staticfiles import StaticFiles
 
 from pypowens import PowensAPIError, PowensAuthError, PowensClient, PowensRateLimitError
 
-from . import accounts, analysis, frequency, imports, recap, recurring, store, transactions
+from . import (
+    accounts,
+    analysis,
+    frequency,
+    imports,
+    investments,
+    recap,
+    recurring,
+    store,
+    transactions,
+)
 from .config import Settings, get_settings
 from .data import clear_cache
 from .deps import get_client
@@ -51,6 +61,7 @@ app.include_router(frequency.router)
 app.include_router(recurring.router)
 app.include_router(analysis.router)
 app.include_router(transactions.router)
+app.include_router(investments.router)
 app.include_router(imports.router)
 
 

@@ -286,6 +286,39 @@ class Investment:
 
 
 @dataclass(slots=True)
+class InvestmentValue:
+    """One dated unit value of a security line.
+
+    The only history Powens keeps about an investment. It starts the day the connection
+    was created — never before — so it is worth archiving locally rather than re-fetching
+    it as if it were a permanent record.
+    """
+
+    id: int | None
+    id_investment: int | None = None
+    vdate: DateType | None = None
+    unit_value: Decimal | None = None
+    original_currency: str | None = None
+    original_unit_value: Decimal | None = None
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def from_api(cls, data: dict[str, Any]) -> InvestmentValue:
+        currency = data.get("original_currency")
+        if isinstance(currency, dict):
+            currency = currency.get("id")
+        return cls(
+            id=data.get("id"),
+            id_investment=data.get("id_investment"),
+            vdate=_parse_date(data.get("vdate")),
+            unit_value=_parse_decimal(data.get("unitvalue")),
+            original_currency=currency,
+            original_unit_value=_parse_decimal(data.get("original_unitvalue")),
+            raw=data,
+        )
+
+
+@dataclass(slots=True)
 class Category:
     """A bank category from the ``/banks/categories`` catalog."""
 

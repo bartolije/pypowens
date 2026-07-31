@@ -16,6 +16,11 @@ All notable changes to this project. Format loosely based on
   the Webview refuses a callback: it reports a mismatch without naming what it wanted.
 - `update_connection()` — force a connection refresh instead of waiting for the
   next automatic sync (`PUT /users/{id}/connections/{id}`).
+- `list_investment_history()` — dated unit values of a security line
+  (`GET /users/{id}/investments/{id}/history`), with the new `InvestmentValue` model.
+  The only price history the API exposes, and it only covers the period since the
+  connection was created: `min_date` narrows the window, never widens it. Returned
+  oldest-first, because a price series is read in the direction of time.
 - Automatic retries with exponential backoff on 429 and 5xx responses and on
   network errors, honouring `Retry-After`. Tunable via `max_retries` / `backoff`
   (set `max_retries=0` to opt out).
@@ -71,6 +76,26 @@ All notable changes to this project. Format loosely based on
   sets meet inside exclusion sets (internal transfers, series membership).
   On a real statement this multiplied the tracked monthly commitment sevenfold — the
   mortgage instalment alone being the single largest line, and it was simply missing.
+- **Performance page** (`/performance`) — what each investment account actually returned,
+  over 1 month to 5 years or since the archive begins. Reports **TWR** (neutralises
+  deposits, the only figure comparable to an index) and **MWR** (an XIRR: what *your*
+  money earned, given when you paid it in), per account, alongside every holding with its
+  cost basis, unit price, unrealized gain and portfolio weight.
+  Three lessons the real data taught, each one a wrong-but-plausible figure avoided:
+  a **share purchase is not a loss** (counting it as a flow showed −5.4 % on an account
+  down 1.1 % — it merely turns cash into securities, hence three flow natures rather than
+  a boolean); a **"boost sur versement" is a gift from the insurer, not a deposit**, while
+  a sale arrives typed `unknown` with a positive amount, so the wording decides and a
+  manual override settles the rest; and a **series covering half a contract yields a
+  credible lie** — a capital-guaranteed euro fund showed −0.40 % because only one of its
+  two pockets publishes a unit value, so nothing is published below 95 % coverage.
+  Cash pockets (`XX-liquidity`) are excluded from that coverage instead of counted as
+  gaps, and MWR is withheld under 90 days: annualising a month of market is theatre.
+- **Daily collector** (`python -m app.collector`, plus a `launchd` agent via
+  `scripts/install-collector.sh`) — archives balance snapshots and unit values.
+  It **resumes from the last archived day** rather than assuming it runs daily, so a
+  weekly run stays viable and a missed week fills itself in. launchd rather than cron:
+  it catches up on wake instead of skipping the slot on a sleeping machine.
 - **Statement-to-connector merge.** An imported statement can be *linked* to the Powens
   account a connector eventually started to cover (`imported_account.powens_account_id`,
   set from `/import`). Until now both sources coexisted: the overlapping period counted

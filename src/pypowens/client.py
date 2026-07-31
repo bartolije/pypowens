@@ -30,6 +30,7 @@ from .models import (
     Connector,
     Indicators,
     Investment,
+    InvestmentValue,
     Transaction,
     User,
 )
@@ -499,6 +500,41 @@ class PowensClient:
             Investment.from_api(item)
             async for item in self._paginate(endpoint, item_key="investments")
         ]
+
+    async def list_investment_history(
+        self,
+        investment_id: int,
+        user_id: int | str = "me",
+        *,
+        account_id: int | None = None,
+        min_date: str | None = None,
+        max_date: str | None = None,
+        limit: int = 1000,
+    ) -> list[InvestmentValue]:
+        """Dated unit values of one security line, oldest first.
+
+        ``GET /users/{id}/investments/{id}/history`` (or the per-account variant). This
+        is the only price history the API exposes, and it only covers the period since
+        the connection was created: ``min_date`` can narrow the window but never widen it
+        beyond what Powens collected. Anything older has to come from somewhere else.
+        """
+        endpoint = (
+            f"users/{user_id}/accounts/{account_id}/investments/{investment_id}/history"
+            if account_id is not None
+            else f"users/{user_id}/investments/{investment_id}/history"
+        )
+        params: dict[str, Any] = {
+            "limit": limit,
+            "min_date": min_date,
+            "max_date": max_date,
+        }
+        values = [
+            InvestmentValue.from_api(item)
+            async for item in self._paginate(
+                endpoint, item_key="investmentvalues", params=params
+            )
+        ]
+        return sorted(values, key=lambda v: (v.vdate is None, v.vdate))
 
     async def update_connection(
         self, connection_id: int, user_id: int | str = "me"

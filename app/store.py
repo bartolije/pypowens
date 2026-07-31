@@ -50,6 +50,15 @@ CREATE TABLE IF NOT EXISTS series_state (
     acknowledged  INTEGER NOT NULL DEFAULT 0
 );
 
+-- Requalification manuelle d'un mouvement pour le calcul de performance. Aucune
+-- heuristique ne devine qu'un « Versement » est un apport et qu'un « Boost sur
+-- versement » est un cadeau de l'assureur : la main de l'utilisateur tranche.
+CREATE TABLE IF NOT EXISTS flow_override (
+    transaction_id INTEGER PRIMARY KEY,
+    kind           TEXT NOT NULL,          -- external | trade | income
+    updated        TEXT NOT NULL
+);
+
 -- Comptes et opérations importés depuis un relevé, pour ce qu'aucun connecteur ne
 -- remonte. Les ids exposés à l'app sont négatifs (voir account_id() plus bas) :
 -- l'espace positif appartient à Powens, et les deux jeux d'ids se croisent dans des
@@ -66,6 +75,20 @@ CREATE TABLE IF NOT EXISTS imported_account (
     created           TEXT NOT NULL,
     powens_account_id INTEGER          -- NULL = compte autonome
 );
+
+-- Valorisations quotidiennes des lignes de titres, archivées au fil des passages.
+-- L'API ne les garde qu'à partir de la création de la connexion, et rien ne garantit
+-- qu'elle les garde indéfiniment : une série de prix perdue ne se rachète pas.
+CREATE TABLE IF NOT EXISTS investment_value (
+    investment_id INTEGER NOT NULL,
+    day           TEXT    NOT NULL,        -- YYYY-MM-DD
+    account_id    INTEGER NOT NULL,
+    label         TEXT,
+    code          TEXT,                    -- ISIN, pour rapprocher d'une source externe
+    unit_value    TEXT    NOT NULL,        -- Decimal sérialisé
+    PRIMARY KEY (investment_id, day)
+);
+CREATE INDEX IF NOT EXISTS idx_invvalue_account_day ON investment_value (account_id, day);
 
 CREATE TABLE IF NOT EXISTS imported_transaction (
     fingerprint TEXT PRIMARY KEY,         -- identité stable, deux exports se recouvrent
@@ -211,6 +234,119 @@ def clear_override(conn: sqlite3.Connection, merchant_key: str) -> None:
         "DELETE FROM category_override WHERE merchant_key = ?", (merchant_key.upper().strip(),)
     )
     conn.commit()
+
+
+# ------------------------------------------------------------- flow overrides
+
+FLOW_KINDS = ("external", "trade", "income")
+
+
+def flow_overrides(conn: sqlite3.Connection) -> dict[int, str]:
+    """``{id de transaction: nature}`` pour les mouvements requalifiés à la main."""
+    return {
+        int(row["transaction_id"]): row["kind"]
+        for row in conn.execute("SELECT transaction_id, kind FROM flow_override")
+    }
+
+
+def set_flow_override(conn: sqlite3.Connection, transaction_id: int, kind: str) -> None:
+    """Requalifie un mouvement. ``kind`` vide (ou inconnu) rend la main à l'heuristique."""
+    if kind not in FLOW_KINDS:
+        conn.execute("DELETE FROM flow_override WHERE transaction_id = ?", (transaction_id,))
+    else:
+        conn.execute(
+            "INSERT OR REPLACE INTO flow_override (transaction_id, kind, updated)"
+            " VALUES (?, ?, ?)",
+            (transaction_id, kind, date.today().isoformat()),
+        )
+    conn.commit()
+
+
+# ------------------------------------------------------ investment value history
+
+
+class InvestmentValueLike(Protocol):
+    id_investment: int | None
+    vdate: date | None
+    unit_value: Decimal | None
+
+
+def save_investment_values(
+    conn: sqlite3.Connection,
+    values: Iterable[InvestmentValueLike],
+    *,
+    account_id: int,
+    label: str | None = None,
+    code: str | None = None,
+) -> int:
+    """Archive les valorisations d'une ligne. Idempotent (une ligne par titre et par jour).
+
+    ``INSERT OR REPLACE`` plutôt que ``IGNORE`` : une VL du jour peut être provisoire au
+    moment où on la lit et corrigée ensuite, et c'est la dernière lue qui fait foi.
+    """
+    rows = [
+        (
+            value.id_investment,
+            value.vdate.isoformat(),
+            account_id,
+            label,
+            code,
+            str(value.unit_value),
+        )
+        for value in values
+        if value.id_investment is not None
+        and value.vdate is not None
+        and value.unit_value is not None
+    ]
+    if not rows:
+        return 0
+    conn.executemany(
+        "INSERT OR REPLACE INTO investment_value"
+        " (investment_id, day, account_id, label, code, unit_value) VALUES (?, ?, ?, ?, ?, ?)",
+        rows,
+    )
+    conn.commit()
+    return len(rows)
+
+
+def investment_values(
+    conn: sqlite3.Connection,
+    *,
+    account_id: int | None = None,
+    since: date | None = None,
+) -> list[dict[str, Any]]:
+    """Valorisations archivées, les plus anciennes d'abord."""
+    sql = (
+        "SELECT investment_id, day, account_id, label, code, unit_value"
+        " FROM investment_value WHERE 1 = 1"
+    )
+    params: list[Any] = []
+    if account_id is not None:
+        sql += " AND account_id = ?"
+        params.append(account_id)
+    if since is not None:
+        sql += " AND day >= ?"
+        params.append(since.isoformat())
+    sql += " ORDER BY day, investment_id"
+    return [
+        {
+            "investment_id": int(row["investment_id"]),
+            "day": date.fromisoformat(row["day"]),
+            "account_id": int(row["account_id"]),
+            "label": row["label"],
+            "code": row["code"],
+            "unit_value": Decimal(row["unit_value"]),
+        }
+        for row in conn.execute(sql, params)
+    ]
+
+
+def investment_value_span(conn: sqlite3.Connection) -> tuple[date, date] | None:
+    """``(premier jour, dernier jour)`` archivés, ou ``None`` si la table est vide."""
+    row = conn.execute("SELECT MIN(day) AS lo, MAX(day) AS hi FROM investment_value").fetchone()
+    if not row or not row["lo"]:
+        return None
+    return date.fromisoformat(row["lo"]), date.fromisoformat(row["hi"])
 
 
 # ---------------------------------------------------------- imported statements

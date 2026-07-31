@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Collecte quotidienne des soldes et des valorisations.
+
+  Pourquoi launchd et pas cron : si le Mac dort à l'heure prévue, launchd lance la tâche
+  au réveil, alors que cron passe son tour. Une machine qui dort la nuit ne collecterait
+  jamais rien avec cron.
+
+  Installation :
+      cp scripts/fr.jbartoli.powens-collector.plist ~/Library/LaunchAgents/
+      # remplacer /CHEMIN/VERS par le chemin réel du dépôt
+      launchctl load ~/Library/LaunchAgents/fr.jbartoli.powens-collector.plist
+      launchctl start fr.jbartoli.powens-collector      # vérifier tout de suite
+
+  Désinstallation :
+      launchctl unload ~/Library/LaunchAgents/fr.jbartoli.powens-collector.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>fr.jbartoli.powens-collector</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/CHEMIN/VERS/pypowens/.venv/bin/python</string>
+        <string>-m</string>
+        <string>app.collector</string>
+    </array>
+
+    <!-- ``app`` n'est pas installé dans le venv (hors wheel) : il est importé depuis le
+         dépôt, d'où le répertoire de travail et le PYTHONPATH. -->
+    <key>WorkingDirectory</key>
+    <string>/CHEMIN/VERS/pypowens</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONPATH</key>
+        <string>/CHEMIN/VERS/pypowens</string>
+    </dict>
+
+    <!-- 19 h : les places européennes ont clôturé et publié leurs VL du jour. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>19</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <!-- Le collecteur rattrape depuis le dernier jour archivé : un réveil tardif ou une
+         semaine d'absence se comblent tout seuls, sans qu'il faille rejouer quoi que ce
+         soit à la main. -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/powens-collector.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/powens-collector.err</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>LowPriorityIO</key>
+    <true/>
+</dict>
+</plist>

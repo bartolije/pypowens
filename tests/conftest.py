@@ -189,6 +189,33 @@ class FakeClient:
             )
         ]
 
+    async def list_investment_history(self, investment_id: int, *args, **kwargs):
+        """Deux séances de VL, de quoi mesurer une variation.
+
+        ``min_date`` est honoré comme le vrai endpoint, mais ne remonte jamais plus loin
+        que ce que l'API a collecté — c'est tout l'objet de l'archivage local.
+        """
+        from pypowens import InvestmentValue
+
+        raw = [
+            {
+                "id": 1,
+                "id_investment": investment_id,
+                "vdate": (date.today() - timedelta(days=2)).isoformat(),
+                "unitvalue": "100.00",
+            },
+            {
+                "id": 2,
+                "id_investment": investment_id,
+                "vdate": (date.today() - timedelta(days=1)).isoformat(),
+                "unitvalue": "110.00",
+            },
+        ]
+        floor = kwargs.get("min_date")
+        if floor:
+            raw = [r for r in raw if r["vdate"] >= floor]
+        return [InvestmentValue.from_api(r) for r in raw]
+
     async def update_connection(self, connection_id: int, *args, **kwargs):
         return None
 

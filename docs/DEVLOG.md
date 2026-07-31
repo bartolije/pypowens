@@ -28,7 +28,9 @@ App web locale (FastAPI) par-dessus le wrapper `pypowens`, dans **ce même repo*
 | 9 | Robustesse : retries 429/5xx, renouvellement de token, pages d'erreur, cache unifié | ✅ |
 | 10 | Investissements (lignes de titres) + synchronisation manuelle des connexions | ✅ |
 | 12 | Import de relevés CSV (`/import`) + rattachement à un compte du connecteur | ✅ |
+| 13 | Performance des supports (`/performance`) : TWR, MWR, collecte quotidienne | ✅ |
 | 11 | Webhooks, budgets par catégorie | ⏳ |
+| 14 | Comparaison à un indice / ETF (source de prix externe par ISIN) | ⏳ |
 
 ## Découvertes données RÉELLES (vérifiées en live sur une app sandbox)
 
@@ -93,6 +95,57 @@ D'où le **rattachement** (`imported_account.powens_account_id`, posé depuis `/
 
 Rattacher ne modifie aucune opération : c'est la lecture qui borne. Se tromper de compte
 cible se corrige en changeant la cible, et détacher rend son autonomie au compte importé.
+
+## Performance des supports — ce que l'API permet, et ce qu'elle ne permet pas
+
+**Ce que Powens donne**, par ligne de titre : ISIN, quantité, prix de revient
+(`unitprice`), VL du jour (`unitvalue`), valorisation, plus-value latente, poids dans le
+portefeuille. Plus les flux, typés utilement (`market_order`, `profit`, `market_fee`,
+`deposit`, `transfer`, `arbitrage`).
+
+**L'historique de valorisation existe** — `GET users/{id}/investments/{id}/history`,
+exposé par `list_investment_history()` — mais **il démarre à la création de la
+connexion** : `min_date` peut resserrer la fenêtre, jamais l'élargir. Et
+`accounts/{id}/balances` est un piège : il rejoue les flux connus depuis le solde
+actuel, donc il affiche un solde figé sur toute la période antérieure à la première
+transaction connue. Inutilisable pour un compte titres, dont la valeur bouge avec le
+marché.
+
+**Aucune donnée de marché** : ni indices, ni VL d'un support non détenu. La comparaison
+à un benchmark demande une source externe interrogée par ISIN (étape 14).
+
+### Les pièges rencontrés, tous vérifiés sur des données réelles
+
+1. **Un achat de titres n'est pas une contre-performance.** Le compter comme un flux à
+   retirer affichait −5,4 % sur un compte qui n'avait perdu que 1,1 %. Un achat convertit
+   du cash en titres : il ne change pas ce que vaut le compte. D'où trois natures de flux
+   (`external` / `trade` / `income`) au lieu d'un booléen.
+2. **Un « Boost sur versement » arrive typé `deposit`** alors que c'est un cadeau de
+   l'assureur, donc de la performance. Idem « Participation aux bénéfices » d'un fonds
+   euros. Symétriquement, « VENTE COMPTANT » arrive typée `unknown` avec un montant
+   positif : la prendre pour un revenu inventerait du gain. Le libellé départage, et un
+   `flow_override` permet de trancher à la main.
+3. **Une série qui ne couvre qu'une partie du contrat produit un chiffre crédible et
+   faux** : un fonds euros affichait −0,40 % (capital garanti !) parce qu'une seule de ses
+   deux poches publie une VL. D'où `series_coverage()` et un seuil de 95 %, en dessous
+   duquel rien n'est publié.
+4. **Les liquidités ne sont pas un trou dans la série.** Powens les présente comme une
+   ligne (`XX-liquidity`) sans VL, ce qui faisait tomber un compte titres à 91 % de
+   couverture et le rendait non publiable. Elles sortent du dénominateur.
+5. **Annualiser un mois de marché donne des nombres spectaculaires et faux** (−45 %/an
+   sur 26 jours) : le MWR n'est affiché qu'au-delà de 90 jours.
+
+### Ce qui est périssable, et le collecteur
+
+Les VL sont conservées par Powens depuis le branchement, mais les **soldes des comptes
+sans lignes de titres** (fonds euros, PER, livret) ne vivent que dans nos snapshots : un
+jour non collecté est perdu. `python -m app.collector` **rattrape depuis le dernier jour
+archivé** (avec 3 jours de recouvrement, une VL de séance pouvant être corrigée), donc un
+passage hebdomadaire reste viable. `scripts/install-collector.sh` installe un LaunchAgent
+quotidien — launchd et non cron, parce qu'il rattrape au réveil si la machine dormait.
+
+Pas d'hébergement distant : l'app n'a aucune authentification, et l'exposer voudrait dire
+sortir le token Powens et tous les soldes de la machine.
 
 ## Endpoints confirmés live
 

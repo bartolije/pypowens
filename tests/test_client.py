@@ -191,3 +191,58 @@ def test_from_env_treats_empty_values_as_unset(monkeypatch):
     client = PowensClient.from_env()
     assert client.access_token is None
     assert client.client_id == "cid"
+
+
+# ------------------------------------------------- historique de valorisation
+
+
+@respx.mock
+async def test_list_investment_history_returns_dated_unit_values():
+    respx.get(f"{BASE}/users/me/investments/35/history").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "investmentvalues": [
+                    {"id": 91, "id_investment": 35, "vdate": "2026-07-07", "unitvalue": 178.9},
+                    {"id": 32, "id_investment": 35, "vdate": "2026-07-05", "unitvalue": 180.3},
+                ],
+                "total": 2,
+            },
+        )
+    )
+    async with PowensClient("myapp-sandbox", access_token="TOK") as p:
+        values = await p.list_investment_history(35)
+    # Renvoyé le plus ancien d'abord : une série de prix se lit dans le sens du temps.
+    assert [str(v.vdate) for v in values] == ["2026-07-05", "2026-07-07"]
+    assert values[0].unit_value == Decimal("180.3")
+    assert values[0].id_investment == 35
+
+
+@respx.mock
+async def test_list_investment_history_can_be_scoped_to_an_account():
+    route = respx.get(f"{BASE}/users/me/accounts/9/investments/35/history").mock(
+        return_value=httpx.Response(200, json={"investmentvalues": [], "total": 0})
+    )
+    async with PowensClient("myapp-sandbox", access_token="TOK") as p:
+        assert await p.list_investment_history(35, account_id=9, min_date="2026-07-01") == []
+    assert route.called
+    assert "min_date=2026-07-01" in str(route.calls[0].request.url)
+
+
+@respx.mock
+async def test_investment_history_without_a_date_sorts_last():
+    """Une valeur sans ``vdate`` ne doit pas casser le tri de la série."""
+    respx.get(f"{BASE}/users/me/investments/1/history").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "investmentvalues": [
+                    {"id": 2, "id_investment": 1, "vdate": None, "unitvalue": 1.0},
+                    {"id": 1, "id_investment": 1, "vdate": "2026-07-05", "unitvalue": 2.0},
+                ]
+            },
+        )
+    )
+    async with PowensClient("myapp-sandbox", access_token="TOK") as p:
+        values = await p.list_investment_history(1)
+    assert [v.id for v in values] == [1, 2]
