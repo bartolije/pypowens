@@ -55,6 +55,9 @@ class Line:
     diff_percent: float | None
     share: float | None
     is_cash: bool
+    # Montant réellement engagé sur la ligne (prix de revient x quantité). Le PRU seul ne
+    # dit pas ce qu'elle pèse : 146 € l'unité peut être 200 € ou 38 000 € investis.
+    invested: Decimal | None
 
 
 @dataclass
@@ -85,6 +88,11 @@ def _lines_of(investments: list[Investment]) -> list[Line]:
             diff_percent=float(inv.diff_percent) if inv.diff_percent is not None else None,
             share=float(inv.portfolio_share) if inv.portfolio_share is not None else None,
             is_cash=perf.is_cash_line(code=inv.code, label=inv.label),
+            invested=(
+                inv.unit_price * inv.quantity
+                if inv.unit_price is not None and inv.quantity is not None
+                else None
+            ),
         )
         for inv in investments
     ]

@@ -178,3 +178,29 @@ def test_a_window_longer_than_the_archive_says_so(client):
     body = _text(client.get("/performance?periode=5a").text)
     assert "Fenêtre limitée" in body
     assert "l'archive ne remonte qu'au" in body
+
+
+def test_the_holdings_table_can_be_sorted(client):
+    """Trier sur le texte affiché échouerait : « 38 641,50 € » n'est pas un nombre."""
+    body = client.get("/performance").text
+    assert 'card-table table-sm sortable' in body
+    # Titre, montant investi et plus-value : les trois tris demandés.
+    assert "<th class=\"num\">Investi</th>" in body
+    assert 'data-sort="ETF MONDE"' in body
+    assert "Cliquer un en-tête trie le tableau" in _text(body)
+
+
+def test_the_invested_amount_is_a_line_total_not_a_unit_price(client):
+    """Le PRU seul ne dit pas ce que pèse une ligne : 146 € l'unité, 38 000 € investis."""
+    from app.investments import _lines_of
+
+    class Inv:
+        id, id_account, label, code = 1, 9, "AIR LIQUIDE", "FR0000120073"
+        code_type = "ISIN"
+        quantity, unit_price, unit_value = Decimal(225), Decimal("146.8"), Decimal("171.74")
+        valuation, diff, diff_percent = Decimal("38641.50"), Decimal("5611.49"), Decimal("0.1699")
+        portfolio_share = Decimal("0.2114")
+
+    (line,) = _lines_of([Inv()])
+    assert line.invested == Decimal("33030.00")
+    assert line.invested != line.unit_price

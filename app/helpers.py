@@ -7,6 +7,7 @@ page stays self-contained (no JS charting lib).
 from __future__ import annotations
 
 import html
+import math
 from datetime import date
 from decimal import Decimal
 
@@ -124,33 +125,90 @@ def bar_chart(
     )
 
 
+def nice_step(span: float, target_ticks: int = 4) -> float:
+    """Pas de graduation « rond » couvrant ``span`` en ~``target_ticks`` intervalles.
+
+    Un pas brut (span / n) donne des graduations du genre 1 736 € : illisible. On remonte
+    au multiple de 1, 2, 2,5, 5 ou 10 de la puissance de dix immédiatement supérieure.
+    """
+    if span <= 0:
+        return 1.0
+    raw = span / max(1, target_ticks)
+    magnitude = 10.0 ** math.floor(math.log10(raw))
+    for multiple in (1, 2, 2.5, 5, 10):
+        if raw <= magnitude * multiple:
+            return magnitude * multiple
+    return magnitude * 10
+
+
+def format_axis(value: float, step: float, unit: str = "€") -> str:
+    """Montant abrégé pour une graduation : ``178,2 k€``, ``1,25 M€``, ``850 €``.
+
+    La précision suit le **pas** et non la valeur : avec un pas de 2 000 sur des montants
+    à six chiffres, « 178 k€ » et « 180 k€ » suffisent, alors qu'un pas de 200 exige la
+    décimale sous peine d'afficher deux graduations identiques.
+    """
+    for divisor, suffix in ((1e6, "M"), (1e3, "k")):
+        if abs(value) >= divisor or (step >= divisor and value):
+            decimals = _decimals_for(step / divisor)
+            text = f"{value / divisor:,.{decimals}f}".replace(",", _THIN_NBSP).replace(".", ",")
+            return f"{text}{_NBSP}{suffix}{unit}"
+    text = f"{value:,.{_decimals_for(step)}f}".replace(",", _THIN_NBSP).replace(".", ",")
+    return f"{text}{_NBSP}{unit}"
+
+
+def _decimals_for(step: float, maximum: int = 2) -> int:
+    """Décimales juste nécessaires pour que deux graduations d'écart ``step`` diffèrent.
+
+    Un pas de 2 (k€) n'a besoin d'aucune décimale — « 178,0 k€ » traîne un zéro inutile —
+    alors qu'un pas de 0,2 en exige une.
+    """
+    if step <= 0:
+        return 0
+    return max(0, min(maximum, math.ceil(-math.log10(step))))
+
+
 def line_chart(
     items: list[tuple[str, float]],
     *,
     width: int = 720,
-    height: int = 200,
+    height: int = 220,
     unit: str = "€",
     color: str = "#635bff",
+    y_ticks: int = 4,
 ) -> str:
     """Time series as an SVG area+line chart. ``items`` = list of (label, value).
 
     The Y axis is scaled to the data range (not forced to zero) so a net-worth
-    curve shows its actual movement instead of a flat line at the top.
+    curve shows its actual movement instead of a flat line at the top — with graduated
+    values and gridlines, without which a dip is visible but unquantifiable.
+
+    Deliberately *not* stretched (``xMinYMin meet``): ``preserveAspectRatio="none"`` made
+    the SVG fill its container by distorting it, which squashed every label horizontally.
     """
     points = [(label, float(value)) for label, value in items if value is not None]
     if len(points) < 2:
         return '<p class="muted">Pas encore assez d\'historique — repassez demain.</p>'
 
-    pad_l, pad_r, pad_t, pad_b = 8, 8, 12, 22
+    values = [v for _, v in points]
+    lo_data, hi_data = min(values), max(values)
+    span = (hi_data - lo_data) or (abs(hi_data) or 1)
+
+    # Graduations rondes calculées sur l'amplitude réelle, puis bornes élargies jusqu'à
+    # la graduation suivante : la courbe ne touche jamais le bord du cadre.
+    step = nice_step(span, y_ticks)
+    lo = math.floor(lo_data / step) * step
+    hi = math.ceil(hi_data / step) * step
+    if hi == lo:
+        hi = lo + step
+    span = hi - lo
+
+    labels = [format_axis(lo + i * step, step, unit) for i in range(int(round(span / step)) + 1)]
+    # La gouttière gauche doit contenir la plus longue graduation, sinon elle déborde.
+    pad_l = 14 + int(6.2 * max(len(text) for text in labels))
+    pad_r, pad_t, pad_b = 10, 12, 24
     plot_w = width - pad_l - pad_r
     plot_h = height - pad_t - pad_b
-
-    values = [v for _, v in points]
-    lo, hi = min(values), max(values)
-    span = (hi - lo) or (abs(hi) or 1)
-    lo -= span * 0.12
-    hi += span * 0.12
-    span = hi - lo
 
     def _x(i: int) -> float:
         return pad_l + plot_w * i / (len(points) - 1)
@@ -165,6 +223,18 @@ def line_chart(
         + line
         + f" {coords[-1][0]:.1f},{pad_t + plot_h:.1f}"
     )
+
+    # Grille + graduations. Les montants portent `.amount` : le masque global doit les
+    # couvrir, sans quoi l'axe rendrait en clair ce que la courbe floute.
+    grid = ""
+    for i, text in enumerate(labels):
+        y = _y(lo + i * step)
+        grid += (
+            f'<line x1="{pad_l}" y1="{y:.1f}" x2="{pad_l + plot_w}" y2="{y:.1f}" '
+            f'class="grid"/>'
+            f'<text x="{pad_l - 8}" y="{y + 3.5:.1f}" text-anchor="end" '
+            f'class="cv amount">{_e(text)}</text>'
+        )
 
     dots = "".join(
         f'<circle cx="{x:.1f}" cy="{y:.1f}" r="2.5" fill="{color}">'
@@ -182,7 +252,8 @@ def line_chart(
 
     return (
         f'<svg viewBox="0 0 {width} {height}" class="chart" role="img" width="100%" '
-        f'preserveAspectRatio="none">'
+        f'preserveAspectRatio="xMinYMin meet">'
+        f"{grid}"
         f'<polygon points="{area}" fill="{color}" opacity="0.14"/>'
         f'<polyline points="{line}" fill="none" stroke="{color}" stroke-width="2" '
         f'stroke-linejoin="round" stroke-linecap="round"/>'

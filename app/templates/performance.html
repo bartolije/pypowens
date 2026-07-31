@@ -134,44 +134,61 @@
 
   {% if card.lines %}
   <div class="table-responsive">
-    <table class="table table-vcenter card-table table-sm">
+    {# `sortable` : le tri au clic est géré par app.js, via les `data-sort` ci-dessous.
+       Trier sur le texte affiché échouerait — « 38 641,50 € » n'est pas un nombre, et la
+       colonne du titre contient aussi l'ISIN. #}
+    <table class="table table-vcenter card-table table-sm sortable">
       <thead>
         <tr>
           <th>Ligne</th>
           <th class="num">Qté</th>
           <th class="num">PRU</th>
           <th class="num">Cours</th>
+          <th class="num">Investi</th>
           <th class="num">Valorisation</th>
           <th class="num">+/- value</th>
+          <th class="num">%</th>
           <th class="num">Poids</th>
         </tr>
       </thead>
       <tbody>
         {% for line in card.lines %}
         <tr>
-          <td>
+          <td data-sort="{{ line.label }}">
             {{ line.label }}
             {% if line.is_cash %}<span class="badge bg-secondary-lt ms-1">espèces</span>{% endif %}
             {% if line.code and not line.is_cash %}
             <div class="text-secondary small">{{ line.code }}</div>
             {% endif %}
           </td>
-          <td class="num amount">{{ '%.4g' | format(line.quantity) if line.quantity else '—' }}</td>
-          <td class="num">{{ line.unit_price | money(currency) if line.unit_price else '—' }}</td>
-          <td class="num">{{ line.unit_value | money(currency) if line.unit_value else '—' }}</td>
-          <td class="num">{{ line.valuation | money(currency) }}</td>
-          <td class="num {{ 'text-green' if line.diff and line.diff > 0 else 'text-red' if line.diff and line.diff < 0 }}">
-            {% if line.diff is not none %}{{ line.diff | money(currency) }}
-              {% if line.diff_percent is not none %}
-              <div class="text-secondary small amount">{{ '%+.2f' | format(line.diff_percent * 100) }} %</div>
-              {% endif %}
+          <td class="num amount" data-sort="{{ line.quantity or 0 }}">
+            {{ '%.4g' | format(line.quantity) if line.quantity else '—' }}</td>
+          <td class="num" data-sort="{{ line.unit_price or 0 }}">
+            {{ line.unit_price | money(currency) if line.unit_price else '—' }}</td>
+          <td class="num" data-sort="{{ line.unit_value or 0 }}">
+            {{ line.unit_value | money(currency) if line.unit_value else '—' }}</td>
+          <td class="num" data-sort="{{ line.invested or 0 }}">
+            {{ line.invested | money(currency) if line.invested else '—' }}</td>
+          <td class="num" data-sort="{{ line.valuation or 0 }}">
+            {{ line.valuation | money(currency) }}</td>
+          <td class="num {{ 'text-green' if line.diff and line.diff > 0 else 'text-red' if line.diff and line.diff < 0 }}"
+              data-sort="{{ line.diff or 0 }}">
+            {% if line.diff is not none %}{{ line.diff | money(currency) }}{% else %}—{% endif %}
+          </td>
+          <td class="num amount {{ 'text-green' if line.diff_percent and line.diff_percent > 0 else 'text-red' if line.diff_percent and line.diff_percent < 0 }}"
+              data-sort="{{ line.diff_percent or 0 }}">
+            {% if line.diff_percent is not none %}{{ '%+.2f' | format(line.diff_percent * 100) }} %
             {% else %}—{% endif %}
           </td>
-          <td class="num amount">{{ '%.1f' | format(line.share * 100) if line.share else '—' }} %</td>
+          <td class="num amount" data-sort="{{ line.share or 0 }}">
+            {{ '%.1f' | format(line.share * 100) if line.share else '—' }} %</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
+  </div>
+  <div class="card-footer text-secondary small py-2">
+    Cliquer un en-tête trie le tableau — par titre, montant investi, plus-value ou poids.
   </div>
   {% endif %}
 </div>

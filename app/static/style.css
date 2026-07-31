@@ -37,6 +37,9 @@
 .chart { display: block; max-width: 100%; overflow: visible; color: var(--tblr-body-color); }
 .chart .cl { fill: currentColor; font-size: 12px; }
 .chart .cv { fill: var(--tblr-secondary); font-size: 11px; font-variant-numeric: tabular-nums; }
+/* Lignes de graduation : présentes pour situer un montant, assez pâles pour que la
+   courbe reste le sujet. */
+.chart .grid { stroke: currentColor; stroke-opacity: .13; stroke-width: 1; }
 .donut { display: flex; gap: 26px; align-items: center; flex-wrap: wrap; }
 .donut > svg { flex: 0 0 auto; }
 .donut-hole { fill: var(--tblr-bg-surface); }
