@@ -41,13 +41,13 @@ def test_performance_page_lists_investment_accounts_only(client):
 def test_period_buttons_are_offered_and_the_choice_is_honoured(client):
     body = client.get("/performance?periode=6m").text
     assert 'href="/performance?periode=1m"' in body
-    assert "Performance · 6 mois" in _text(body)
+    assert "Évolution sur 6 mois" in _text(body)
 
 
 def test_an_unknown_period_falls_back_instead_of_erroring(client):
     response = client.get("/performance?periode=n-importe-quoi")
     assert response.status_code == 200
-    assert "Performance · Tout" in _text(response.text)
+    assert "Évolution sur la période" in _text(response.text)
 
 
 def test_the_page_explains_twr_versus_mwr(client):
@@ -141,3 +141,40 @@ def test_investment_values_can_be_filtered(conn):
     assert store.investment_values(conn, account_id=7) == []
     recent = store.investment_values(conn, since=today)
     assert [row["unit_value"] for row in recent] == [Decimal("12")]
+
+
+def test_the_two_measures_are_named_apart(client):
+    """« Tout est en vert chez ma banque mais tu me dis rouge » : deux mesures, deux noms.
+
+    Le gain depuis l'achat cumule des années de versements ; l'évolution ne couvre que la
+    fenêtre choisie. Des signes opposés sont le cas courant, pas une incohérence.
+    """
+    body = _text(client.get("/performance").text)
+    assert "Gain depuis l'achat" in body
+    assert "Évolution sur" in body
+    assert "ne disent pas la même chose" in body
+
+
+def test_a_window_longer_than_the_archive_says_so(client):
+    """Afficher 26 jours sous l'étiquette « 5 ans » serait un chiffre juste au mauvais nom."""
+    import app.data
+
+    class Value:
+        def __init__(self, day: date, unit: str) -> None:
+            self.id_investment = 1  # la ligne du jeu de test, portée par le compte 3
+            self.vdate = day
+            self.unit_value = Decimal(unit)
+
+    today = date.today()
+    store.save_investment_values(
+        client.app.state.store,
+        [Value(today - timedelta(days=2), "350"), Value(today, "350")],
+        account_id=3,
+        label="ETF MONDE",
+        code="FR0000000000",
+    )
+    app.data.clear_cache()
+
+    body = _text(client.get("/performance?periode=5a").text)
+    assert "Fenêtre limitée" in body
+    assert "l'archive ne remonte qu'au" in body

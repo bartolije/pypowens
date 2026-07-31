@@ -50,29 +50,43 @@
         {% endif %}
       </div>
       <div class="col-sm-6 col-lg-3">
-        <div class="text-secondary small">Plus-value latente</div>
+        <div class="text-secondary small">Gain depuis l'achat</div>
         {% if card.cost %}
         <div class="fs-4 {{ 'text-green' if card.unrealized > 0 else 'text-red' if card.unrealized < 0 }}">
           {{ card.unrealized | money(currency) }}
         </div>
         <div class="text-secondary small amount">
-          {{ '%+.2f' | format(card.unrealized / card.cost * 100) }} % depuis l'achat
+          {{ '%+.2f' | format(card.unrealized / card.cost * 100) }} % · plus-value latente
         </div>
         {% else %}
         <div class="fs-4 text-secondary">—</div>
+        {# Le contraste est déroutant : la banque affiche un gain que le connecteur ne
+           transmet pas, et la colonne d'à côté montre une baisse récente. #}
+        <div class="text-secondary small">
+          prix de revient non transmis par le connecteur — votre banque, elle, l'affiche
+        </div>
         {% endif %}
       </div>
       <div class="col-sm-6 col-lg-3">
         {% set p = card.performance %}
-        <div class="text-secondary small">Performance · {{ period_label }}</div>
+        <div class="text-secondary small">
+          Évolution sur {{ period_label if period != 'tout' else 'la période' }}
+        </div>
         {% if p and p.twr is not none and p.trustworthy %}
         <div class="fs-4 {{ 'text-green' if p.twr > 0 else 'text-red' if p.twr < 0 }}">
           {{ '%+.2f' | format(p.twr * 100) }} %
         </div>
         <div class="text-secondary small">
-          TWR du {{ p.start.strftime('%d/%m') }} au {{ p.end.strftime('%d/%m') }}
+          TWR du {{ p.start.strftime('%d/%m/%Y') }} au {{ p.end.strftime('%d/%m/%Y') }}
+          ({{ p.days }} jour{{ 's' if p.days > 1 }})
           {%- if p.mwr_reliable %} · {{ '%+.1f' | format(p.mwr * 100) }} %/an pour mon argent{% endif %}
         </div>
+        {% if requested_since and p.start > requested_since %}
+        <div class="text-orange small">
+          Fenêtre limitée : l'archive ne remonte qu'au {{ p.start.strftime('%d/%m/%Y') }},
+          pas au {{ requested_since.strftime('%d/%m/%Y') }} demandé.
+        </div>
+        {% endif %}
         {% elif p and not p.trustworthy %}
         <div class="fs-4 text-secondary">—</div>
         <div class="text-secondary small">
@@ -175,9 +189,14 @@
     de la date de chaque versement — il n'est affiché qu'au-delà de
     {{ min_annualize_days }} jours, en dessous de quoi l'annualiser produit des nombres
     spectaculaires et faux.</p>
-    <p class="mb-0">Un achat ou une vente de titres ne change pas ce que vaut le compte et
+    <p class="mb-1">Un achat ou une vente de titres ne change pas ce que vaut le compte et
     n'entre donc dans aucun rendement. Un versement, si — il est retiré. Les dividendes,
     coupons et intérêts d'un fonds euros restent dedans : c'est de la performance.</p>
+    <p class="mb-0"><strong>« Gain depuis l'achat » et « Évolution sur la période » ne
+    disent pas la même chose</strong> et peuvent parfaitement être de signes opposés : le
+    premier cumule depuis vos versements, souvent sur des années ; le second ne couvre que
+    la fenêtre choisie. Un support en forte plus-value peut très bien avoir reculé ce
+    mois-ci — c'est le cas le plus courant, pas une incohérence.</p>
   </div>
 </div>
 {% endblock %}

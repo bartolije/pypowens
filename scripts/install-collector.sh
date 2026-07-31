@@ -14,8 +14,19 @@ LABEL="fr.jbartoli.powens-collector"
 TEMPLATE="$REPO/scripts/$LABEL.plist"
 TARGET="$HOME/Library/LaunchAgents/$LABEL.plist"
 
+# `launchctl load` est déprécié et échoue en silence sur les macOS récents : il rend 0
+# sans que le job apparaisse dans `launchctl list`. `bootstrap gui/<uid>` est la forme
+# actuelle ; `load` reste en repli pour les versions antérieures.
+DOMAIN="gui/$(id -u)"
+
+unload_agent() {
+    launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null \
+        || launchctl unload "$TARGET" 2>/dev/null \
+        || true
+}
+
 if [[ "${1:-}" == "--uninstall" ]]; then
-    launchctl unload "$TARGET" 2>/dev/null || true
+    unload_agent
     rm -f "$TARGET"
     echo "Agent désinstallé. Les données déjà archivées restent intactes."
     exit 0

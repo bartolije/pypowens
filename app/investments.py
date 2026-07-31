@@ -181,6 +181,9 @@ async def performance_page(
             "period": periode,
             "period_label": PERIODS[periode][0],
             "archive_span": span,
+            # Pour dire quand la fenêtre demandée dépasse ce qui est archivé : afficher
+            # 26 jours sous une étiquette « 5 ans » serait un chiffre juste au mauvais nom.
+            "requested_since": since,
             "min_coverage": perf.MIN_COVERAGE,
             "min_annualize_days": perf.MIN_ANNUALIZE_DAYS,
         },
