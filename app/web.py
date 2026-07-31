@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 
-from .helpers import currency_symbol, format_money, mask_iban, month_label_fr
+from .helpers import currency_symbol, day_label_fr, format_money, mask_iban, month_label_fr
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
@@ -23,3 +23,4 @@ templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 templates.env.filters["money"] = _money_html
 templates.env.filters["iban"] = mask_iban
 templates.env.filters["monthlabel"] = month_label_fr
+templates.env.filters["daylabel"] = day_label_fr

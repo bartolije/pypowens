@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Comptes · Powens Finance{% endblock %}
+{% block content %}
+
+{% if not has_accounts %}
+  <div class="empty">
+    <p class="empty-title">Aucun compte pour le moment</p>
+    <p class="empty-subtitle text-secondary">Connectez une banque pour voir vos comptes et vos dépenses.</p>
+    <div class="empty-action"><a href="/connect" class="btn btn-primary">+ Connecter une banque</a></div>
+  </div>
+{% else %}
+
+  <div class="row row-cards mb-3">
+    <div class="col-lg-4">
+      <div class="card card-md">
+        <div class="card-body">
+          <div class="subheader">Disponible sur les comptes courants</div>
+          <div class="h1 mb-0 mt-1"><span class="amount">{{ available | money(currency) }}</span></div>
+          {% if coming %}
+          <div class="text-secondary small mt-1">
+            dont à venir <span class="amount">{{ coming | money(currency) }}</span>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% for acc in current_accounts %}
+    <div class="col-sm-6 col-lg-4">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex align-items-baseline justify-content-between gap-2">
+            <div class="text-truncate">{{ acc.name or '—' }}</div>
+            <span class="badge bg-secondary-lt">{{ acc.type or '?' }}</span>
+          </div>
+          <div class="h2 mb-0 mt-1"><span class="amount">{{ acc.balance | money(acc.currency or currency) }}</span></div>
+          <div class="text-secondary small mt-1">
+            {{ acc.iban | iban }}
+            {% if acc.last_update %} · maj {{ acc.last_update.strftime('%d/%m %H:%M') }}{% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-body py-2">
+      <form method="get" action="/" class="row g-2 align-items-center">
+        <div class="col-auto">
+          {% if prev_month %}<a class="btn btn-sm" href="/?mois={{ prev_month }}&sens={{ sens }}">←</a>{% endif %}
+        </div>
+        <div class="col-auto">
+          <select name="mois" class="form-select form-select-sm" onchange="this.form.submit()">
+            {% for key, label in month_options %}
+            <option value="{{ key }}" {{ 'selected' if key == month }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-auto">
+          {% if next_month %}<a class="btn btn-sm" href="/?mois={{ next_month }}&sens={{ sens }}">→</a>{% endif %}
+        </div>
+        <div class="col-auto">
+          <select name="categorie" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="">Toutes catégories</option>
+            {% for name, total in categories %}
+            <option value="{{ name }}" {{ 'selected' if name == selected_category }}>{{ name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-auto">
+          <select name="sens" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="depenses" {{ 'selected' if sens == 'depenses' }}>Dépenses seules</option>
+            <option value="tout" {{ 'selected' if sens == 'tout' }}>Tout (avec entrées)</option>
+          </select>
+        </div>
+        <div class="col-auto ms-auto d-flex gap-3 text-nowrap">
+          <span class="text-secondary small">Dépensé
+            <strong class="text-danger"><span class="amount">{{ month_spent | money(currency) }}</span></strong></span>
+          <span class="text-secondary small">Reçu
+            <strong class="text-success"><span class="amount">{{ month_received | money(currency) }}</span></strong></span>
+          <span class="text-secondary small">Solde
+            <strong><span class="amount">{{ month_net | money(currency) }}</span></strong></span>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {% if categories %}
+  <div class="card mb-3">
+    <div class="card-header py-2"><h3 class="card-title">Dépenses de {{ month_label }} par type</h3></div>
+    <div class="card-body py-2">
+      <div class="d-flex flex-wrap gap-2">
+        {% for name, total in categories %}
+        <a class="badge {{ 'bg-primary' if name == selected_category else 'bg-secondary-lt' }} p-2"
+           href="/?mois={{ month }}&sens={{ sens }}{{ '' if name == selected_category else '&categorie=' ~ (name | urlencode) }}">
+          {{ name }} · <span class="amount">{{ total | money(currency, 0) }}</span>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card-header py-2">
+      <h3 class="card-title">Historique · {{ month_label }}</h3>
+      <span class="text-secondary small ms-2">{{ n_rows }} opération{{ 's' if n_rows > 1 }}{% if selected_category %} · {{ selected_category }}{% endif %}</span>
+      <div class="ms-auto">
+        <input type="text" class="form-control form-control-sm search" placeholder="Rechercher…"
+               data-target="#histTable" style="max-width:220px">
+      </div>
+    </div>
+    {% if days %}
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table" id="histTable">
+        <tbody>
+          {% for d in days %}
+          <tr class="day-row">
+            <td colspan="4">
+              <span class="fw-bold">{{ d.day | daylabel }}</span>
+              <span class="text-secondary small ms-2">
+                {% if d.spent %}−<span class="amount">{{ d.spent | money(currency) }}</span>{% endif %}
+                {% if d.received %}<span class="text-success ms-2">+<span class="amount">{{ d.received | money(currency) }}</span></span>{% endif %}
+              </span>
+            </td>
+          </tr>
+          {% for r in d.rows %}
+          <tr>
+            <td>
+              <a href="/transactions?label={{ merchant_key(r.txn) | urlencode }}">
+                {{ r.txn.simplified_wording or r.txn.wording or '—' }}
+              </a>
+              {% if r.internal %}<span class="badge bg-secondary-lt ms-1" title="Virement entre vos comptes">interne</span>{% endif %}
+            </td>
+            <td><span class="badge bg-secondary-lt">{{ r.category }}</span></td>
+            <td class="text-secondary text-truncate" style="max-width:200px">{{ r.account }}</td>
+            <td class="num {{ 'text-success' if r.amount > 0 }}">
+              <span class="amount">{{ r.amount | money(currency) }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="card-body text-secondary">Aucune opération sur {{ month_label }}.</div>
+    {% endif %}
+  </div>
+
+{% endif %}
+{% endblock %}

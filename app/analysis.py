@@ -18,7 +18,7 @@ from fastapi.responses import HTMLResponse
 from . import store
 from .data import load_internal_ids, load_spending_transactions
 from .deps import get_client, get_settings, get_store
-from .enrich import CONSUMPTION_TYPES, merchant_key, resolve_category
+from .enrich import CONSUMPTION_TYPES, resolve_category_txn
 from .helpers import bar_chart, donut_chart, month_key, month_label_fr
 from .recurring import detect_recurring
 from .web import templates
@@ -54,8 +54,8 @@ async def analysis(
     conn: sqlite3.Connection = Depends(get_store),  # noqa: B008
 ):
     # Full history window: needed by the recurring detector (yearly/biennial series).
-    txns = await load_spending_transactions(client, months=settings.history_months)
-    internal = await load_internal_ids(client, months=settings.history_months)
+    txns = await load_spending_transactions(client, months=settings.history_months, conn=conn)
+    internal = await load_internal_ids(client, months=settings.history_months, conn=conn)
     all_spend = [
         t
         for t in txns
@@ -100,7 +100,7 @@ async def analysis(
     overrides = store.all_overrides(conn)
     cat_totals: dict[str, Decimal] = defaultdict(Decimal)
     for t in spend:
-        cat_totals[resolve_category(merchant_key(t), overrides)] += abs(t.value)
+        cat_totals[resolve_category_txn(t, overrides)] += abs(t.value)
     ordered = sorted(cat_totals.items(), key=lambda kv: kv[1], reverse=True)
     top = ordered[:TOP_CATEGORIES]
     if ordered[TOP_CATEGORIES:]:

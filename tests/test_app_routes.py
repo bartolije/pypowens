@@ -14,7 +14,7 @@ def _text(html: str) -> str:
 # ------------------------------------------------------------------- smoke
 
 def test_all_pages_render(client):
-    for path in ("/", "/recurrences", "/abonnements", "/analyse"):
+    for path in ("/", "/recurrences", "/abonnements", "/analyse", "/patrimoine"):
         response = client.get(path)
         assert response.status_code == 200, path
         assert "Powens" in response.text
@@ -24,7 +24,7 @@ def test_all_pages_render(client):
 
 def test_net_worth_excludes_foreign_currency(client):
     """The USD account must not be added to a EUR net worth."""
-    body = _text(client.get("/").text)
+    body = _text(client.get("/patrimoine").text)
     # 2500 + 15000 + 42000 = 59 500 (the 800 USD account is excluded).
     assert "59 500,00 €" in body
     assert "60 300" not in body  # what a naive sum would have produced
@@ -33,7 +33,7 @@ def test_net_worth_excludes_foreign_currency(client):
 
 
 def test_foreign_account_listed_with_its_own_currency(client):
-    body = client.get("/").text
+    body = client.get("/patrimoine").text
     assert "exclus du patrimoine net" in body
     assert "Total USD" in _text(body)
 

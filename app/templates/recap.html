@@ -25,6 +25,14 @@
         <span class="badge bg-secondary-lt">{{ n_accounts }} comptes</span>
         <span class="badge bg-secondary-lt">{{ n_connections }} connexion{{ 's' if n_connections > 1 }}</span>
       </div>
+      {% if total_debt %}
+      {# Stated explicitly: the net figure above already nets the debt out, and a
+         repartition that showed a loan as a positive slice would contradict it. #}
+      <div class="text-secondary small mt-2">
+        actifs <span class="amount">{{ total_assets | money(net_currency) }}</span>
+        · dettes <span class="text-danger">−<span class="amount">{{ total_debt | money(net_currency) }}</span></span>
+      </div>
+      {% endif %}
     </div>
   </div>
 
@@ -43,8 +51,15 @@
     <div class="col-lg-6">
       <div class="card">
         <div class="card-body">
-          <h3 class="card-title">Répartition</h3>
+          <h3 class="card-title">Répartition des actifs</h3>
           {{ donut | safe }}
+          {% if debt_families %}
+          <div class="text-secondary small mt-2">
+            Hors dettes :
+            {% for d in debt_families %}{{ d.name }}
+            <span class="text-danger"><span class="amount">{{ d.subtotal | money(net_currency) }}</span></span>{{ ", " if not loop.last }}{% endfor %}
+          </div>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -189,9 +204,15 @@
             </td>
             <td class="text-end">
               {% if c.id %}
-              <form method="post" action="/synchroniser/{{ c.id }}" class="d-inline">
-                <button type="submit" class="btn btn-sm">Synchroniser</button>
-              </form>
+                {% if c.needs_user %}
+                {# Waiting on the bank's own authentication: only the user can clear
+                   this, so offer the Webview rather than a sync that cannot work. #}
+                <a href="/reconnecter/{{ c.id }}" class="btn btn-sm btn-primary">Reprendre l'authentification</a>
+                {% else %}
+                <form method="post" action="/synchroniser/{{ c.id }}" class="d-inline">
+                  <button type="submit" class="btn btn-sm">Synchroniser</button>
+                </form>
+                {% endif %}
               {% endif %}
             </td>
           </tr>

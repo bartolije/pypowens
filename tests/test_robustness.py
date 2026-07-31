@@ -177,7 +177,7 @@ def test_auth_error_replays_after_successful_renew(client, monkeypatch, fake_cli
     monkeypatch.setattr(app.main, "try_renew", _renew)
     app.data.clear_cache()
 
-    redirect = client.get("/", follow_redirects=False)
+    redirect = client.get("/patrimoine", follow_redirects=False)
     assert redirect.status_code == 303
     assert "_retried=1" in redirect.headers["location"]
 

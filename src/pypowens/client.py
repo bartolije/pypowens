@@ -25,6 +25,7 @@ from .models import (
     AccountsList,
     AuthToken,
     Category,
+    ClientConfig,
     Connection,
     Connector,
     Indicators,
@@ -330,14 +331,28 @@ class PowensClient:
         temporary_code: str,
         *,
         connector_ids: list[int] | None = None,
+        connection_id: int | None = None,
+        flow: str = "connect",
+        lang: str = "en",
         extra: dict[str, str] | None = None,
     ) -> str:
-        """Build a Powens Webview *connect* URL to link a new bank.
+        """Build a Powens Webview URL to link — or repair — a bank connection.
+
+        ``flow`` selects the Webview screen: ``"connect"`` to add a bank, or
+        ``"reconnect"`` with a ``connection_id`` to finish a connection Powens left in
+        ``webauthRequired`` (the bank needs the user to complete its own OAuth). That
+        state cannot be cleared by ``update_connection()`` — only the user can.
 
         Combine with :meth:`get_temporary_code`. The ``redirect_uri`` must be
-        whitelisted in the Powens console. Requires ``client_id``.
+        whitelisted in the Powens console, otherwise the Webview refuses to return.
+        Requires ``client_id``.
 
-        Note: exact Webview parameters can vary by setup — see
+        The ``lang`` path segment is **mandatory**: ``/{lang}/connect`` serves the
+        Webview, while ``/connect`` is answered by CloudFront with a 503 (its viewer
+        function fails to parse the path). Getting this wrong makes the whole connect
+        flow unreachable, with an error that looks like a Powens outage.
+
+        Note: other Webview parameters can vary by setup — see
         https://docs.powens.com/ (Webview).
         """
         if not self.client_id:
@@ -350,9 +365,13 @@ class PowensClient:
         }
         if connector_ids:
             params["connector_ids"] = ",".join(str(i) for i in connector_ids)
+        if connection_id is not None:
+            params["connection_id"] = str(connection_id)
         if extra:
             params.update(extra)
-        return f"https://webview.powens.com/connect?{urlencode(params)}"
+        segment = (lang or "en").strip("/ ") or "en"
+        screen = (flow or "connect").strip("/ ") or "connect"
+        return f"https://webview.powens.com/{segment}/{screen}?{urlencode(params)}"
 
     async def exchange_code(self, code: str) -> AuthToken:
         """Exchange an authorization ``code`` for a permanent token (``/auth/token/access``)."""
@@ -383,6 +402,17 @@ class PowensClient:
     async def get_current_user(self) -> User:
         """Return the user tied to the current token (``GET /users/me``)."""
         return User.from_api(await self._request("GET", "users/me"))
+
+    async def get_client_config(self, client_id: str | int | None = None) -> ClientConfig:
+        """Return this application's own configuration (``GET /clients/{id}``).
+
+        Use it to check a ``redirect_uri`` before handing the user to the Webview:
+        an unlisted one is refused with a message that never says what was expected.
+        """
+        target = client_id or self.client_id
+        if not target:
+            raise PowensConfigError("client_id is required to read the app configuration.")
+        return ClientConfig.from_api(await self._request("GET", f"clients/{target}"))
 
     async def get_indicators(self, user_id: int | str = "me") -> Indicators:
         """Return computed banking indicators (``GET /users/{id}/indicators``).

@@ -50,10 +50,10 @@ async def transactions_page(
     wanted = label.upper().strip()
     months = settings.history_months
     txns = await load_spending_transactions(
-        client, months=months, include_investment=(scope == "all")
+        client, months=months, include_investment=(scope == "all"), conn=conn
     )
-    internal = await load_internal_ids(client, months=months)
-    accounts = await load_accounts(client)
+    internal = await load_internal_ids(client, months=months, conn=conn)
+    accounts = await load_accounts(client, conn=conn)
     account_names = {a.id: (a.name or f"#{a.id}") for a in accounts.accounts}
 
     matched = [t for t in txns if merchant_key(t) == wanted]

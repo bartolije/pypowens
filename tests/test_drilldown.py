@@ -32,7 +32,7 @@ def test_subscriptions_link_to_the_drilldown(client):
 def test_override_changes_the_category_everywhere(client):
     """A manual category must survive and apply to the analysis page."""
     before = _text(client.get("/transactions", params={"label": "NETFLIX.COM"}).text)
-    assert "Streaming / Loisirs" in before
+    assert "Streaming / Médias" in before
 
     posted = client.post(
         "/categorie",
@@ -60,18 +60,18 @@ def test_override_can_be_reset_to_auto(client):
         follow_redirects=False,
     )
     body = _text(client.get("/transactions", params={"label": "NETFLIX.COM"}).text)
-    assert "Streaming / Loisirs" in body
+    assert "Streaming / Médias" in body
     assert "manuel" not in body
 
 
 def test_recap_shows_investment_lines(client):
-    body = _text(client.get("/").text)
+    body = _text(client.get("/patrimoine").text)
     assert "Lignes détenues" in body
     assert "ETF MONDE" in body
 
 
 def test_recap_records_history_and_offers_sync(client):
-    body = client.get("/").text
+    body = client.get("/patrimoine").text
     assert "Évolution du patrimoine" in _text(body)
     assert "/synchroniser/1" in body
 
@@ -79,7 +79,7 @@ def test_recap_records_history_and_offers_sync(client):
 def test_sync_endpoint_redirects(client):
     response = client.post("/synchroniser/1", follow_redirects=False)
     assert response.status_code == 303
-    assert response.headers["location"] == "/?synced=1"
+    assert response.headers["location"] == "/patrimoine?synced=1"
 
 
 # ------------------------------------------------------------------- callback
@@ -102,3 +102,20 @@ def test_callback_error_is_reported_not_swallowed(client):
     assert response.status_code == 400
     assert "Connexion bancaire non aboutie" in response.text
     assert "Identifiants refusés" in response.text
+
+
+def test_callback_without_usable_parameters_is_reported(client):
+    """An empty return used to 422 (typed connection_id) or look like a success."""
+    response = client.get("/callback", follow_redirects=False)
+    assert response.status_code == 400
+    assert "Retour du Webview incomplet" in response.text
+    # The page must name the redirect_uri to whitelist in the Powens console.
+    assert "127.0.0.1:8000/callback" in response.text
+
+
+def test_callback_tolerates_an_empty_connection_id(client):
+    response = client.get(
+        "/callback", params={"connection_id": "", "code": "abc"}, follow_redirects=False
+    )
+    assert response.status_code == 307
+    assert response.headers["location"] == "/patrimoine?connected=1"

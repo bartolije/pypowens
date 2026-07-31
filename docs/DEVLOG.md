@@ -27,6 +27,7 @@ App web locale (FastAPI) par-dessus le wrapper `pypowens`, dans **ce même repo*
 | 8 | Persistance locale (historisation des soldes, overrides de catégorie, alertes) | ✅ |
 | 9 | Robustesse : retries 429/5xx, renouvellement de token, pages d'erreur, cache unifié | ✅ |
 | 10 | Investissements (lignes de titres) + synchronisation manuelle des connexions | ✅ |
+| 12 | Import de relevés CSV (`/import`) + rattachement à un compte du connecteur | ✅ |
 | 11 | Webhooks, budgets par catégorie | ⏳ |
 
 ## Découvertes données RÉELLES (vérifiées en live sur une app sandbox)
@@ -67,6 +68,31 @@ App web locale (FastAPI) par-dessus le wrapper `pypowens`, dans **ce même repo*
 prélèvements récurrents (énergie, télécom, assurances). `type=card` contient aussi
 des abonnements (à détecter par régularité). Fenêtre détecteur : 18-24 mois
 glissants + n'afficher que les abos avec occurrence récente (≤ ~2 périodes).
+
+## Import de relevés, et fusion avec un connecteur
+
+`/import` charge un CSV de relevé pour les comptes qu'aucun connecteur ne remonte :
+les opérations alimentent l'historique, l'analyse et la détection d'abonnements comme
+celles de Powens (ids négatifs, empreinte par ligne, réimport idempotent).
+
+Le jour où un connecteur se met à remonter ce compte, les deux sources se recouvrent.
+Sans rien faire, la période commune est comptée **deux fois** dans les dépenses, et le
+solde apparaît sur deux comptes — donc un « disponible » gonflé du montant du compte.
+
+D'où le **rattachement** (`imported_account.powens_account_id`, posé depuis `/import`) :
+
+- le compte importé cesse d'être un compte — il disparaît de la liste et des totaux,
+  son solde étant désormais celui du compte Powens ;
+- ses opérations sont servies **sous l'id du compte Powens**, sinon l'historique ancien
+  tomberait hors des pages filtrées sur les comptes courants ;
+- elles sont bornées à la **première date remontée par le connecteur** (calculée sur les
+  opérations Powens, pas saisie) : au-delà, c'est un doublon ; en dessous, le relevé
+  reste la seule source et doit être conservé ;
+- les relevés de solde déjà pris pour le compte importé sont effacés, sans quoi la courbe
+  de patrimoine garderait une bosse du montant du doublon.
+
+Rattacher ne modifie aucune opération : c'est la lecture qui borne. Se tromper de compte
+cible se corrige en changeant la cible, et détacher rend son autonomie au compte importé.
 
 ## Endpoints confirmés live
 

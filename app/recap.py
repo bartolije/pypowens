@@ -51,6 +51,31 @@ TYPE_TO_FAMILY = {
 }
 
 
+# Connection states that only the user can clear, by going back through the bank's
+# own authentication in the Webview. Retrying the sync on these is pointless.
+USER_ACTION_STATES = frozenset(
+    {"webauthRequired", "SCARequired", "additionalInformationNeeded", "wrongpass",
+     "actionNeeded", "decoupled", "validating"}
+)
+
+# Readable equivalents of the states Powens reports. Without this the page prints
+# ``error_message`` verbatim, which for a webauth connection is the bank's full
+# authorize URL — unreadable, and it carries the flow's ``state`` token.
+STATE_LABELS = {
+    "webauthRequired": "Authentification à terminer sur le site de la banque",
+    "SCARequired": "Validation forte (SCA) à effectuer",
+    "additionalInformationNeeded": "Information complémentaire demandée par la banque",
+    "decoupled": "Validation à confirmer dans l'application de la banque",
+    "validating": "Validation en cours côté banque",
+    "wrongpass": "Identifiants refusés par la banque",
+    "actionNeeded": "Action requise sur le site de la banque",
+    "passwordExpired": "Mot de passe expiré chez la banque",
+    "websiteUnavailable": "Site de la banque indisponible",
+    "rateLimiting": "Trop de tentatives — banque temporairement bloquante",
+    "bug": "Erreur du connecteur Powens",
+}
+
+
 def _family_of(account_type: str | None) -> str:
     """Map a raw account type to its family label (unknown -> 'Autre')."""
     return TYPE_TO_FAMILY.get(account_type or "", "Autre")
@@ -60,14 +85,14 @@ def _currency_of(account: Account, default: str) -> str:
     return (account.currency or default).upper()
 
 
-@router.get("/", response_class=HTMLResponse)
+@router.get("/patrimoine", response_class=HTMLResponse)
 async def recap(
     request: Request,
     client: PowensClient = Depends(get_client),  # noqa: B008
     settings: Settings = Depends(get_settings),  # noqa: B008
     conn: sqlite3.Connection = Depends(get_store),  # noqa: B008
 ):
-    accounts_list = await load_accounts(client)
+    accounts_list = await load_accounts(client, conn=conn)
     connections = await load_connections(client)
 
     # Net worth can only sum accounts sharing one currency (no FX rates here).
@@ -106,18 +131,26 @@ async def recap(
         if grouped[name]
     ]
 
-    # Donut of the repartition by family (floats for the chart helper).
+    # A repartition can only describe parts of a positive whole, so debt is kept out
+    # of it. Connecting a mortgage otherwise turns a 256 k€ loan into a "25 % share of
+    # your wealth" — the donut helper takes absolute values, and a negative share
+    # renders as a zero-width allocation bar.
+    assets = [fam for fam in families if fam["subtotal"] > 0]
+    debts = [fam for fam in families if fam["subtotal"] < 0]
+    total_assets = sum((fam["subtotal"] for fam in assets), Decimal(0))
+    total_debt = -sum((fam["subtotal"] for fam in debts), Decimal(0))
+
     symbol = currency_symbol(base_currency)
     donut = donut_chart(
-        [(fam["name"], float(fam["subtotal"])) for fam in families],
+        [(fam["name"], float(fam["subtotal"])) for fam in assets],
         unit=symbol,
-        center_top="Total",
-        center_bottom=f"{net / 1000:,.0f} k{symbol}".replace(",", " "),
+        center_top="Actifs",
+        center_bottom=f"{total_assets / 1000:,.0f} k{symbol}".replace(",", " "),
     )
 
-    # Colored allocation bars (share of net worth per family), palette aligned
+    # Colored allocation bars (share of total assets per family), palette aligned
     # with the donut order.
-    total_pct = float(net) or 1.0
+    total_pct = float(total_assets) or 1.0
     allocation = [
         {
             "name": fam["name"],
@@ -125,7 +158,7 @@ async def recap(
             "pct": float(fam["subtotal"]) / total_pct * 100,
             "color": PALETTE[i % len(PALETTE)],
         }
-        for i, fam in enumerate(families)
+        for i, fam in enumerate(assets)
     ]
 
     # Record today's balances, then measure the variation against the last recorded
@@ -171,7 +204,9 @@ async def recap(
     )
     invest_diff = sum((inv.diff or Decimal(0) for inv in investments), Decimal(0))
 
-    # A healthy Powens connection has no state and no error message.
+    # A healthy Powens connection has no state and no error message. States that name
+    # a user action are called out separately: a "Synchroniser" button on those can
+    # never succeed, because the bank is waiting on the user, not on us.
     conns = []
     for connection in connections:
         name = (
@@ -179,11 +214,17 @@ async def recap(
             if connection.connector and connection.connector.name
             else "Banque"
         )
-        message = connection.error_message or connection.state
+        state = connection.state or ""
+        # Never the raw error_message: on a webauth connector it is the bank's whole
+        # authorize URL, ``state`` token included.
+        message = STATE_LABELS.get(state) or state or (
+            "Erreur signalée par la banque" if connection.error_message else ""
+        )
         conns.append(
             {
                 "id": connection.id,
                 "name": name,
+                "state": state,
                 "nb_accounts": len(connection.accounts),
                 "last_update": (
                     connection.last_update.strftime("%d/%m/%Y %H:%M")
@@ -191,6 +232,7 @@ async def recap(
                     else "—"
                 ),
                 "ok": not message,
+                "needs_user": (connection.state or "") in USER_ACTION_STATES,
                 "message": message or "",
             }
         )
@@ -202,6 +244,9 @@ async def recap(
             "request": request,
             "active": "recap",
             "net": net,
+            "total_assets": total_assets,
+            "total_debt": total_debt,
+            "debt_families": debts,
             "net_currency": base_currency,
             "net_diff": net_diff,
             "net_diff_pct": net_diff_pct,

@@ -15,7 +15,7 @@ from __future__ import annotations
 import math
 import sqlite3
 import statistics
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
@@ -26,8 +26,14 @@ from fastapi.responses import HTMLResponse
 from . import store
 from .data import load_internal_ids, load_spending_transactions
 from .deps import get_client, get_settings, get_store
-from .enrich import SUBSCRIPTION_TYPES, categorize, merchant_key, resolve_category
-from .helpers import donut_chart
+from .enrich import (
+    EVERYDAY_CATEGORIES,
+    SUBSCRIPTION_TYPES,
+    categorize,
+    merchant_key,
+    resolve_category,
+)
+from .helpers import donut_chart, sparkline
 from .web import templates
 
 # --------------------------------------------------------------------- model
@@ -50,10 +56,59 @@ class RecurringItem:
     next_date: date | None   # estimated next occurrence (last_date + interval)
     confidence: float        # 0..1
     variable: bool           # True if amount varies a lot (high dispersion)
+    rail: str = "mixte"      # "SEPA" (prélèvement), "carte", or "mixte"
+    spread: float = 0.0      # (max - min) / median amount — 0 when every charge is identical
+    days_since_last: int = 0
+    # Overdue by more than half a period: still listed (the contract may just be
+    # late) but flagged, because a subscription that stopped being debited keeps
+    # inflating the monthly total for as long as it is counted as active.
+    stale: bool = False
+    # Latest charge by this merchant, series or not. Amount clustering splits a
+    # repriced contract in two — a yearly tax going from 1 435 to 2 115 € lands in a
+    # cluster of one and is dropped — which would otherwise make the surviving half
+    # look cancelled. Set by :func:`detect_subscriptions`.
+    merchant_last: tuple[date, Decimal] | None = None
     account_ids: list[int] = field(default_factory=list)
     # Ids of the transactions forming the series: lets callers split real spending
     # into recurring vs one-off exactly, instead of comparing estimates.
     txn_ids: list[int] = field(default_factory=list)
+    # Every occurrence, oldest first: what makes a series *traceable* rather than
+    # just a current amount (price history, and the trend since it started).
+    history: list[tuple[date, Decimal]] = field(default_factory=list)
+    # Presentation-only: inline SVG trend of ``history``, filled in by the router.
+    # Kept here rather than in a side dict because two series can share a merchant
+    # key (same biller, different periodicity) and would collide as dict keys.
+    spark: str = ""
+
+    @property
+    def repriced(self) -> bool:
+        """Dormant series, but the merchant has charged since: a new amount, not a stop."""
+        return bool(self.stale and self.merchant_last and self.merchant_last[0] > self.last_date)
+
+    @property
+    def first_amount(self) -> Decimal:
+        return self.history[0][1] if self.history else self.amount
+
+    @property
+    def last_amount(self) -> Decimal:
+        """The most recent charge — what is actually being paid right now.
+
+        Distinct from :attr:`amount`, which is the median: the median resists a
+        prorated or doubled first instalment, but understates a premium that has
+        been raised, so both are shown.
+        """
+        return self.history[-1][1] if self.history else self.amount
+
+    @property
+    def drift_pct(self) -> float | None:
+        """Change between the first and the last charge, in percent.
+
+        ``None`` when there is nothing to compare (single occurrence, or a series
+        that started at zero).
+        """
+        if len(self.history) < 2 or self.first_amount <= 0:
+            return None
+        return float((self.history[-1][1] - self.first_amount) / self.first_amount * 100)
 
 
 # ------------------------------------------------------------------- tuning
@@ -184,6 +239,14 @@ def _analyze(
     occ_factor = min(occ / 6.0, 1.0)
     confidence = round(0.5 * regularity + 0.3 * amount_stability + 0.2 * occ_factor, 2)
 
+    rails = {t.type for t in txns}
+    if rails == {"order"}:
+        rail = "SEPA"
+    elif rails <= {"card", "deferred_card"}:
+        rail = "carte"
+    else:
+        rail = "mixte"
+
     return RecurringItem(
         merchant=key.title(),
         key=key,
@@ -198,8 +261,13 @@ def _analyze(
         next_date=next_date,
         confidence=confidence,
         variable=variable,
+        rail=rail,
+        spread=float((max(amounts) - min(amounts)) / amount) if amount else 0.0,
+        days_since_last=(today - last_date).days,
+        stale=last_date < today - interval_delta * 3 // 2,
         account_ids=sorted({t.id_account for t in txns if t.id_account is not None}),
         txn_ids=[t.id for t in txns if t.id is not None],
+        history=[(t.date, _q(abs(Decimal(str(t.value))))) for t in txns],
     )
 
 
@@ -263,6 +331,126 @@ def detect_recurring(
     return items
 
 
+# --------------------------------------------------- subscriptions (strict pass)
+
+# A SEPA mandate is itself evidence of a contract, so regularity alone is enough.
+_SEPA_MIN_CONFIDENCE = 0.55
+# ...and past this many debits, regularity stops mattering at all: two contracts with
+# the same biller (a flat and a garage at the same utility) interleave into one
+# irregular-looking series, which is still very much a contract.
+_SEPA_CERTAIN_OCCURRENCES = 6
+# A card charge is not: groceries and fuel produce amount-homogeneous clusters that
+# land in a periodicity bucket by luck. What no coincidence reproduces is the *same*
+# amount every time, so card series must be near-identical to count.
+_CARD_MIN_CONFIDENCE = 0.60
+_CARD_MAX_SPREAD = 0.02
+# A subscription merchant bills essentially nothing but the subscription, so its
+# series covers nearly all of its charges. A shop visited fifteen times, where three
+# purchases happen to land on similar amounts, does not — and that is exactly the
+# false positive identical amounts alone cannot rule out.
+_CARD_MIN_SHARE = 0.6
+# With only two occurrences a year apart, "same amount" can still be chance. A real
+# renewal falls within days of its anniversary; two restaurant visits do not.
+_ANNIVERSARY_TOLERANCE_DAYS = 12
+_LONG_PERIODS = (12.0, 24.0)
+
+
+def is_subscription(item: RecurringItem, *, merchant_charges: int | None = None) -> bool:
+    """Whether a detected series can be asserted to be a subscription or contract.
+
+    :func:`detect_recurring` is deliberately permissive — :mod:`app.analysis` needs
+    every repeating pattern to split recurring from one-off spending. A
+    subscriptions *view* needs the opposite: no false positives, because a list
+    where four lines out of five are supermarket runs cannot be acted on.
+
+    ``merchant_charges`` is how many times this merchant was charged at all. Given,
+    it rules out the series that survive every other test — a few similar purchases
+    at a shop that was also visited a dozen other times.
+    """
+    if item.category in EVERYDAY_CATEGORIES:
+        return False
+    if item.rail == "SEPA":
+        return (
+            item.confidence >= _SEPA_MIN_CONFIDENCE
+            or item.occurrences >= _SEPA_CERTAIN_OCCURRENCES
+        )
+    if item.confidence < _CARD_MIN_CONFIDENCE or item.spread > _CARD_MAX_SPREAD:
+        return False
+    if merchant_charges and item.occurrences / merchant_charges < _CARD_MIN_SHARE:
+        return False
+    if item.occurrences == 2 and item.period_months in _LONG_PERIODS:
+        expected = item.period_months * 365.25 / 12
+        actual = (item.last_date - item.first_date).days
+        return abs(actual - expected) <= _ANNIVERSARY_TOLERANCE_DAYS
+    return True
+
+
+def detect_subscriptions(
+    transactions: list,
+    *,
+    today: date | None = None,
+    internal_ids: set[int] | None = None,
+    overrides: dict[str, str] | None = None,
+) -> list[RecurringItem]:
+    """Detected series restricted to actual subscriptions and contracts.
+
+    Categories are resolved (so manual overrides count towards the everyday-spending
+    exclusion) before filtering with :func:`is_subscription`.
+    """
+    allowed = SUBSCRIPTION_TYPES | {"bank", "fee"}
+    items = detect_recurring(
+        transactions,
+        today=today,
+        internal_ids=internal_ids,
+        kind="debit",
+        allowed_types=allowed,
+    )
+    # Counted over the same population the detector saw, so a series can never look
+    # like it covers more of its merchant's charges than it does.
+    excluded = internal_ids or set()
+    eligible = [
+        t
+        for t in transactions
+        if t.type in allowed
+        and t.value is not None
+        and t.value < 0
+        and t.date is not None
+        and t.id not in excluded
+    ]
+    charges = Counter(merchant_key(t) for t in eligible)
+    last_charge: dict[str, tuple[date, Decimal]] = {}
+    for t in eligible:
+        key = merchant_key(t)
+        seen = last_charge.get(key)
+        if seen is None or t.date > seen[0]:
+            last_charge[key] = (t.date, _q(abs(Decimal(str(t.value)))))
+
+    for item in items:
+        item.category = resolve_category(item.key, overrides)
+        item.merchant_last = last_charge.get(item.key)
+    kept = [item for item in items if is_subscription(item, merchant_charges=charges[item.key])]
+    return _drop_fragments(kept)
+
+
+# Amount clustering splits a variable-amount mandate (a toll account, a usage-based
+# bill) into several thin series. Each looks credible on its own — with only two dates
+# the interval variance is zero, so the confidence score peaks — and one contract ends
+# up listed four times. A genuine second contract with the same biller (two energy
+# meters) shows up as another *long* series, so only the two-point offcuts are dropped.
+_FRAGMENT_OCCURRENCES = 2
+
+
+def _drop_fragments(items: list[RecurringItem]) -> list[RecurringItem]:
+    longest: dict[str, int] = {}
+    for item in items:
+        longest[item.key] = max(longest.get(item.key, 0), item.occurrences)
+    return [
+        item
+        for item in items
+        if item.occurrences > _FRAGMENT_OCCURRENCES or longest[item.key] == item.occurrences
+    ]
+
+
 # ------------------------------------------------------------------- router
 
 router = APIRouter()
@@ -285,6 +473,7 @@ async def recurring_page(
     conn: sqlite3.Connection = Depends(get_store),  # noqa: B008
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
+    tout: int = Query(default=0, description="1 = show every repeating series, not just contracts"),
 ):
     d_from = _parse_date(date_from)
     d_to = _parse_date(date_to)
@@ -294,20 +483,26 @@ async def recurring_page(
     else:
         months = settings.history_months
 
-    txns = await load_spending_transactions(client, months=months)
-    internal = await load_internal_ids(client, months=months)
+    txns = await load_spending_transactions(client, months=months, conn=conn)
+    internal = await load_internal_ids(client, months=months, conn=conn)
     if d_from or d_to:
         txns = [
             t for t in txns
             if t.date and (not d_from or t.date >= d_from) and (not d_to or t.date <= d_to)
         ]
-    items = detect_recurring(txns, internal_ids=internal, allowed_types=SUBSCRIPTION_TYPES)
 
-    # Apply stored manual categories, then diff against the previously known state
-    # to surface what is new or got more expensive since the last visit.
+    # Apply stored manual categories before filtering: an override can move a series
+    # in or out of the everyday-spending exclusion.
     overrides = store.all_overrides(conn)
-    for it in items:
-        it.category = resolve_category(it.key, overrides)
+    if tout:
+        items = detect_recurring(txns, internal_ids=internal, allowed_types=SUBSCRIPTION_TYPES)
+        for it in items:
+            it.category = resolve_category(it.key, overrides)
+    else:
+        items = detect_subscriptions(txns, internal_ids=internal, overrides=overrides)
+
+    # Diff against the previously known state to surface what is new or got more
+    # expensive since the last visit.
     changes = store.sync_series(conn, items)
     alerts = [
         {
@@ -321,27 +516,36 @@ async def recurring_page(
         or changes[store.series_key(it)]["increase_pct"]
     ]
     flags = {it.key: changes[store.series_key(it)] for it in items}
-
-    total_monthly = sum((it.monthly_equiv for it in items), Decimal("0"))
-    total_annual = total_monthly * 12
-
-    by_category: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
-    by_category_count: dict[str, int] = defaultdict(int)
     for it in items:
-        by_category[it.category] += it.monthly_equiv
-        by_category_count[it.category] += 1
-    ordered_cats = sorted(by_category.items(), key=lambda kv: kv[1], reverse=True)
-    donut = donut_chart([(cat, float(v)) for cat, v in ordered_cats])
-    cat_rows = [
-        {
-            "name": cat,
-            "count": by_category_count[cat],
-            "monthly": v,
-            "annual": v * 12,
-            "pct": float(v / total_monthly * 100) if total_monthly else 0.0,
-        }
-        for cat, v in ordered_cats
-    ]
+        it.spark = sparkline([float(a) for _, a in it.history])
+
+    active = [it for it in items if not it.stale]
+    total_monthly = sum((it.monthly_equiv for it in active), Decimal("0"))
+    stale_monthly = sum((it.monthly_equiv for it in items if it.stale), Decimal("0"))
+
+    # Grouped by expense type: the unit of decision when trimming subscriptions is
+    # the category ("what do I pay for energy?"), not the individual line.
+    grouped: dict[str, list[RecurringItem]] = defaultdict(list)
+    for it in items:
+        grouped[it.category].append(it)
+    groups = sorted(
+        (
+            {
+                "name": name,
+                "items": sorted(rows, key=lambda i: (i.stale, -float(i.monthly_equiv))),
+                "monthly": sum((i.monthly_equiv for i in rows if not i.stale), Decimal("0")),
+                "count": sum(1 for i in rows if not i.stale),
+                "stale_count": sum(1 for i in rows if i.stale),
+            }
+            for name, rows in grouped.items()
+        ),
+        key=lambda g: g["monthly"],
+        reverse=True,
+    )
+    for group in groups:
+        group["annual"] = group["monthly"] * 12
+        group["pct"] = float(group["monthly"] / total_monthly * 100) if total_monthly else 0.0
+    donut = donut_chart([(g["name"], float(g["monthly"])) for g in groups if g["monthly"]])
 
     period_from = d_from or (date.today() - timedelta(days=int(settings.history_months * 30.5)))
     period_to = d_to or date.today()
@@ -353,16 +557,19 @@ async def recurring_page(
             "request": request,
             "active": "recurring",
             "items": items,
+            "groups": groups,
             "alerts": alerts,
             "flags": flags,
             "total_monthly": total_monthly,
-            "total_annual": total_annual,
-            "count": len(items),
+            "total_annual": total_monthly * 12,
+            "stale_monthly": stale_monthly,
+            "count": len(active),
+            "stale_count": len(items) - len(active),
             "donut": donut,
-            "cat_rows": cat_rows,
             "period_from": period_from,
             "period_to": period_to,
             "date_from": date_from or "",
             "date_to": date_to or "",
+            "tout": tout,
         },
     )

@@ -73,6 +73,20 @@ def month_label_fr(key: str) -> str:
         return key
 
 
+# Les noms de jours sont écrits ici plutôt que laissés à ``strftime("%A")`` : celui-ci
+# suit la locale du processus, qui vaut « C » sur un serveur lancé sans environnement —
+# d'où des « Friday » dans une interface française. Un ``setlocale`` global serait à la
+# fois plus fragile (dépend des locales installées) et pas thread-safe.
+_DAYS_FR = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+
+
+def day_label_fr(d: date | None) -> str:
+    """``"mardi 31/03"`` — le jour de la semaine, en français, quelle que soit la locale."""
+    if d is None:
+        return "—"
+    return f"{_DAYS_FR[d.weekday()]} {d.strftime('%d/%m')}"
+
+
 def _e(s: object) -> str:
     return html.escape(str(s))
 
@@ -173,6 +187,40 @@ def line_chart(
         f'<polyline points="{line}" fill="none" stroke="{color}" stroke-width="2" '
         f'stroke-linejoin="round" stroke-linecap="round"/>'
         f"{dots}{ticks}</svg>"
+    )
+
+
+def sparkline(
+    values: list[float],
+    *,
+    width: int = 84,
+    height: int = 22,
+    color: str = "#635bff",
+) -> str:
+    """Tiny inline trend line, for a table cell. Empty string below two points.
+
+    Deliberately unlabelled: it answers "is this going up?" at a glance, while the
+    figures themselves live in the surrounding columns (and stay maskable there).
+    """
+    points = [float(v) for v in values]
+    if len(points) < 2:
+        return ""
+    lo, hi = min(points), max(points)
+    span = (hi - lo) or (abs(hi) or 1)
+    step = width / (len(points) - 1)
+    coords = " ".join(
+        f"{i * step:.1f},{height - 3 - (v - lo) / span * (height - 6):.1f}"
+        for i, v in enumerate(points)
+    )
+    last_x = width
+    last_y = height - 3 - (points[-1] - lo) / span * (height - 6)
+    flat = hi == lo
+    return (
+        f'<svg viewBox="0 0 {width + 3} {height}" width="{width + 3}" height="{height}" '
+        f'class="spark" aria-hidden="true">'
+        f'<polyline points="{coords}" fill="none" stroke="{color}" stroke-width="1.5" '
+        f'stroke-linejoin="round" stroke-linecap="round" opacity="{0.35 if flat else 1}"/>'
+        f'<circle cx="{last_x:.1f}" cy="{last_y:.1f}" r="2" fill="{color}"/></svg>'
     )
 
 

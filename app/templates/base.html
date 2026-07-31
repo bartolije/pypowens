@@ -9,7 +9,10 @@
   <link rel="stylesheet" href="/static/vendor/tabler.min.css">
   <link rel="stylesheet" href="/static/style.css">
   <script>
-    if (localStorage.getItem("pf-hide") === "1") {
+    // Masked by default: this app is meant to be readable at a desk, so amounts
+    // stay blurred until explicitly revealed. Only an opt-out is persisted, and it
+    // is applied here — before first paint — so no figure ever flashes on screen.
+    if (localStorage.getItem("pf-hide") !== "0") {
       document.documentElement.classList.add("hide-amounts");
     }
   </script>
@@ -19,11 +22,15 @@
     <header class="navbar navbar-expand-md sticky-top d-print-none">
       <div class="container-xl d-flex align-items-center gap-3">
         <a href="/" class="navbar-brand m-0 fw-bold">💰 Powens&nbsp;Finance</a>
+        {# Patrimoine sits last on purpose: the daily view is cash flow, and net
+           worth should never be the page that opens by default. #}
         <ul class="navbar-nav flex-row gap-1 d-none d-md-flex">
-          <li class="nav-item"><a class="nav-link {{ 'active' if active == 'recap' }}" href="/">Récap</a></li>
-          <li class="nav-item"><a class="nav-link {{ 'active' if active == 'frequency' }}" href="/recurrences">Récurrences</a></li>
+          <li class="nav-item"><a class="nav-link {{ 'active' if active == 'accounts' }}" href="/">Comptes</a></li>
           <li class="nav-item"><a class="nav-link {{ 'active' if active == 'recurring' }}" href="/abonnements">Abonnements</a></li>
+          <li class="nav-item"><a class="nav-link {{ 'active' if active == 'frequency' }}" href="/recurrences">Récurrences</a></li>
           <li class="nav-item"><a class="nav-link {{ 'active' if active == 'analysis' }}" href="/analyse">Analyse</a></li>
+          <li class="nav-item"><a class="nav-link {{ 'active' if active == 'recap' }}" href="/patrimoine">Patrimoine</a></li>
+          <li class="nav-item"><a class="nav-link {{ 'active' if active == 'import' }}" href="/import">Import</a></li>
         </ul>
         <div class="ms-auto d-flex align-items-center gap-2">
           <button id="mask-toggle" class="btn btn-sm">👁 Montants</button>

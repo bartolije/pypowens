@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from pypowens import PowensAPIError, PowensAuthError, PowensClient, PowensRateLimitError
 
-from . import analysis, frequency, recap, recurring, store, transactions
+from . import accounts, analysis, frequency, imports, recap, recurring, store, transactions
 from .config import Settings, get_settings
 from .data import clear_cache
 from .deps import get_client
@@ -45,11 +45,13 @@ app.mount(
     name="static",
 )
 
+app.include_router(accounts.router)
 app.include_router(recap.router)
 app.include_router(frequency.router)
 app.include_router(recurring.router)
 app.include_router(analysis.router)
 app.include_router(transactions.router)
+app.include_router(imports.router)
 
 
 # --------------------------------------------------------------- error handling
@@ -137,14 +139,94 @@ async def powens_api_error(request: Request, exc: PowensAPIError) -> HTMLRespons
 # ------------------------------------------------------------------ connect flow
 
 
-@app.get("/connect")
+@app.get("/connect", response_model=None)
 async def connect(
+    request: Request,
     client: PowensClient = Depends(get_client),
     settings: Settings = Depends(settings_dep),
-) -> RedirectResponse:
-    """Start the Powens Webview connect flow to link a new bank."""
+    connector_id: int | None = None,
+) -> Response:
+    """Start the Powens Webview connect flow to link a new bank.
+
+    Without ``connector_id`` the Webview shows the full bank list. With it, it opens
+    straight on that connector — the way to add a second bank whose name is already
+    known (``/connect?connector_id=2663``).
+
+    The app's ``redirect_uri`` is checked against the whitelist first. Powens refuses
+    an unlisted one with "the parameter must match the constraints defined in the
+    administration console" and never says what it expected, so the check is the
+    difference between a dead end and a page naming the value to add. It fails open:
+    if the configuration cannot be read, the flow proceeds rather than being blocked
+    by its own diagnostic.
+    """
+    refused = await _redirect_uri_check(request, client, settings)
+    if refused is not None:
+        return refused
+
     code = await client.get_temporary_code()
-    url = client.build_webview_url(settings.redirect_uri, code["code"])
+    url = client.build_webview_url(
+        settings.redirect_uri,
+        code["code"],
+        connector_ids=[connector_id] if connector_id else None,
+        lang="fr",
+    )
+    return RedirectResponse(url)
+
+
+async def _redirect_uri_check(
+    request: Request, client: PowensClient, settings: Settings
+) -> HTMLResponse | None:
+    """Return an error page when the callback URL is not whitelisted, else ``None``."""
+    try:
+        config = await client.get_client_config()
+    except (PowensAPIError, OSError):
+        return None
+    if config.allows(settings.redirect_uri):
+        return None
+    listed = ", ".join(config.redirect_uris) or "(aucune)"
+    return _error_page(
+        request,
+        status_code=409,
+        title="redirect_uri non autorisé",
+        detail=(
+            "Powens refusera le retour du Webview : l'URL de callback de cette app "
+            "n'est pas déclarée dans la console."
+        ),
+        hints=[
+            f"Ajouter {settings.redirect_uri} dans la console Powens "
+            "(Configuration → Webview → redirect URIs).",
+            f"URI actuellement déclarée(s) : {listed}",
+            "Ou lancer l'app sur l'hôte/port déjà déclaré via APP_HOST / APP_PORT.",
+        ],
+        technical=f"client_id={client.client_id} · attendu={settings.redirect_uri}",
+    )
+
+
+@app.get("/reconnecter/{connection_id}", response_model=None)
+async def reconnect(
+    request: Request,
+    connection_id: int,
+    client: PowensClient = Depends(get_client),
+    settings: Settings = Depends(settings_dep),
+) -> Response:
+    """Send the user back through the Webview to repair one connection.
+
+    A connection left in ``webauthRequired`` is waiting on the *user* to complete the
+    bank's own authentication; no amount of ``update_connection()`` clears it, so the
+    "Synchroniser" button on such a connection can only ever look broken.
+    """
+    refused = await _redirect_uri_check(request, client, settings)
+    if refused is not None:
+        return refused
+
+    code = await client.get_temporary_code()
+    url = client.build_webview_url(
+        settings.redirect_uri,
+        code["code"],
+        connection_id=connection_id,
+        flow="reconnect",
+        lang="fr",
+    )
     return RedirectResponse(url)
 
 
@@ -152,36 +234,61 @@ async def connect(
 async def callback(
     request: Request,
     client: PowensClient = Depends(get_client),
-    connection_id: int | None = None,
-    code: str | None = None,
-    error: str | None = None,
-    error_description: str | None = None,
 ) -> Response:
     """Return point of the Webview.
 
-    Powens can come back three ways: success (often with ``connection_id``), with an
-    ``authorization code`` to exchange, or with an ``error``. Previously all three
-    landed on the same silent redirect, so a failed connection looked successful.
+    Every parameter is read straight off the query string rather than declared as a
+    typed argument: Powens varies what it sends by setup and by outcome, and a
+    declared ``connection_id: int`` turns an empty ``?connection_id=`` into a 422
+    validation error — which reads as "the redirect is broken" with nothing to go on.
+    Anything unrecognised is shown on a diagnostic page instead of being swallowed.
     """
+    params = dict(request.query_params)
+    error = params.get("error") or params.get("error_code")
+    code = params.get("code")
+    raw_id = (params.get("connection_id") or params.get("id_connection") or "").strip()
+    connection_id = int(raw_id) if raw_id.isdigit() else None
+    reported = ", ".join(f"{k}={v}" for k, v in params.items() if k != "code") or "(aucun)"
+
     if error:
         return _error_page(
             request,
             status_code=400,
             title="Connexion bancaire non aboutie",
-            detail=error_description or "Le Webview Powens a renvoyé une erreur.",
+            detail=params.get("error_description")
+            or params.get("error_message")
+            or "Le Webview Powens a renvoyé une erreur.",
             hints=[
                 "Reprendre depuis « + Banque » pour relancer le parcours.",
                 "Un abandon dans le parcours bancaire produit aussi cette page.",
+                f"Le redirect_uri attendu par la console Powens est "
+                f"{request.app.state.settings.redirect_uri}",
             ],
-            technical=error,
+            technical=f"{error} · paramètres reçus : {reported}",
         )
 
     if code:
         # Some setups hand back an authorization code to swap for a permanent token.
         await client.exchange_code(code)
+    elif connection_id is None:
+        # Neither a code, nor an id, nor an error: the Webview came back with nothing
+        # usable. Say so, with what it did send, rather than claiming success.
+        return _error_page(
+            request,
+            status_code=400,
+            title="Retour du Webview incomplet",
+            detail="Powens est revenu sans identifiant de connexion ni code à échanger.",
+            hints=[
+                f"Vérifier que {request.app.state.settings.redirect_uri} est bien "
+                "whitelisté dans la console Powens (Webview → redirect URIs).",
+                "Vérifier sur /patrimoine si la connexion a malgré tout été créée.",
+            ],
+            technical=f"paramètres reçus : {reported}",
+        )
 
     clear_cache()
-    target = "/?connected=1"
+    # Back to /patrimoine: that is where connections and their sync state are shown.
+    target = "/patrimoine?connected=1"
     if connection_id is not None:
         target += f"&connection_id={connection_id}"
     return RedirectResponse(target)
@@ -195,4 +302,4 @@ async def synchronize(
     """Ask Powens to refresh a connection now, then reload the recap."""
     await client.update_connection(connection_id)
     clear_cache()
-    return RedirectResponse("/?synced=1", status_code=303)
+    return RedirectResponse("/patrimoine?synced=1", status_code=303)

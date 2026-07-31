@@ -14,12 +14,15 @@ from decimal import Decimal
 import pytest
 
 from app.enrich import (
+    EVERYDAY_CATEGORIES,
+    all_categories,
     categorize,
     clean_wording,
     internal_transfer_ids,
     load_local_rules,
     merchant_key,
     resolve_category,
+    resolve_category_txn,
 )
 
 
@@ -46,6 +49,7 @@ class Txn:
         ("ASSUREUR CONTRAT 12345678", "ASSUREUR"),         # reference cut
         ("OPERATEUR RUM ABC-99", "OPERATEUR"),             # RUM and rest cut
         ("SOCIETE Numero de client : 4455", "SOCIETE"),    # "Numero ..." cut
+        ("REFECTOIRE DU COIN", "REFECTOIRE DU COIN"),      # not a reference keyword
     ],
 )
 def test_clean_wording_strips_noise(raw, expected):
@@ -63,6 +67,18 @@ def test_merchant_key_is_stable_across_wording_variants():
     a = Txn(wording="FOURNISSEUR ENERGIE Numero de client : 111", simplified_wording=None)
     b = Txn(wording="FOURNISSEUR ENERGIE Numero de client : 999", simplified_wording=None)
     assert merchant_key(a) == merchant_key(b) == "FOURNISSEUR ENERGIE"
+
+
+def test_merchant_key_survives_a_reference_glued_to_the_keyword():
+    """Same insurer, two statement formats: it must stay one merchant.
+
+    Banks write "CONTRAT0000021673190104" with no separator, which a plain word
+    boundary never cuts — the premium history then splits across two keys and the
+    current amount stops being the one displayed.
+    """
+    plain = Txn(simplified_wording="ASSUREUR")
+    referenced = Txn(simplified_wording="ASSUREUR I0000972468700-CONTRAT0000021673190104 35X")
+    assert merchant_key(plain) == merchant_key(referenced) == "ASSUREUR"
 
 
 def test_merchant_key_caps_token_count():
@@ -84,7 +100,7 @@ def test_merchant_key_never_empty():
 
 def test_categorize_first_matching_rule_wins():
     assert categorize("CARREFOUR CITY") == "Alimentation"
-    assert categorize("NETFLIX.COM") == "Streaming / Loisirs"
+    assert categorize("NETFLIX.COM") == "Streaming / Médias"
     assert categorize("QUELQUE CHOSE D INCONNU") == "Autre"
 
 
@@ -111,9 +127,75 @@ def test_local_rules_missing_or_broken_file_is_ignored(tmp_path):
 
 
 def test_resolve_category_uses_override_then_rules():
-    assert resolve_category("NETFLIX.COM") == "Streaming / Loisirs"
+    assert resolve_category("NETFLIX.COM") == "Streaming / Médias"
     assert resolve_category("NETFLIX.COM", {"NETFLIX.COM": "Sport"}) == "Sport"
-    assert resolve_category("NETFLIX.COM", {"AUTRE": "Sport"}) == "Streaming / Loisirs"
+    assert resolve_category("NETFLIX.COM", {"AUTRE": "Sport"}) == "Streaming / Médias"
+
+
+# ------------------------------------------------- expense-type taxonomy
+
+def test_utility_wins_over_the_fuel_station_of_the_same_brand():
+    """Rule order is load-bearing: TotalEnergies is energy, "TOTAL" is a pump."""
+    assert categorize("TOTALENERGIES ELECTRICITE") == "Énergie / Eau"
+    assert categorize("TOTAL RELAIS") == "Carburant"
+
+
+def test_supermarket_fuel_pumps_are_fuel_not_groceries():
+    """"DAC" marks a supermarket fuel dispenser on French statements."""
+    assert categorize("DAC AUCHAN CARBU") == "Carburant"
+    assert categorize("CARREFOUR DAC VL") == "Carburant"
+    assert categorize("CARREFOUR CITY") == "Alimentation"
+
+
+def test_amazon_prime_is_media_while_a_parcel_is_shopping():
+    assert categorize("AMAZON PRIME FR") == "Streaming / Médias"
+    assert categorize("AMZN MKTP FR") == "Shopping / Équipement"
+
+
+def test_vehicles_are_split_between_auto_and_moto():
+    assert categorize("GEORIDE") == "Moto"
+    assert categorize("AUTOROUTES DU SUD") == "Auto"
+
+
+def test_bank_fees_have_their_own_type():
+    assert categorize("FRAIS OFFRE METAL") == "Frais bancaires"
+
+
+def test_taxes_match_on_the_truncated_merchant_key():
+    """Keywords are matched against a 3-token merchant key, not the full wording."""
+    key = merchant_key(
+        Txn(simplified_wording="DIRECTION GENERALE DES FINANCES PUBLIQUES 1234567")
+    )
+    assert categorize(key) == "Impôts & taxes"
+
+
+def test_withdrawals_are_categorized_from_their_type():
+    """A cash withdrawal is labelled with the dispenser's address, never "retrait"."""
+    txn = Txn(simplified_wording="VILLE QUARTIER 00123", type="withdrawal")
+    assert resolve_category_txn(txn) == "Retrait espèces"
+
+
+def test_an_override_still_wins_over_the_transaction_type():
+    txn = Txn(simplified_wording="VILLE QUARTIER 00123", type="withdrawal")
+    assert resolve_category_txn(txn, {"VILLE QUARTIER": "Loyer"}) == "Loyer"
+
+
+def test_type_only_fills_in_what_the_wording_could_not():
+    known = Txn(simplified_wording="NETFLIX.COM", type="fee")
+    assert resolve_category_txn(known) == "Streaming / Médias"
+    unknown = Txn(simplified_wording="XY9931", type="fee")
+    assert resolve_category_txn(unknown) == "Frais bancaires"
+
+
+def test_every_offered_category_is_unique_and_includes_the_type_ones():
+    labels = all_categories()
+    assert len(labels) == len(set(labels))
+    assert "Retrait espèces" in labels
+    assert labels[-1] == "Autre"
+
+
+def test_everyday_categories_exist_in_the_taxonomy():
+    assert EVERYDAY_CATEGORIES <= set(all_categories())
 
 
 # -------------------------------------------------------- internal transfers

@@ -15,6 +15,7 @@ from .models import (
     AccountsList,
     AuthToken,
     Category,
+    ClientConfig,
     Connection,
     Connector,
     Indicators,
@@ -41,6 +42,7 @@ __all__ = [
     "Transaction",
     "Investment",
     "Category",
+    "ClientConfig",
     "Indicators",
     "__version__",
 ]

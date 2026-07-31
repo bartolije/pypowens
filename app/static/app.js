@@ -14,6 +14,13 @@ function setTooltips(hidden) {
       node.textContent = node.dataset.text;
     }
   });
+  // A native `title` attribute cannot be blurred by CSS, so a tooltip quoting an
+  // amount would hand back on hover exactly what the mask hides. Those live in
+  // `data-amount-title` and only become real tooltips once amounts are revealed.
+  document.querySelectorAll("[data-amount-title]").forEach((node) => {
+    if (hidden) node.removeAttribute("title");
+    else node.setAttribute("title", node.dataset.amountTitle);
+  });
 }
 
 function initMask() {

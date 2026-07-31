@@ -154,9 +154,9 @@ async def recurrences(
     else:
         months = settings.history_months
     txns = await load_spending_transactions(
-        client, months=months, include_investment=(scope == "all")
+        client, months=months, include_investment=(scope == "all"), conn=conn
     )
-    internal = await load_internal_ids(client, months=months)
+    internal = await load_internal_ids(client, months=months, conn=conn)
 
     groups = group_by_label(
         txns,

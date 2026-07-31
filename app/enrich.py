@@ -32,19 +32,31 @@ CONSUMPTION_TYPES = frozenset(
     {"card", "deferred_card", "order", "withdrawal", "bank", "fee", "payment", "check"}
 )
 # Rails used by real subscriptions / recurring bills (prélèvement auto + carte).
-SUBSCRIPTION_TYPES = frozenset({"order", "card", "deferred_card"})
+# ``loan_repayment`` belongs here: a mortgage instalment is a fixed contractual
+# monthly commitment, which is exactly what the subscriptions view exists to total —
+# and usually the largest line on it.
+SUBSCRIPTION_TYPES = frozenset({"order", "card", "deferred_card", "loan_repayment"})
 
 
 # --------------------------------------------------------------- merchant key
 
 _CB_SUFFIX = re.compile(r"\s+CB\*.*$", re.IGNORECASE)
+# ``CARTE 22/07 MARCHAND`` is how statement exports label a card payment (Powens
+# strips it, a CSV export does not). The date must go with the prefix: left in, the
+# merchant key becomes "CARTE 22 07" and every card payment of the same day groups
+# together instead of by merchant.
 _LEADING_PREFIX = re.compile(
-    r"^(PRLV SEPA|PRLV|VIR SEPA|VIR INST|VIR|PAIEMENT|PAYPAL\s*\*?|CB|ACHAT)\s+",
+    r"^(CARTE\s+\d{2}[/\-.]\d{2}|CARTE|PRLV SEPA|PRLV|VIR SEPA|VIR INST|VIR|VERS|"
+    r"ECH|RET DAB|RETRAIT|PAIEMENT|PAYPAL\s*\*?|CB|ACHAT)\s+",
     re.IGNORECASE,
 )
+# The trailing ``(?:\b|(?=\d))`` matters: banks glue the reference straight onto the
+# keyword ("CONTRAT0000021673190104"), where a plain ``\b`` never matches — the same
+# insurer then yields two merchant keys and its premium history splits in half.
+# Requiring a digit (rather than dropping the boundary) keeps "REFECTOIRE" intact.
 _NOISE_CUT = re.compile(
     r"\b(RUM|R[EÉ]F|REF|CONTRAT|CONTRACT|MANDAT|MDT|NUM[EÉ]RO|NUMERO|"
-    r"FACT|ECH|ID EMETTEUR|ICS)\b.*",
+    r"FACT|ECH|ID EMETTEUR|ICS)(?:\b|(?=\d)).*",
     re.IGNORECASE,
 )
 _LONG_DIGITS = re.compile(r"\d{4,}")
@@ -112,36 +124,76 @@ def load_local_rules(path: Path | None = None) -> list[tuple[str, tuple[str, ...
 
 
 # Ordered: first matching rule wins. Keywords matched against the cleaned wording.
+#
+# Order is load-bearing, not cosmetic. Two rules deliberately rely on it:
+# ``TOTALENERGIES`` (Énergie) must be tested before the bare ``TOTAL`` of a fuel
+# station, and ``AMAZON PRIME`` (Médias) before the bare ``AMAZON`` of a parcel.
+# Moving a block up or down silently reclassifies spending.
 CATEGORY_RULES: list[tuple[str, tuple[str, ...]]] = [
-    ("Télécom / Internet", ("BOUYGUES", "SFR", "ORANGE", "SOSH", "FREE", "RED BY", "BYTEL",
-                            "B&YOU")),
-    ("Énergie / Eau", ("EDF", "ENGIE", "TOTALENERGIES", "TOTAL ENERGIES", "ENI", "EKWATEUR",
-                       "VEOLIA", "SUEZ", "GRDF", "SAUR")),
+    # Keywords are matched against the *merchant key*, which keeps only the first
+    # few tokens — so they must stay short enough to survive that truncation
+    # ("DIRECTION GENERALE", not "DIRECTION GENERALE DES FINANCES PUBLIQUES").
+    ("Impôts & taxes", ("DGFIP", "DIRECTION GENERALE", "IMPOT", "TRESOR PUBLIC",
+                        "URSSAF", "TAXE", "FINANCES PUBLIQUES")),
+    ("Frais bancaires", ("OFFRE METAL", "COTISATION", "AGIOS", "FRAIS DE GESTION", "FRAIS DE TENUE",
+                         "FRAIS BANC", "COMMISSION D", "DROITS DE GARDE")),
     ("Assurance / Mutuelle", ("AXA", "MAIF", "MACIF", "MATMUT", "GMF", "APRIL", "ASSURANCE",
                               "MUTUELLE", "ALLIANZ", "GENERALI", "MAAF", "GROUPAMA",
-                              "SWISSLIFE", "PREVOYANCE", "ASSUR")),
-    ("Streaming / Loisirs", ("NETFLIX", "SPOTIFY", "DEEZER", "DISNEY", "PRIME VIDEO",
-                             "AMAZON PRIME", "CANAL", "YOUTUBE", "APPLE.COM", "ITUNES",
-                             "PLAYSTATION", "XBOX", "STEAM", "MOLOTOV", "OCS", "AUDIBLE")),
-    ("Logiciel / Abonnement", ("OPENAI", "ANTHROPIC", "GITHUB", "NOTION", "ADOBE", "MICROSOFT",
-                               "DROPBOX", "ICLOUD", "OVH", "AWS", "GOOGLE", "LINKEDIN", "FIGMA",
-                               "SLACK", "ZOOM")),
-    ("Sport", ("BASIC FIT", "BASICFIT", "FITNESS", "NEONESS", "KEEPCOOL", "ONAIR", "SALLE DE SPORT",
-               "DECATHLON")),
+                              "SWISSLIFE", "PREVOYANCE", "ASSUR", "ORADEA", "HENNER")),
+    ("Énergie / Eau", ("EDF", "ENGIE", "TOTALENERGIES", "TOTAL ENERGIES", "ENI", "EKWATEUR",
+                       "ENEDIS", "VEOLIA", "SUEZ", "GRDF", "SAUR", "PRIMAGAZ")),
+    ("Télécom / Internet", ("BOUYGUES", "SFR", "ORANGE", "SOSH", "FREE", "RED BY", "BYTEL",
+                            "B&YOU", "PRIXTEL", "LYCAMOBILE")),
+    ("Streaming / Médias", ("NETFLIX", "SPOTIFY", "DEEZER", "DISNEY", "PRIME VIDEO",
+                            "AMAZON PRIME", "CANAL", "YOUTUBE", "MOLOTOV", "OCS", "AUDIBLE",
+                            "PLAYSTATION", "XBOX", "STEAM", "INSTANT GAMING")),
+    ("Logiciel / Cloud", ("OPENAI", "CHATGPT", "ANTHROPIC", "CLAUDE", "GITHUB", "NOTION", "ADOBE",
+                          "MICROSOFT", "DROPBOX", "ICLOUD", "APPLE.COM", "ITUNES", "OVH", "AWS",
+                          "GOOGLE", "LINKEDIN", "FIGMA", "SLACK", "ZOOM", "PROTON", "HOSTING",
+                          "INSTANT INK", "HPI")),
+    # After Énergie: a bare "TOTAL" here is a fuel station, TotalEnergies matched above.
+    # "DAC" is how French statements mark a supermarket fuel pump (distributeur
+    # automatique de carburant) — those rows are fuel, not groceries.
+    ("Carburant", ("CARBU", "DAC AUCHAN", "AUCHAN DAC", "CARREFOUR DAC", "LECLERC DAC", "DAC ",
+                   "STATION", "ESSO", "SHELL", "AVIA", "AGIP", "BP ", "TOTAL")),
+    ("Moto", ("GEORIDE", "IN&MOTION", "INMOTION", "ASSUMOTO", "MOTOBLOUZ", "DAFY", "BECANERIE",
+              "CARDY", "MAXXESS", "MOTARD", "CIRCUIT", "TRACK DAY")),
+    ("Auto", ("AUTOROUTE", "VINCI", "ULYS", "PARKING", "NORAUTO", "FEU VERT", "MIDAS", "SPEEDY",
+              "CONTROLE TECHNIQUE", "CARGLASS", "EUROMASTER", "PORSCHE", "MOTORS", "PEUGEOT",
+              "RENAULT", "CITROEN", "VOLKSWAGEN", "GARAGE")),
     ("Alimentation", ("CARREFOUR", "AUCHAN", "LECLERC", "LIDL", "INTERMARCHE", "MONOPRIX", "CASINO",
                       "FRANPRIX", "PICARD", "BIOCOOP", "GRAND FRAIS", "NATURALIA", "ALDI",
-                      "COURSES U")),
+                      "COURSES U", "SUPER U", "BOULANGERIE", "PATISSERIE", "FROMENTIER")),
     ("Restauration", ("DELIVEROO", "UBER EATS", "UBEREATS", "MCDO", "MC DONALD", "BURGER", "SUBWAY",
-                      "KFC", "RESTAURANT", "BRASSERIE", "PIZZ", "SUSHI", "BOULANGERIE",
-                      "PATISSERIE", "TRAITEUR", "BAR ")),
-    ("Transport", ("SNCF", "TRAINLINE", "UBER", "BLABLACAR", "RATP", "TCL", "ESSO", "SHELL", "BP ",
-                   "VINCI", "AUTOROUTE", "NAVIGO", "BOLT", "PARKING", "STATION")),
-    ("Santé", ("PHARMACIE", "DOCTOLIB", "LABORATOIRE", "MEDECIN", "DENTAIRE", "OPTIC", "HOPITAL",
-               "CLINIQUE")),
-    ("Impôts & taxes", ("DGFIP", "IMPOT", "TRESOR PUBLIC", "URSSAF", "TAXE", "FINANCES PUBLIQUES")),
-    ("Logement", ("LOYER", "FONCIA", "NEXITY", "SYNDIC", "SERGIC", "ORPI", "IMMOBILIER")),
-    ("Banque & frais", ("COTISATION", "FRAIS", "COMMISSION", "AGIOS", "INTERETS", "BOURSO")),
+                      "KFC", "RESTAURANT", "BRASSERIE", "PIZZ", "SUSHI", "TRAITEUR", "BAR ",
+                      "CAFE", "BISTRO")),
+    ("Transport", ("SNCF", "TRAINLINE", "UBER", "BLABLACAR", "RATP", "TCL", "NAVIGO", "BOLT",
+                   "VELOV", "AIR FRANCE", "HOPPER", "TRANSAVIA", "EASYJET")),
+    ("Santé", ("PHARMACIE", "DOCTOLIB", "DOCTORA", "LABORATOIRE", "MEDECIN", "DENTAIRE", "OPTIC",
+               "HOPITAL", "CLINIQUE")),
+    # "PRET" arrive après le bloc Assurance, donc « assurance de prêt » est déjà classée
+    # en assurance : ce qui tombe ici, c'est l'échéance de crédit immobilier elle-même.
+    ("Logement / charges", ("LOYER", "FONCIA", "NEXITY", "SYNDIC", "SERGIC", "ORPI", "IMMOBILIER",
+                            "REGIE", "COPRO", "PRET", "CREDIT LOGT", "EMPRUNT")),
+    ("Maison / bricolage", ("LEROY MERLIN", "ADEO", "CASTORAMA", "BRICO", "IKEA", "DOMADOO",
+                            "CONSUEL", "WELDOM", "MR.BRICOLAGE")),
+    ("Sport / Loisirs", ("BASIC FIT", "BASICFIT", "FITNESS", "NEONESS", "KEEPCOOL", "ONAIR",
+                         "ON AIR", "SALLE DE SPORT", "DECATHLON", "PARACHUT", "SPORT")),
+    ("Shopping / Équipement", ("AMAZON", "AMZN", "FNAC", "BOULANGER", "DARTY", "CDISCOUNT",
+                               "ZALANDO", "EMMA SLEEP", "APPLE")),
 ]
+
+# Categories that describe day-to-day consumption rather than a contract. A
+# subscriptions view must never present these as subscriptions: two visits to the
+# same restaurant a year apart look exactly like an annual renewal.
+EVERYDAY_CATEGORIES = frozenset(
+    {"Alimentation", "Restauration", "Carburant", "Retrait espèces", "Shopping / Équipement"}
+)
+
+# Transaction types that name their own category better than any wording can: an
+# ATM withdrawal is labelled with the dispenser's location, never with "retrait".
+_TYPE_CATEGORY_OVERRIDE = {"withdrawal": "Retrait espèces"}
+_TYPE_CATEGORY_FALLBACK = {"fee": "Frais bancaires", "market_fee": "Frais bancaires"}
 
 
 # Local (private) rules take precedence over the generic ones.
@@ -172,10 +224,35 @@ def resolve_category(merchant: str, overrides: dict[str, str] | None = None) -> 
     return categorize(merchant)
 
 
+def resolve_category_txn(txn: Txn, overrides: dict[str, str] | None = None) -> str:
+    """Category of a transaction, using its ``type`` where the wording cannot help.
+
+    Same precedence as :func:`resolve_category` (a manual override always wins),
+    then the transaction type for the cases it names better than any keyword —
+    a cash withdrawal carries the dispenser's address, not the word "retrait".
+    """
+    key = merchant_key(txn)
+    if overrides:
+        found = overrides.get(key.upper())
+        if found:
+            return found
+    kind = txn.type or ""
+    forced = _TYPE_CATEGORY_OVERRIDE.get(kind)
+    if forced:
+        return forced
+    category = categorize(key)
+    if category == "Autre":
+        return _TYPE_CATEGORY_FALLBACK.get(kind, category)
+    return category
+
+
 def all_categories() -> list[str]:
     """Every category label the UI can offer, in rule order, plus ``"Autre"``."""
     labels: list[str] = []
     for label, _ in _ACTIVE_RULES:
+        if label not in labels:
+            labels.append(label)
+    for label in (*_TYPE_CATEGORY_OVERRIDE.values(), *_TYPE_CATEGORY_FALLBACK.values()):
         if label not in labels:
             labels.append(label)
     labels.append("Autre")

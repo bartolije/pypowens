@@ -163,10 +163,24 @@ async def test_list_categories():
 def test_build_webview_url():
     client = PowensClient("myapp-sandbox", client_id="cid")
     url = client.build_webview_url("http://127.0.0.1:8000/callback", "CODE123")
-    assert url.startswith("https://webview.powens.com/connect?")
+    assert url.startswith("https://webview.powens.com/en/connect?")
     assert "domain=myapp-sandbox.biapi.pro" in url
     assert "client_id=cid" in url
     assert "code=CODE123" in url
+
+
+def test_webview_url_always_carries_a_language_segment():
+    """``/connect`` without it is answered by CloudFront with a 503, not the Webview."""
+    client = PowensClient("myapp-sandbox", client_id="cid")
+    assert "/fr/connect?" in client.build_webview_url("http://x/cb", "C", lang="fr")
+    assert "/en/connect?" in client.build_webview_url("http://x/cb", "C", lang="")
+    assert "/fr/connect?" in client.build_webview_url("http://x/cb", "C", lang="/fr/")
+
+
+def test_webview_url_can_preselect_connectors():
+    client = PowensClient("myapp-sandbox", client_id="cid")
+    url = client.build_webview_url("http://x/cb", "C", connector_ids=[2663, 2666])
+    assert "connector_ids=2663%2C2666" in url
 
 
 def test_from_env_treats_empty_values_as_unset(monkeypatch):

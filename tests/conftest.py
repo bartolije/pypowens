@@ -8,7 +8,15 @@ from datetime import date, timedelta
 
 import pytest
 
-from pypowens import AccountsList, Connection, Indicators, Investment, Transaction
+from pypowens import (
+    AccountsList,
+    AuthToken,
+    ClientConfig,
+    Connection,
+    Indicators,
+    Investment,
+    Transaction,
+)
 
 
 def _account(
@@ -141,7 +149,10 @@ class FakeClient:
         self._connections = connections
         self._txns = txns
         self.access_token = "fake-token"
+        self.client_id = "cid"
         self.closed = False
+        # Whitelisted callbacks, as the Powens console would hold them.
+        self.redirect_uris = ["http://127.0.0.1:8000/callback"]
 
     async def list_accounts(self, *args, **kwargs) -> AccountsList:
         return AccountsList.from_api({"accounts": self._accounts, "balances": {"EUR": "59500.00"}})
@@ -184,8 +195,36 @@ class FakeClient:
     async def get_temporary_code(self, *args, **kwargs) -> dict:
         return {"code": "tmp-code"}
 
-    def build_webview_url(self, redirect_uri: str, code: str, **kwargs) -> str:
-        return f"https://webview.powens.com/connect?code={code}"
+    async def get_client_config(self, *args, **kwargs) -> ClientConfig:
+        return ClientConfig.from_api(
+            {"id": 1, "name": "Test app", "redirect_uris": list(self.redirect_uris)}
+        )
+
+    async def exchange_code(self, code: str, *args, **kwargs) -> AuthToken:
+        self.access_token = f"token-from-{code}"
+        return AuthToken.from_api({"access_token": self.access_token, "id_user": 1})
+
+    def build_webview_url(
+        self,
+        redirect_uri: str,
+        code: str,
+        *,
+        connector_ids: list[int] | None = None,
+        lang: str = "en",
+        **kwargs,
+    ) -> str:
+        """Mirrors the real builder, including the mandatory language segment.
+
+        The segment is reproduced here on purpose: dropping it yields a CloudFront
+        503 instead of the Webview, so the app must be shown to pass one.
+        """
+        screen = kwargs.get("flow", "connect")
+        url = f"https://webview.powens.com/{lang}/{screen}?code={code}"
+        if connector_ids:
+            url += "&connector_ids=" + ",".join(str(i) for i in connector_ids)
+        if kwargs.get("connection_id") is not None:
+            url += f"&connection_id={kwargs['connection_id']}"
+        return url
 
     async def aclose(self) -> None:
         self.closed = True

@@ -332,6 +332,38 @@ class Indicators:
 
 
 @dataclass(slots=True)
+class ClientConfig:
+    """An application's own configuration (``GET /clients/{id}``).
+
+    Mainly useful for :attr:`redirect_uris`: the Webview rejects any ``redirect_uri``
+    absent from that list with a message that names no expected value, so being able
+    to read the list is the difference between a diagnosable error and a guess.
+    """
+
+    id: int | None
+    name: str | None = None
+    redirect_uris: list[str] = field(default_factory=list)
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    def allows(self, redirect_uri: str) -> bool:
+        """Whether ``redirect_uri`` is whitelisted (exact match, as Powens compares)."""
+        return redirect_uri.strip() in self.redirect_uris
+
+    @classmethod
+    def from_api(cls, data: dict[str, Any]) -> ClientConfig:
+        uris = data.get("redirect_uris")
+        if not isinstance(uris, list):
+            single = data.get("redirect_uri")
+            uris = [single] if single else []
+        return cls(
+            id=data.get("id"),
+            name=data.get("name"),
+            redirect_uris=[str(u) for u in uris if u],
+            raw=data,
+        )
+
+
+@dataclass(slots=True)
 class AccountsList:
     """Result of ``GET /users/{id}/accounts``."""
 

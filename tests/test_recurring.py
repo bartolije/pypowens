@@ -60,7 +60,7 @@ def test_netflix_monthly():
     it = items[0]
     assert it.periodicity == "Mensuel"
     assert it.period_months == 1.0
-    assert it.category == "Streaming / Loisirs"
+    assert it.category == "Streaming / Médias"
     assert it.amount == Decimal("13.49")
     assert it.monthly_equiv == Decimal("13.49")
     assert it.occurrences == 12
