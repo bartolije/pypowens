@@ -38,20 +38,42 @@
         <string>/CHEMIN/VERS/pypowens</string>
     </dict>
 
-    <!-- 19 h : les places européennes ont clôturé et publié leurs VL du jour. -->
+    <!-- Trois créneaux, pas un seul : le solde du jour est la donnée périssable, et une
+         journée où la machine n'était pas réveillée à l'heure dite est perdue pour
+         toujours. Multiplier les tentatives multiplie les chances d'en attraper une.
+         19 h 30 reste le passage de référence — les places européennes ont clôturé et
+         publié leurs VL du jour ; les deux autres sont des filets. Relancer le même jour
+         ne coûte rien : ``record_snapshot`` réécrit la ligne du jour (INSERT OR REPLACE)
+         et ce sont des lectures côté Powens, aucune synchro bancaire forcée. -->
     <key>StartCalendarInterval</key>
-    <dict>
-        <key>Hour</key>
-        <integer>19</integer>
-        <key>Minute</key>
-        <integer>30</integer>
-    </dict>
+    <array>
+        <dict>
+            <key>Hour</key>
+            <integer>12</integer>
+            <key>Minute</key>
+            <integer>30</integer>
+        </dict>
+        <dict>
+            <key>Hour</key>
+            <integer>19</integer>
+            <key>Minute</key>
+            <integer>30</integer>
+        </dict>
+        <dict>
+            <key>Hour</key>
+            <integer>22</integer>
+            <key>Minute</key>
+            <integer>30</integer>
+        </dict>
+    </array>
 
     <!-- Le collecteur rattrape depuis le dernier jour archivé : un réveil tardif ou une
-         semaine d'absence se comblent tout seuls, sans qu'il faille rejouer quoi que ce
-         soit à la main. -->
+         semaine d'absence se comblent tout seuls pour les valorisations, sans qu'il faille
+         rejouer quoi que ce soit à la main. Les soldes, non — d'où RunAtLoad : un
+         démarrage ou une ouverture de session en dehors des trois créneaux archive quand
+         même la journée. -->
     <key>RunAtLoad</key>
-    <false/>
+    <true/>
 
     <key>StandardOutPath</key>
     <string>/tmp/powens-collector.log</string>

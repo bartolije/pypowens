@@ -142,7 +142,14 @@ sans lignes de titres** (fonds euros, PER, livret) ne vivent que dans nos snapsh
 jour non collecté est perdu. `python -m app.collector` **rattrape depuis le dernier jour
 archivé** (avec 3 jours de recouvrement, une VL de séance pouvant être corrigée), donc un
 passage hebdomadaire reste viable. `scripts/install-collector.sh` installe un LaunchAgent
-quotidien — launchd et non cron, parce qu'il rattrape au réveil si la machine dormait.
+— launchd et non cron, parce qu'il rattrape au réveil si la machine dormait.
+
+Ce rattrapage ne vaut que pour les VL : un solde manqué ne se récupère jamais, Powens ne
+répondant qu'au présent. Un créneau quotidien unique s'est révélé trop juste (le 01/08/2026
+est perdu, machine éteinte ce soir-là) ; l'agent tente donc **12 h 30, 19 h 30 et 22 h 30**,
+plus un passage à l'ouverture de session (`RunAtLoad`). Les tentatives surnuméraires sont
+gratuites : `record_snapshot` réécrit la ligne du jour, et la collecte ne lit que des
+données déjà agrégées côté Powens — aucune synchro bancaire n'est forcée.
 
 Pas d'hébergement distant : l'app n'a aucune authentification, et l'exposer voudrait dire
 sortir le token Powens et tous les soldes de la machine.
