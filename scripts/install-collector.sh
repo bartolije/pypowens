@@ -52,8 +52,9 @@ launchctl unload "$TARGET" 2>/dev/null || true
 launchctl load "$TARGET"
 
 echo "Agent installé : $TARGET"
-echo "Collecte à 12 h 30, 19 h 30 et 22 h 30, plus à chaque ouverture de session."
+echo "Collecte à 9 h 30, 13 h, 18 h et 22 h, plus à chaque ouverture de session."
 echo "(rattrapée au réveil si la machine dormait ; relancer le même jour est sans effet de bord)"
+echo "22 h est le passage de référence : un seul relevé par jour est conservé, le dernier."
 echo
 echo "Vérifier tout de suite :   launchctl start $LABEL && sleep 20 && cat /tmp/powens-collector.log"
 echo "Désinstaller :             $0 --uninstall"
