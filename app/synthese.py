@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Request
@@ -13,7 +12,7 @@ from pypowens import PowensClient
 
 from . import store
 from .config import Settings
-from .data import load_accounts, load_connections, load_investments
+from .data import load_accounts, load_investments
 from .deps import get_client, get_settings, get_store
 from .helpers import PALETTE, currency_symbol, line_chart
 from .recap import FAMILY_ORDER, TYPE_TO_FAMILY, _today_fr
