@@ -30,48 +30,30 @@
     <div class="col-8">
       <div class="card">
         <div class="card-body">
-          <div class="hero-date">{{ today }}</div>
-          <div class="hero-balance amount">{{ net | money(net_currency, 0) }}</div>
-          <div class="d-flex align-center gap-2" style="margin-top: 8px;">
-            {% if net_diff %}
-            <span class="badge {{ 'badge-green' if net_diff >= 0 else 'badge-red' }}">
-              {{ '▲' if net_diff >= 0 else '▼' }} {{ net_diff | money(net_currency) }}
+          <div class="hero-balance amount" style="font-size: clamp(2.5rem, 5vw, 3.5rem);">{{ net | money(net_currency, 0) }}</div>
+          {% if net_diff %}
+          <div style="margin-top: 8px; margin-bottom: 20px;">
+            <span class="{{ 'text-green' if net_diff >= 0 else 'text-red' }} fw-bold">
+              {{ net_diff | money(net_currency) }}
             </span>
-            <span class="badge {{ 'badge-green' if net_diff >= 0 else 'badge-red' }}">
-              {{ '%+.2f'|format(net_diff_pct) }} %
+            <span class="badge {{ 'badge-green' if net_diff >= 0 else 'badge-red' }}" style="margin-left: 4px;">
+              {{ '▼' if net_diff < 0 else '▲' }} {{ '%+.2f'|format(net_diff_pct) }}%
             </span>
-            {% endif %}
+            <span class="text-secondary small" style="margin-left: 8px;">Variation sur la période</span>
           </div>
-          <div style="margin-top: 16px;">{{ net_chart | safe }}</div>
+          {% endif %}
+          {{ net_chart | safe }}
         </div>
       </div>
     </div>
     <div class="col-4">
       <div class="card" style="height: 100%;">
         <div class="card-body">
-          <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 20px;">Performance</h3>
-          {% if net_diff %}
-          <div class="text-secondary small" style="margin-bottom: 8px;">Plus-value · {{ diff_label or "depuis le début" }}</div>
-          <div style="font-size: 1.8rem; font-weight: 800; margin-bottom: 6px;" class="{{ 'text-green' if net_diff >= 0 else 'text-red' }}">
-            <span class="amount">{{ ('+' if net_diff >= 0 else '') }}{{ net_diff | money(net_currency) }}</span>
+          <div class="tabs" style="margin-bottom: 16px;">
+            <span class="tab-link active">Actifs</span>
+            <span class="tab-link">Passifs</span>
           </div>
-          <span class="badge {{ 'badge-green' if net_diff >= 0 else 'badge-red' }}">{{ '%+.2f'|format(net_diff_pct) }} %</span>
-          {% endif %}
-          <p class="text-secondary small" style="margin-top: 20px; line-height: 1.6;">
-            La plus-value latente est la variation de votre patrimoine sur la période sélectionnée.
-          </p>
-          <div style="margin-top: 24px;">
-            <h4 style="font-size: 0.92rem; font-weight: 600; margin-bottom: 12px;">Répartition</h4>
-            {% for a in allocation %}
-            <div class="d-flex justify-between align-center" style="margin-bottom: 6px;">
-              <span class="d-flex align-center" style="gap: 8px;">
-                <span class="alloc-dot" style="background:{{ a.color }}"></span>
-                <span class="small">{{ a.name }}</span>
-              </span>
-              <span class="small text-secondary">{{ '%.0f'|format(a.pct) }} %</span>
-            </div>
-            {% endfor %}
-          </div>
+          <div class="donut-vertical">{{ account_donut | safe }}</div>
         </div>
       </div>
     </div>

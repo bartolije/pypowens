@@ -161,6 +161,22 @@ async def recap(
         center_bottom=f"{total_assets / 1000:,.0f} k{symbol}".replace(",", " "),
     )
 
+    # Per-account donut for the right panel (Finary shows accounts, not families).
+    account_items = sorted(
+        ((a.name or "—", float(a.balance or 0)) for a in accounts if (a.balance or 0) > 0),
+        key=lambda x: x[1],
+        reverse=True,
+    )
+    top_account = account_items[0] if account_items else ("—", 0)
+    top_pct = f"{top_account[1] / float(total_assets) * 100:.2f} %" if total_assets else ""
+    account_donut = donut_chart(
+        account_items[:8],
+        unit=symbol,
+        size=180,
+        center_top=f"{top_account[1]:,.0f} {symbol}".replace(",", " "),
+        center_bottom=top_pct,
+    )
+
     # Colored allocation bars (share of total assets per family), palette aligned
     # with the donut order.
     total_pct = float(total_assets) or 1.0
@@ -275,6 +291,7 @@ async def recap(
             "n_connections": len(connections),
             "families": families,
             "donut": donut,
+            "account_donut": account_donut,
             "connections": conns,
             "invest_rows": invest_rows,
             "invest_diff": invest_diff,
