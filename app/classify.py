@@ -108,33 +108,27 @@ async def _fetch_openfigi(isins: list[str], api_key: str) -> dict[str, dict[str,
 # ------------------------------------------------------------- Yahoo Finance
 
 
-async def _fetch_yahoo(tickers: list[str]) -> dict[str, dict[str, Any]]:
-    """Fetch sector and country from Yahoo Finance for stock tickers."""
+def _fetch_yahoo_sync(tickers: list[str]) -> dict[str, dict[str, Any]]:
+    """Fetch sector and country from Yahoo Finance via yfinance (sync)."""
     out: dict[str, dict[str, Any]] = {}
     try:
-        async with httpx.AsyncClient() as client:
-            for i in range(0, len(tickers), 10):
-                batch = tickers[i : i + 10]
-                symbols = ",".join(batch)
-                url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbols}"
-                try:
-                    resp = await client.get(
-                        url,
-                        headers={"User-Agent": "pypowens/1.0"},
-                        timeout=10,
-                    )
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        for q in data.get("quoteResponse", {}).get("result", []):
-                            symbol = q.get("symbol", "")
-                            out[symbol] = {
-                                "sector": q.get("sector"),
-                                "industry": q.get("industry"),
-                                "country": q.get("region"),
-                                "shortName": q.get("shortName"),
-                            }
-                except Exception:
-                    log.debug("Yahoo batch %d failed", i, exc_info=True)
+        import yfinance as yf  # noqa: PLC0415
+
+        for ticker in tickers:
+            try:
+                t = yf.Ticker(ticker)
+                info = t.info or {}
+                if info.get("sector"):
+                    out[ticker] = {
+                        "sector": info.get("sector"),
+                        "industry": info.get("industry"),
+                        "country": info.get("country"),
+                        "shortName": info.get("shortName"),
+                    }
+            except Exception:
+                log.debug("yfinance failed for %s", ticker, exc_info=True)
+    except ImportError:
+        log.warning("yfinance not installed — skipping sector enrichment")
     except Exception:
         log.warning("Yahoo Finance session failed", exc_info=True)
     return out
@@ -232,7 +226,7 @@ async def classify_investments(
 
     yahoo_data: dict[str, dict[str, Any]] = {}
     if tickers_map:
-        yahoo_data = await _fetch_yahoo(list(tickers_map.keys()))
+        yahoo_data = _fetch_yahoo_sync(list(tickers_map.keys()))
 
     # 3. Merge results.
     results = dict(cached)
