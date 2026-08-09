@@ -93,6 +93,7 @@ async def synthese(
     invest_rows = sorted(
         (
             {
+                "id_account": inv.id_account,
                 "account": account_names.get(inv.id_account, "—"),
                 "label": inv.label or inv.code or "—",
                 "code": inv.code,

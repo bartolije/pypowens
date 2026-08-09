@@ -109,6 +109,7 @@
   </div>
   <div class="perf-cards">
     {% for row in invest_rows %}
+    <a href="/patrimoine/{{ row.id_account }}" style="text-decoration: none; color: inherit;">
     <div class="perf-card">
       <div class="d-flex align-center justify-between" style="margin-bottom: 2px;">
         <div class="perf-card-name">{{ row.label }}</div>
@@ -133,6 +134,7 @@
         {% endif %}
       </div>
     </div>
+    </a>
     {% endfor %}
   </div>
   {% endif %}

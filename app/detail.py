@@ -39,6 +39,7 @@ def _today_fr() -> str:
 async def account_detail(
     request: Request,
     account_id: int,
+    period: str = "tout",
     client: PowensClient = Depends(get_client),  # noqa: B008
     settings: Settings = Depends(get_settings),  # noqa: B008
     conn: sqlite3.Connection = Depends(get_store),  # noqa: B008
@@ -88,7 +89,10 @@ async def account_detail(
 
     # Per-account balance history.
     store.record_snapshot(conn, accounts_list.accounts, default_currency=base_currency)
-    history = store.account_balance_history(conn, account_id=account_id, currency=currency)
+    since = store.period_to_since(period)
+    history = store.account_balance_history(
+        conn, account_id=account_id, currency=currency, since=since,
+    )
 
     # Variation: compare current balance to the first recorded balance.
     if len(history) >= 2:
@@ -168,5 +172,6 @@ async def account_detail(
             "invest_total_cost": invest_total_cost,
             "invest_diff_pct": invest_diff_pct,
             "today": _today_fr(),
+            "period": period.lower(),
         },
     )

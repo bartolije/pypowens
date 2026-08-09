@@ -60,14 +60,14 @@
         </div>
 
         <nav class="period-pills">
-          <span>1J</span>
-          <span>7J</span>
-          <span>1M</span>
-          <span>3M</span>
-          <span>6M</span>
-          <span>YTD</span>
-          <span>1A</span>
-          <span class="active">TOUT</span>
+          <a href="/patrimoine/{{ account.id }}?period=1j" class="{{ 'active' if period == '1j' }}">1J</a>
+          <a href="/patrimoine/{{ account.id }}?period=7j" class="{{ 'active' if period == '7j' }}">7J</a>
+          <a href="/patrimoine/{{ account.id }}?period=1m" class="{{ 'active' if period == '1m' }}">1M</a>
+          <a href="/patrimoine/{{ account.id }}?period=3m" class="{{ 'active' if period == '3m' }}">3M</a>
+          <a href="/patrimoine/{{ account.id }}?period=6m" class="{{ 'active' if period == '6m' }}">6M</a>
+          <a href="/patrimoine/{{ account.id }}?period=ytd" class="{{ 'active' if period == 'ytd' }}">YTD</a>
+          <a href="/patrimoine/{{ account.id }}?period=1a" class="{{ 'active' if period == '1a' }}">1A</a>
+          <a href="/patrimoine/{{ account.id }}?period=tout" class="{{ 'active' if period == 'tout' }}">TOUT</a>
         </nav>
       </div>
 

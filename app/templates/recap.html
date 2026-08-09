@@ -80,9 +80,12 @@
   {# ── Asset table in a card ──────────────────────────────────────── #}
   <div class="card">
     <div class="card-body" style="padding-bottom: 0;">
-      <div class="tabs" style="margin-bottom: 16px;">
-        <a class="tab-link active" href="/patrimoine">Actifs</a>
-        <a class="tab-link" href="/patrimoine?view=passifs">Passifs</a>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div class="tabs">
+          <a class="tab-link active" href="/patrimoine">Actifs</a>
+          <a class="tab-link" href="/patrimoine?view=passifs">Passifs</a>
+        </div>
+        <input type="text" class="search" placeholder="Rechercher..." data-target="#patrimoine-table">
       </div>
     </div>
     <div class="table-wrap">
@@ -162,6 +165,7 @@
     </div>
     <div class="perf-cards">
       {% for row in invest_rows %}
+      <a href="/patrimoine/{{ row.id_account }}" style="text-decoration: none; color: inherit;">
       <div class="perf-card">
         <div class="perf-card-name">{{ row.label }}</div>
         {% if row.code %}<div class="perf-card-sub">{{ row.code }}</div>{% endif %}
@@ -177,7 +181,32 @@
           {% endif %}
         </div>
       </div>
+      </a>
       {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Foreign currency accounts ─────────────────────────────────── #}
+  {% if foreign_accounts %}
+  <div class="card mt-3">
+    <div class="card-header"><h3>Comptes en devises étrangères</h3>
+      <span class="text-secondary small" style="margin-left: 8px;">exclus du patrimoine net</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Compte</th><th>Type</th><th>Devise</th><th class="num">Solde</th></tr></thead>
+        <tbody>
+          {% for acc in foreign_accounts %}
+          <tr>
+            <td>{{ acc.name or "—" }}</td>
+            <td class="text-secondary">{{ acc.type or "—" }}</td>
+            <td class="text-secondary">{{ acc.currency }}</td>
+            <td class="num">{{ acc.balance | money(acc.currency) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   </div>
   {% endif %}
