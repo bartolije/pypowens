@@ -8,31 +8,24 @@
 
 {% block content %}
 
-  {# ── Header: account name, last update, sync badge ──────────────── #}
-  <div class="d-flex align-center justify-between" style="margin-bottom: 24px;">
-    <div>
-      <div class="d-flex align-center gap-2" style="margin-bottom: 4px;">
-        <span style="font-size: 1.3rem; font-weight: 700;">{{ account_name }}</span>
-        {% if sync_ok %}
-        <span class="sync-badge sync-ok">Synchronise</span>
-        {% else %}
-        <span class="sync-badge sync-err">Erreur</span>
-        {% endif %}
-      </div>
-      <div class="text-secondary small">
-        {% if last_update %}
-          Derniere mise a jour le {{ last_update.strftime('%d/%m/%Y a %H:%M') }}
-        {% else %}
-          Aucune mise a jour
-        {% endif %}
-        · {{ family }}
-      </div>
-    </div>
+  {# ── Header: sync badge + last update (name already in topbar) ──── #}
+  <div class="d-flex align-center gap-2" style="margin-bottom: 4px;">
+    {% if sync_ok %}
+    <span class="sync-badge sync-ok">Synchronisé</span>
+    {% else %}
+    <span class="sync-badge sync-err">Erreur</span>
+    {% endif %}
+    <span class="text-secondary small">
+      {% if last_update %}
+        Mise à jour le {{ last_update.strftime('%d/%m/%Y à %H:%M') }}
+      {% endif %}
+      · {{ family }}
+    </span>
   </div>
 
   {# ── Tabs ───────────────────────────────────────────────────────── #}
   <div class="tabs">
-    <a class="tab-link active" href="#apercu">Apercu</a>
+    <a class="tab-link active" href="#apercu">Aperçu</a>
     {% if is_invest %}
     <a class="tab-link" href="#positions">Positions</a>
     {% endif %}
@@ -43,7 +36,7 @@
     <div class="card-body">
       <div class="d-flex align-center justify-between" style="margin-bottom: 16px;">
         <div>
-          <div class="hero-balance amount">{{ balance | money(currency, 2) }}</div>
+          <div class="hero-balance amount" style="font-size: clamp(2.5rem, 5vw, 3.5rem);">{{ balance | money(currency, 0) }}</div>
           <div class="d-flex align-center gap-2" style="margin-top: 8px;">
             {% if diff %}
             <span class="{{ 'text-green' if diff >= 0 else 'text-red' }} fw-bold small">

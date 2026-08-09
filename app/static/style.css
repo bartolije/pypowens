@@ -96,6 +96,8 @@ a:hover { color: #f0b84d; }
   background: var(--bg-card);
   color: var(--text-primary);
   font-weight: 600;
+  border-left: 3px solid var(--accent);
+  padding-left: 9px;
 }
 
 /* ── Main area ────────────────────────────────────────────────────────────── */
