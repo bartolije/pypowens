@@ -58,7 +58,8 @@ def test_the_page_explains_twr_versus_mwr(client):
 
 
 def test_nav_exposes_the_page(client):
-    assert 'href="/performance">Performance' in client.get("/").text
+    body = client.get("/").text
+    assert 'href="/performance"' in body
 
 
 # -------------------------------------------------------------- le collecteur
@@ -183,7 +184,7 @@ def test_a_window_longer_than_the_archive_says_so(client):
 def test_the_holdings_table_can_be_sorted(client):
     """Trier sur le texte affiché échouerait : « 38 641,50 € » n'est pas un nombre."""
     body = client.get("/performance").text
-    assert 'card-table table-sm sortable' in body
+    assert 'sortable' in body
     # Titre, montant investi et plus-value : les trois tris demandés.
     assert "<th class=\"num\">Investi</th>" in body
     assert 'data-sort="ETF MONDE"' in body

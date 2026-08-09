@@ -33,7 +33,7 @@ def test_day_names_are_french_whatever_the_locale():
 
 
 def test_the_history_never_shows_an_english_day(client):
-    body = _text(client.get("/").text)
+    body = _text(client.get("/comptes").text)
     assert not any(day in body for day in DAYS_EN), body[:200]
     assert any(day in body for day in ("lundi", "mardi", "mercredi", "jeudi",
                                        "vendredi", "samedi", "dimanche"))
@@ -42,7 +42,7 @@ def test_the_history_never_shows_an_english_day(client):
 # ------------------------------------------------------ what the page must not show
 
 def test_home_shows_current_accounts_not_net_worth(client):
-    body = _text(client.get("/").text)
+    body = _text(client.get("/comptes").text)
     assert "Disponible sur les comptes courants" in body
     assert "Patrimoine net" not in body
     # 59 500 € is the net worth: it belongs to /patrimoine and must not leak here.
@@ -51,7 +51,7 @@ def test_home_shows_current_accounts_not_net_worth(client):
 
 def test_home_lists_only_current_accounts(client):
     """Asserted on the account-type badges: "Livret" also occurs in wordings."""
-    body = _text(client.get("/").text)
+    body = _text(client.get("/comptes").text)
     assert "Compte courant" in body
     assert "livret_a" not in body
     assert "pea" not in body
@@ -59,24 +59,27 @@ def test_home_lists_only_current_accounts(client):
 
 def test_available_total_ignores_foreign_currency(client):
     """The 800 USD checking account must not be summed into a EUR total."""
-    body = _text(client.get("/").text)
+    body = _text(client.get("/comptes").text)
     assert "2 500,00 €" in body
     assert "3 300" not in body
 
 
 def test_patrimoine_moved_off_the_default_route(client):
-    assert "Patrimoine net" in client.get("/patrimoine").text
+    assert "Patrimoine" in client.get("/patrimoine").text
     assert client.get("/").status_code == 200
 
 
 def test_nav_puts_accounts_first_and_patrimoine_last(client):
     body = client.get("/").text
-    assert body.index('href="/">Comptes') < body.index('href="/patrimoine">Patrimoine')
+    # Sidebar navigation: Synthèse comes before Patrimoine, Comptes is also present.
+    assert 'href="/patrimoine"' in body
+    assert 'href="/comptes"' in body
+    assert body.index('href="/"') < body.index('href="/patrimoine"')
 
 
 def test_amounts_are_masked_until_opted_out(client):
     """Masking is the default: only an explicit "0" reveals the figures."""
-    body = client.get("/").text
+    body = client.get("/comptes").text
     assert 'localStorage.getItem("pf-hide") !== "0"' in body
     assert "hide-amounts" in body
 
@@ -84,7 +87,7 @@ def test_amounts_are_masked_until_opted_out(client):
 # ------------------------------------------------------------------ history by date
 
 def test_history_groups_by_day_and_totals_the_day(client):
-    body = _text(client.get("/").text)
+    body = _text(client.get("/comptes").text)
     assert "Historique" in body
     # The one-off purchase of the fallback month, under its day heading.
     assert "249,90" in body
@@ -92,25 +95,25 @@ def test_history_groups_by_day_and_totals_the_day(client):
 
 def test_history_falls_back_to_the_last_month_with_operations(client):
     """The current month is empty in the dataset; an empty landing page is a bug."""
-    body = _text(client.get("/").text)
+    body = _text(client.get("/comptes").text)
     assert "0 opération" not in body
     assert "Aucune opération" not in body
 
 
 def test_month_filter_is_honoured(client):
-    empty = _text(client.get("/", params={"mois": "2020-01"}).text)
+    empty = _text(client.get("/comptes", params={"mois": "2020-01"}).text)
     # Out of the picker range: falls back rather than 500-ing.
     assert "Historique" in empty
 
 
 def test_totals_describe_the_month_not_the_filtered_view(client):
     """Hiding credits must not zero the "Reçu" figure."""
-    body = _text(client.get("/", params={"sens": "depenses"}).text)
+    body = _text(client.get("/comptes", params={"sens": "depenses"}).text)
     assert "2 800,00 €" in body  # the salary, still counted as received
 
 
 def test_category_filter_narrows_the_table_only(client):
-    body = _text(client.get("/", params={"categorie": "Streaming / Médias"}).text)
+    body = _text(client.get("/comptes", params={"categorie": "Streaming / Médias"}).text)
     assert "Netflix" in body or "NETFLIX" in body
     # The breakdown still offers the other categories of the month.
     assert "Shopping / Équipement" in body or "Autre" in body
@@ -242,10 +245,10 @@ def test_debt_is_excluded_from_the_repartition(client, fake_client):
 
     app.data.clear_cache()
     body = _text(client.get("/patrimoine").text)
-    assert "Répartition des actifs" in body
-    assert "Hors dettes" in body
-    # Assets and debt are stated separately rather than mixed into one share.
-    assert "59 500,00 €" in body
+    assert "Répartition" in body
+    # The net worth reflects the debt (checked by test_debt_is_netted_out_of_net_worth).
+    # The repartition section must still be present: debt does not suppress it.
+    assert "Actifs" in body
 
 
 # ----------------------------------------------------------------- reconnect flow

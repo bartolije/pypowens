@@ -455,7 +455,7 @@ def _upload(client, csv: bytes = TWO_LINES, libelle: str = "CCF — compte chèq
 def test_an_unlinked_statement_doubles_the_available_total(client):
     """L'état de départ, celui qu'on veut corriger : deux comptes pour un seul."""
     assert _upload(client).status_code == 200
-    body = _text(client.get("/").text)
+    body = _text(client.get("/comptes").text)
     assert "CCF — compte chèque" in body
     # 2 500 (Powens) + 140 (somme des flux du relevé) : le même argent, deux fois.
     assert "2 640,00 €" in body
@@ -466,11 +466,11 @@ def test_linking_the_statement_restores_a_single_balance(client):
     # Premier compte importé de la base de test, donc id 1.
     assert client.post("/import/rattacher/1", data={"compte_powens": "1"}).status_code == 200
 
-    body = _text(client.get("/").text)
+    body = _text(client.get("/comptes").text)
     assert "2 500,00 €" in body
     assert "2 640,00 €" not in body
     # Le relevé n'est plus un compte, mais reste listé sur la page d'import.
-    assert "CCF — compte chèque" not in _text(client.get("/").text)
+    assert "CCF — compte chèque" not in _text(client.get("/comptes").text)
     assert "CCF — compte chèque" in _text(client.get("/import").text)
 
 
@@ -479,10 +479,10 @@ def test_linking_keeps_the_history_the_connector_does_not_cover(client):
     _upload(client)
     client.post("/import/rattacher/1", data={"compte_powens": "1"})
 
-    old_month = client.get("/", params={"mois": OLD.strftime("%Y-%m"), "sens": "tout"})
+    old_month = client.get("/comptes", params={"mois": OLD.strftime("%Y-%m"), "sens": "tout"})
     assert "ANCIENRELEVE" in _text(old_month.text)
 
-    recent_month = client.get("/", params={"mois": RECENT.strftime("%Y-%m"), "sens": "tout"})
+    recent_month = client.get("/comptes", params={"mois": RECENT.strftime("%Y-%m"), "sens": "tout"})
     assert "RECENTRELEVE" not in _text(recent_month.text)
 
 
@@ -490,7 +490,7 @@ def test_unlinking_through_the_route_puts_the_account_back(client):
     _upload(client)
     client.post("/import/rattacher/1", data={"compte_powens": "1"})
     client.post("/import/rattacher/1", data={"compte_powens": ""})
-    assert "2 640,00 €" in _text(client.get("/").text)
+    assert "2 640,00 €" in _text(client.get("/comptes").text)
 
 
 def test_the_import_page_offers_the_powens_accounts_as_targets(client):

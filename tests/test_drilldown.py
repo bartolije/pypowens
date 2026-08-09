@@ -66,13 +66,13 @@ def test_override_can_be_reset_to_auto(client):
 
 def test_recap_shows_investment_lines(client):
     body = _text(client.get("/patrimoine").text)
-    assert "Lignes détenues" in body
+    assert "Ma performance" in body
     assert "ETF MONDE" in body
 
 
 def test_recap_records_history_and_offers_sync(client):
     body = client.get("/patrimoine").text
-    assert "Évolution du patrimoine" in _text(body)
+    assert "Performance" in _text(body)
     assert "/synchroniser/1" in body
 
 

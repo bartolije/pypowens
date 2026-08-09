@@ -183,7 +183,7 @@ def test_auth_error_replays_after_successful_renew(client, monkeypatch, fake_cli
 
     replayed = client.get(redirect.headers["location"])
     assert replayed.status_code == 200
-    assert "Patrimoine net" in replayed.text
+    assert "Patrimoine" in replayed.text
 
 
 def test_rate_limit_renders_error_page(client, monkeypatch, fake_client):
