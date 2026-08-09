@@ -211,15 +211,15 @@ a:hover { color: #f0b84d; }
 }
 
 /* ── Grid ─────────────────────────────────────────────────────────────────── */
-.row { display: flex; flex-wrap: wrap; gap: 20px; }
+.row { display: flex; flex-wrap: wrap; gap: 16px; }
 .col-8 { flex: 0 0 calc(66.66% - 10px); min-width: 0; }
 .col-4 { flex: 0 0 calc(33.33% - 10px); min-width: 0; }
 .col-6 { flex: 0 0 calc(50% - 10px); min-width: 0; }
 .col-12 { flex: 0 0 100%; min-width: 0; }
-.mt-3 { margin-top: 20px; }
-.mt-2 { margin-top: 12px; }
-.mb-3 { margin-bottom: 20px; }
-.mb-2 { margin-bottom: 12px; }
+.mt-3 { margin-top: 16px; }
+.mt-2 { margin-top: 10px; }
+.mb-3 { margin-bottom: 16px; }
+.mb-2 { margin-bottom: 10px; }
 
 /* ── Hero balance (synthèse) ──────────────────────────────────────────────── */
 .hero-date {
@@ -414,11 +414,11 @@ th.sortable:hover { color: var(--text-primary); }
 .perf-cards::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
 .perf-card {
-  flex: 0 0 280px;
-  background: var(--bg-card);
+  flex: 0 0 260px;
+  background: linear-gradient(145deg, var(--bg-card) 0%, #151515 100%);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 20px;
+  padding: 18px 20px;
   scroll-snap-align: start;
   transition: border-color 0.15s;
 }

@@ -38,7 +38,7 @@ function initMask() {
   const root = document.documentElement;
   const sync = () => {
     const hidden = root.classList.contains("hide-amounts");
-    if (btn) btn.textContent = hidden ? "🙈 Montants" : "👁 Montants";
+    if (btn) btn.title = hidden ? "Afficher les montants" : "Masquer les montants";
     setTooltips(hidden);
   };
   sync();
