@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Synthèse · Powens Finance{% endblock %}
+
+{% block topbar_left %}
+  <span class="section-title">Patrimoine brut</span>
+  <nav class="period-pills" style="margin-left: 24px;">
+    <a href="/?period=1j" class="{{ 'active' if period == '1j' }}">1J</a>
+    <a href="/?period=7j" class="{{ 'active' if period == '7j' }}">7J</a>
+    <a href="/?period=1m" class="{{ 'active' if period == '1m' }}">1M</a>
+    <a href="/?period=3m" class="{{ 'active' if period == '3m' }}">3M</a>
+    <a href="/?period=6m" class="{{ 'active' if period == '6m' }}">6M</a>
+    <a href="/?period=ytd" class="{{ 'active' if period == 'ytd' }}">YTD</a>
+    <a href="/?period=1a" class="{{ 'active' if period == '1a' }}">1A</a>
+    <a href="/?period=tout" class="{{ 'active' if period == 'tout' }}">TOUT</a>
+  </nav>
+{% endblock %}
+
+{% block content %}
+
+{% if not has_accounts %}
+  <div class="empty">
+    <p class="empty-title">Aucun compte pour le moment</p>
+    <p class="empty-subtitle">Connectez une banque pour commencer le suivi de votre patrimoine.</p>
+    <a href="/connect" class="btn btn-primary">+ Connecter une banque</a>
+  </div>
+{% else %}
+
+  {# ── Main row: chart left + performance right ───────────────────── #}
+  <div class="row mb-3">
+    {# ── Left: net worth + chart ──────────────────────────────────── #}
+    <div class="col-8">
+      <div class="card" style="height: 100%;">
+        <div class="card-body">
+          <div class="hero-date">{{ today }}</div>
+          <div class="hero-balance amount" style="margin-bottom: 8px;">{{ net | money(net_currency, 0) }}</div>
+          <div class="d-flex align-center gap-2" style="margin-bottom: 20px;">
+            {% if net_diff %}
+            <span class="{{ 'text-green' if net_diff >= 0 else 'text-red' }} fw-bold small">
+              {{ ('+' if net_diff >= 0 else '') }}{{ net_diff | money(net_currency) }}
+            </span>
+            <span class="badge {{ 'badge-green' if net_diff >= 0 else 'badge-red' }}">
+              {{ '▲' if net_diff >= 0 else '▼' }} {{ '%+.2f'|format(net_diff_pct) }} %
+            </span>
+            {% endif %}
+          </div>
+          {{ net_chart | safe }}
+        </div>
+      </div>
+    </div>
+
+    {# ── Right: performance panel ─────────────────────────────────── #}
+    <div class="col-4">
+      <div class="card" style="height: 100%;">
+        <div class="card-body">
+          <h3 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 24px;">Performance</h3>
+
+          <div class="text-secondary small" style="margin-bottom: 8px;">
+            Plus-value{{ " · depuis le " ~ diff_since if diff_since else "" }}
+          </div>
+
+          {% if invest_diff %}
+          <div style="margin-bottom: 8px;">
+            <span style="font-size: 1.8rem; font-weight: 800;" class="{{ 'text-green' if invest_diff >= 0 else 'text-red' }}">
+              <span class="amount">{{ ('+' if invest_diff >= 0 else '') }}{{ invest_diff | money(net_currency) }}</span>
+            </span>
+            <span class="badge {{ 'badge-green' if invest_diff >= 0 else 'badge-red' }}" style="margin-left: 8px;">
+              {{ '%+.2f'|format(invest_diff_pct) }} %
+            </span>
+          </div>
+          {% elif net_diff %}
+          <div style="margin-bottom: 8px;">
+            <span style="font-size: 1.8rem; font-weight: 800;" class="{{ 'text-green' if net_diff >= 0 else 'text-red' }}">
+              <span class="amount">{{ ('+' if net_diff >= 0 else '') }}{{ net_diff | money(net_currency) }}</span>
+            </span>
+            <span class="badge {{ 'badge-green' if net_diff >= 0 else 'badge-red' }}" style="margin-left: 8px;">
+              {{ '%+.2f'|format(net_diff_pct) }} %
+            </span>
+          </div>
+          {% endif %}
+
+          <p class="text-secondary small" style="line-height: 1.6; margin-top: 16px;">
+            La plus-value latente est la variation de votre performance sur la période
+            sélectionnée. Ce montant ne tient pas compte des plus-values réalisées.
+          </p>
+
+          {# ── Mini allocation list ─────────────────────────────── #}
+          {% if allocation %}
+          <div style="margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px;">
+            {% for a in allocation %}
+            <div class="d-flex justify-between align-center" style="margin-bottom: 6px;">
+              <span class="d-flex align-center" style="gap: 8px;">
+                <span class="alloc-dot" style="background:{{ a.color }}"></span>
+                <span class="small">{{ a.name }}</span>
+              </span>
+              <span class="small text-secondary">{{ '%.0f'|format(a.pct) }} %</span>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Ma performance: horizontal investment cards ────────────────── #}
+  {% if invest_rows %}
+  <div class="section-header" style="margin-top: 8px;">
+    <span class="section-title">Ma performance</span>
+  </div>
+  <div class="perf-cards">
+    {% for row in invest_rows %}
+    <div class="perf-card">
+      <div class="d-flex align-center justify-between" style="margin-bottom: 2px;">
+        <div class="perf-card-name">{{ row.label }}</div>
+        {% if loop.index <= 20 %}
+        <span class="text-muted small">#{{ loop.index }}</span>
+        {% endif %}
+      </div>
+      {% if row.code %}
+      <div class="perf-card-sub">{{ row.code }}</div>
+      {% else %}
+      <div class="perf-card-sub">{{ row.account }}</div>
+      {% endif %}
+      <div class="perf-card-value amount">{{ row.valuation | money(row.currency) }}</div>
+      <div class="perf-card-diff">
+        {% if row.diff is not none %}
+          <span class="{{ 'text-green' if (row.diff or 0) >= 0 else 'text-red' }}">
+            {{ ('+' if (row.diff or 0) >= 0 else '') }}{{ row.diff | money(row.currency) }}
+            {% if row.diff_percent is not none %}
+              <span style="margin-left: 4px;">{{ '%+.2f'|format(row.diff_percent) }} %</span>
+            {% endif %}
+          </span>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+{% endif %}
+{% endblock %}

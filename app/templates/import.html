@@ -2,66 +2,66 @@
 {% block title %}Import de relevé · Powens Finance{% endblock %}
 {% block content %}
 
-<h2 class="mb-1">Import de relevé</h2>
+<h2 class="mb-2">Import de relevé</h2>
 <div class="text-secondary mb-3">
   Pour les comptes qu'aucun connecteur ne remonte. Les opérations importées alimentent
   l'historique, l'analyse et la détection d'abonnements, exactement comme celles de Powens.
 </div>
 
-{% if message %}<div class="alert alert-success">{{ message }}</div>{% endif %}
-{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+{% if message %}<div class="badge badge-green" style="padding: 8px 16px; margin-bottom: 12px; display: block;">{{ message }}</div>{% endif %}
+{% if error %}<div class="badge badge-red" style="padding: 8px 16px; margin-bottom: 12px; display: block;">{{ error }}</div>{% endif %}
 
-<div class="row row-cards">
-  <div class="col-lg-6">
+<div class="row">
+  <div class="col-6">
     <form method="post" action="/import" enctype="multipart/form-data" class="card">
-      <div class="card-header py-2"><h3 class="card-title">Nouveau fichier</h3></div>
+      <div class="card-header"><h3 class="card-title">Nouveau fichier</h3></div>
       <div class="card-body">
         <div class="mb-3">
-          <label class="form-label">Fichier CSV exporté depuis la banque</label>
-          <input type="file" name="fichier" accept=".csv,text/csv" class="form-control" required>
-          <div class="form-hint">
+          <label class="small">Fichier CSV exporté depuis la banque</label>
+          <input type="file" name="fichier" accept=".csv,text/csv" class="search" style="width: 100%;" required>
+          <div class="text-secondary small" style="margin-top: 4px;">
             Colonnes reconnues : une date, un libellé, puis Débit/Crédit séparés ou une
             colonne Montant signée. Séparateur <code>;</code> ou <code>,</code>.
           </div>
         </div>
         <div class="mb-3">
-          <label class="form-label">Nom du compte</label>
-          <input type="text" name="libelle" class="form-control" required
+          <label class="small">Nom du compte</label>
+          <input type="text" name="libelle" class="search" style="width: 100%;" required
                  placeholder="ex. CCF — compte chèque">
-          <div class="form-hint">
+          <div class="text-secondary small" style="margin-top: 4px;">
             Réutiliser le même nom pour compléter un compte déjà importé : les opérations
             déjà présentes sont ignorées, seules les nouvelles s'ajoutent.
           </div>
         </div>
-        <div class="row g-2">
-          <div class="col">
-            <label class="form-label">Type</label>
-            <select name="type_compte" class="form-select">
+        <div class="d-flex gap-2">
+          <div style="flex: 1;">
+            <label class="small">Type</label>
+            <select name="type_compte" class="search" style="width: auto;">
               <option value="checking" selected>Compte courant</option>
               <option value="card">Carte</option>
               <option value="savings">Épargne</option>
               <option value="loan">Crédit</option>
             </select>
-            <div class="form-hint">« Compte courant » le fait apparaître sur la page Comptes.</div>
+            <div class="text-secondary small" style="margin-top: 4px;">« Compte courant » le fait apparaître sur la page Comptes.</div>
           </div>
-          <div class="col-auto">
-            <label class="form-label">Devise</label>
-            <input type="text" name="devise" value="EUR" class="form-control" style="width:6rem">
+          <div>
+            <label class="small">Devise</label>
+            <input type="text" name="devise" value="EUR" class="search" style="width:6rem">
           </div>
         </div>
       </div>
-      <div class="card-footer text-end">
+      <div class="card-footer" style="text-align: right;">
         <button type="submit" class="btn btn-primary">Importer</button>
       </div>
     </form>
   </div>
 
-  <div class="col-lg-6">
+  <div class="col-6">
     <div class="card">
-      <div class="card-header py-2"><h3 class="card-title">Comptes importés</h3></div>
+      <div class="card-header"><h3 class="card-title">Comptes importés</h3></div>
       {% if accounts %}
-      <div class="table-responsive">
-        <table class="table table-vcenter card-table">
+      <div class="table-wrap">
+        <table>
           <thead>
             <tr>
               <th>Compte</th>
@@ -82,8 +82,8 @@
                 {% if a.first_day %}{{ a.first_day[8:10] }}/{{ a.first_day[5:7] }}/{{ a.first_day[0:4] }}
                 → {{ a.last_day[8:10] }}/{{ a.last_day[5:7] }}/{{ a.last_day[0:4] }}{% else %}—{% endif %}
               </td>
-              <td class="text-end">
-                <form method="post" action="/import/supprimer/{{ a.id }}" class="d-inline"
+              <td style="text-align: right;">
+                <form method="post" action="/import/supprimer/{{ a.id }}" style="display: inline;"
                       onsubmit="return confirm('Supprimer {{ a.label }} et ses {{ a.operations }} opérations importées ?')">
                   <button type="submit" class="btn btn-sm">Supprimer</button>
                 </form>
@@ -91,11 +91,11 @@
             </tr>
             {% if powens_accounts %}
             <tr>
-              <td colspan="4" class="pt-0">
+              <td colspan="4" style="padding-top: 0;">
                 <form method="post" action="/import/rattacher/{{ a.id }}"
-                      class="d-flex align-items-center gap-2">
-                  <span class="text-secondary small text-nowrap">Rattacher à</span>
-                  <select name="compte_powens" class="form-select form-select-sm">
+                      class="d-flex align-center gap-2">
+                  <span class="text-secondary small" style="white-space: nowrap;">Rattacher à</span>
+                  <select name="compte_powens" class="search" style="width: auto;">
                     <option value="" {% if not a.powens_account_id %}selected{% endif %}>
                       Aucun — compte autonome
                     </option>
@@ -107,7 +107,7 @@
                   <button type="submit" class="btn btn-sm">Appliquer</button>
                 </form>
                 {% if a.powens_account_id %}
-                <div class="text-secondary small mt-1">
+                <div class="text-secondary small" style="margin-top: 4px;">
                   Fusionné : seules les opérations antérieures à ce que le connecteur remonte
                   sont utilisées, et le solde n'est plus compté deux fois.
                 </div>

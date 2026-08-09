@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Protocol
@@ -186,10 +186,52 @@ def record_snapshot(
     return len(rows)
 
 
+def period_to_since(period: str) -> date | None:
+    """Convert a period code to a ``since`` date, or ``None`` for 'tout'."""
+    today = date.today()
+    code = (period or "tout").lower().strip()
+    if code == "tout":
+        return None
+    if code == "1j":
+        return today - timedelta(days=1)
+    if code == "7j":
+        return today - timedelta(days=7)
+    if code == "ytd":
+        return today.replace(month=1, day=1)
+    if code == "1a":
+        return _subtract_months(today, 12)
+    if code == "1m":
+        return _subtract_months(today, 1)
+    if code == "3m":
+        return _subtract_months(today, 3)
+    if code == "6m":
+        return _subtract_months(today, 6)
+    return None
+
+
+def _subtract_months(d: date, months: int) -> date:
+    """Subtract *months* from *d*, clamping the day to the target month's last day."""
+    month = d.month - months
+    year = d.year
+    while month < 1:
+        month += 12
+        year -= 1
+    import calendar
+    max_day = calendar.monthrange(year, month)[1]
+    return date(year, month, min(d.day, max_day))
+
+
 def net_worth_history(
-    conn: sqlite3.Connection, *, currency: str = "EUR", limit: int = 180
+    conn: sqlite3.Connection,
+    *,
+    currency: str = "EUR",
+    limit: int = 180,
+    since: date | None = None,
 ) -> list[tuple[date, Decimal]]:
-    """Daily net worth (one point per recorded day), oldest first."""
+    """Daily net worth (one point per recorded day), oldest first.
+
+    If *since* is given, only points on or after that date are returned.
+    """
     cursor = conn.execute(
         "SELECT day, balance FROM balance_snapshot WHERE currency = ? ORDER BY day",
         (currency.upper(),),
@@ -198,6 +240,32 @@ def net_worth_history(
     for row in cursor:
         totals[row["day"]] = totals.get(row["day"], Decimal(0)) + Decimal(row["balance"])
     points = [(date.fromisoformat(day), total) for day, total in sorted(totals.items())]
+    if since is not None:
+        points = [(d, v) for d, v in points if d >= since]
+    return points[-limit:]
+
+
+def account_balance_history(
+    conn: sqlite3.Connection,
+    *,
+    account_id: int,
+    currency: str = "EUR",
+    limit: int = 180,
+    since: date | None = None,
+) -> list[tuple[date, Decimal]]:
+    """Daily balance for a single account, oldest first."""
+    sql = (
+        "SELECT day, balance FROM balance_snapshot"
+        " WHERE account_id = ? AND currency = ? ORDER BY day"
+    )
+    params: list[object] = [account_id, currency.upper()]
+    cursor = conn.execute(sql, params)
+    points = [
+        (date.fromisoformat(row["day"]), Decimal(row["balance"]))
+        for row in cursor
+    ]
+    if since is not None:
+        points = [(d, v) for d, v in points if d >= since]
     return points[-limit:]
 
 

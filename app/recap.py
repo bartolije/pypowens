@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Request
@@ -76,6 +77,17 @@ STATE_LABELS = {
 }
 
 
+_MONTHS_FR = [
+    "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre",
+]
+
+
+def _today_fr() -> str:
+    d = date.today()
+    return f"{d.day:02d} {_MONTHS_FR[d.month - 1]} {d.year}"
+
+
 def _family_of(account_type: str | None) -> str:
     """Map a raw account type to its family label (unknown -> 'Autre')."""
     return TYPE_TO_FAMILY.get(account_type or "", "Autre")
@@ -88,6 +100,7 @@ def _currency_of(account: Account, default: str) -> str:
 @router.get("/patrimoine", response_class=HTMLResponse)
 async def recap(
     request: Request,
+    period: str = "tout",
     client: PowensClient = Depends(get_client),  # noqa: B008
     settings: Settings = Depends(get_settings),  # noqa: B008
     conn: sqlite3.Connection = Depends(get_store),  # noqa: B008
@@ -165,21 +178,23 @@ async def recap(
     # day. This replaces the previous guess based on the undocumented "diff" field,
     # which only reflected investment revaluation.
     store.record_snapshot(conn, accounts_list.accounts, default_currency=base_currency)
-    history = store.net_worth_history(conn, currency=base_currency)
-    previous = store.previous_net_worth(conn, currency=base_currency)
-    if previous is not None:
-        previous_date, previous_net = previous
-        net_diff = net - previous_net
-        net_diff_pct = float(net_diff / previous_net * 100) if previous_net else 0.0
-        diff_since = previous_date.strftime("%d/%m/%Y")
+    since = store.period_to_since(period)
+    history = store.net_worth_history(conn, currency=base_currency, since=since)
+    if history:
+        first_date, first_net = history[0]
+        net_diff = net - first_net
+        net_diff_pct = float(net_diff / first_net * 100) if first_net else 0.0
+        diff_since = first_date.strftime("%d/%m/%Y")
     else:
         net_diff = Decimal(0)
         net_diff_pct = 0.0
         diff_since = None
+    diff_label = f"depuis le {diff_since}" if diff_since else None
 
     net_chart = line_chart(
         [(day.strftime("%d/%m"), float(value)) for day, value in history],
         unit=symbol,
+        color="#e8a838",
     )
 
     # Security lines behind the investment accounts (best effort — see loader).
@@ -251,6 +266,7 @@ async def recap(
             "net_diff": net_diff,
             "net_diff_pct": net_diff_pct,
             "diff_since": diff_since,
+            "diff_label": diff_label,
             "net_chart": net_chart,
             "history_points": len(history),
             "allocation": allocation,
@@ -264,5 +280,7 @@ async def recap(
             "foreign_accounts": foreign,
             "foreign_totals": foreign_totals,
             "has_accounts": bool(accounts_list.accounts),
+            "today": _today_fr(),
+            "period": period.lower(),
         },
     )

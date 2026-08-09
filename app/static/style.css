@@ -1,51 +1,359 @@
-/* Companion styles on top of Tabler (loaded after tabler.min.css).
-   Tabler handles the design system; this only themes the accent, the
-   self-contained SVG charts, amount masking and sortable tables. */
+/* Powens Finance — Finary-inspired dark theme.
+   Self-contained: no Tabler dependency for the layout.
+   Font: Public Sans (Google Fonts). */
 
-:root,
-[data-bs-theme="dark"] {
-  --tblr-primary: #7c6cff;
-  --tblr-primary-rgb: 124, 108, 255;
+/* ── Reset & base ─────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-page: #0d0d0d;
+  --bg-sidebar: #111111;
+  --bg-card: #1a1a1a;
+  --bg-card-hover: #222222;
+  --bg-surface: #141414;
+  --border: #2a2a2a;
+  --text-primary: #e8e8e8;
+  --text-secondary: #888888;
+  --text-muted: #555555;
+  --accent: #e8a838;
+  --accent-dim: rgba(232, 168, 56, 0.15);
+  --green: #2ecc71;
+  --green-bg: rgba(46, 204, 113, 0.12);
+  --red: #e74c3c;
+  --red-bg: rgba(231, 76, 60, 0.12);
+  --chart-line: #e8a838;
+  --chart-area: rgba(232, 168, 56, 0.10);
+  --sidebar-w: 240px;
+  --topbar-h: 56px;
+  --radius: 12px;
+  --radius-sm: 8px;
 }
 
-.navbar-brand { font-size: 1.05rem; }
+html { height: 100%; }
 
-/* Hero balance card */
+body {
+  font-family: 'Public Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--bg-page);
+  min-height: 100vh;
+  display: flex;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: #f0b84d; }
+
+/* ── Sidebar ──────────────────────────────────────────────────────────────── */
+.sidebar {
+  position: fixed;
+  top: 0; left: 0;
+  width: var(--sidebar-w);
+  height: 100vh;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 20px 16px;
+  z-index: 100;
+  overflow-y: auto;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--accent);
+  font-size: 1.05rem;
+  font-weight: 700;
+  padding: 0 8px 24px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  font-weight: 500;
+  transition: background 0.15s, color 0.15s;
+}
+.sidebar-link:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+.sidebar-link.active {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ── Main area ────────────────────────────────────────────────────────────── */
+.main {
+  margin-left: var(--sidebar-w);
+  flex: 1;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Topbar ───────────────────────────────────────────────────────────────── */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  height: var(--topbar-h);
+  background: var(--bg-page);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+}
+.topbar-left { display: flex; align-items: center; gap: 12px; }
+.topbar-right { display: flex; align-items: center; gap: 12px; }
+
+.btn-icon {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.btn-icon:hover { background: var(--bg-card); color: var(--text-primary); }
+
+.btn-connect {
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  padding: 7px 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-connect:hover { background: var(--accent-dim); color: var(--accent); }
+
+/* ── Content area ─────────────────────────────────────────────────────────── */
+.content {
+  flex: 1;
+  padding: 28px 32px;
+  max-width: 1400px;
+}
+
+.app-footer {
+  padding: 20px 32px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+/* ── Period pills ─────────────────────────────────────────────────────────── */
+.period-pills {
+  display: flex;
+  gap: 4px;
+  list-style: none;
+}
+.period-pills a, .period-pills span {
+  display: inline-block;
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+}
+.period-pills a:hover { background: var(--bg-card); color: var(--text-primary); }
+.period-pills .active {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+/* ── Cards ────────────────────────────────────────────────────────────────── */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.card-body { padding: 24px; }
+.card-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.card-header h3 { font-size: 1rem; font-weight: 600; margin: 0; }
+.card-footer {
+  padding: 12px 24px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Grid ─────────────────────────────────────────────────────────────────── */
+.row { display: flex; flex-wrap: wrap; gap: 20px; }
+.col-8 { flex: 0 0 calc(66.66% - 10px); }
+.col-4 { flex: 0 0 calc(33.33% - 10px); }
+.col-6 { flex: 0 0 calc(50% - 10px); }
+.col-12 { flex: 0 0 100%; }
+.mt-3 { margin-top: 20px; }
+.mt-2 { margin-top: 12px; }
+.mb-3 { margin-bottom: 20px; }
+.mb-2 { margin-bottom: 12px; }
+
+/* ── Hero balance (synthèse) ──────────────────────────────────────────────── */
+.hero-date {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin-bottom: 4px;
+}
 .hero-balance {
-  background:
-    radial-gradient(600px 240px at 100% 0%, rgba(47,230,168,.14), transparent 60%),
-    linear-gradient(135deg, rgba(124,108,255,.30), rgba(124,108,255,.04) 70%);
-  border: 0;
-}
-.hero-balance .balance {
-  font-size: clamp(2rem, 5vw, 2.8rem); font-weight: 800; letter-spacing: -.03em;
+  font-size: clamp(2.2rem, 5vw, 3rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
   line-height: 1.1;
+  color: var(--text-primary);
 }
 
-/* Amounts + global masking. `.amount` is also set on the value labels inside the
-   server-rendered SVG charts (app/helpers.py), so masking covers them too — a
-   blurred balance next to a readable chart label would be pointless. */
+/* ── Variation badges ─────────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.badge-green { background: var(--green-bg); color: var(--green); }
+.badge-red { background: var(--red-bg); color: var(--red); }
+.badge-muted { background: rgba(255,255,255,0.06); color: var(--text-secondary); }
+.text-green { color: var(--green); }
+.text-red { color: var(--red); }
+.text-secondary { color: var(--text-secondary); }
+.text-muted { color: var(--text-muted); }
+
+/* ── Amounts + masking ────────────────────────────────────────────────────── */
 .amount { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .hide-amounts .amount { filter: blur(8px); user-select: none; transition: filter .12s; }
 .hide-amounts text.amount { filter: blur(5px); }
+.hide-amounts .hero-balance { filter: blur(12px); }
 
-/* Allocation rows */
-.alloc-name { display: flex; align-items: center; gap: 8px; font-weight: 500; }
-.alloc-dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+/* ── Tables ───────────────────────────────────────────────────────────────── */
+.table-wrap { overflow-x: auto; }
 
-/* Inline SVG charts (app/helpers.py) */
-.chart { display: block; max-width: 100%; overflow: visible; color: var(--tblr-body-color); }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+thead th {
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 0.82rem;
+  padding: 10px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+tbody td {
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  vertical-align: middle;
+}
+tbody tr:hover { background: var(--bg-card-hover); }
+tbody tr:last-child td { border-bottom: none; }
+
+.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Total row */
+.row-total {
+  background: var(--bg-surface);
+  font-weight: 600;
+}
+.row-total td { border-bottom: 1px solid var(--border); }
+
+/* Clickable rows */
+tr.clickable { cursor: pointer; }
+tr.clickable:hover { background: rgba(232, 168, 56, 0.05); }
+
+/* Sortable */
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--text-primary); }
+.arr { color: var(--accent); font-size: 0.85em; }
+
+/* ── Repartition bar (mini progress in table cell) ────────────────────────── */
+.repartition {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+.repartition-bar {
+  width: 40px; height: 6px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.repartition-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+/* ── Tabs (Actifs / Passifs) ──────────────────────────────────────────────── */
+.tabs {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+.tab-link {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding-bottom: 8px;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s;
+}
+.tab-link:hover { color: var(--text-secondary); }
+.tab-link.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--text-primary);
+}
+
+/* ── Inline SVG charts ────────────────────────────────────────────────────── */
+.chart { display: block; max-width: 100%; overflow: visible; color: var(--text-primary); }
 .chart .cl { fill: currentColor; font-size: 12px; }
-.chart .cv { fill: var(--tblr-secondary); font-size: 11px; font-variant-numeric: tabular-nums; }
-/* Lignes de graduation : présentes pour situer un montant, assez pâles pour que la
-   courbe reste le sujet. */
-.chart .grid { stroke: currentColor; stroke-opacity: .13; stroke-width: 1; }
+.chart .cv { fill: var(--text-secondary); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chart .grid { stroke: var(--text-muted); stroke-opacity: .25; stroke-width: 1; stroke-dasharray: 4 4; }
+.chart polyline { stroke: var(--chart-line); }
+.chart polygon { fill: var(--chart-area); }
+.chart circle { fill: var(--chart-line); }
+
+/* Donut chart */
 .donut { display: flex; gap: 26px; align-items: center; flex-wrap: wrap; }
 .donut > svg { flex: 0 0 auto; }
-.donut-hole { fill: var(--tblr-bg-surface); }
-.donut-c1 { fill: var(--tblr-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
-.donut-c2 { fill: var(--tblr-body-color); font-size: 17px; font-weight: 800; }
-/* Aligned 4-column legend: dot · name · % · value */
+.donut-hole { fill: var(--bg-card); }
+.donut-c1 { fill: var(--text-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.donut-c2 { fill: var(--text-primary); font-size: 17px; font-weight: 800; }
 .legend { list-style: none; margin: 0; padding: 0; font-size: .9rem;
   flex: 1 1 200px; min-width: 0;
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto;
@@ -54,11 +362,153 @@
 .legend .dot { width: 11px; height: 11px; border-radius: 3px; align-self: center; }
 .legend .lg-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .legend .lg-pct { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
-.legend .lg-val { color: var(--tblr-secondary); text-align: right; white-space: nowrap;
+.legend .lg-val { color: var(--text-secondary); text-align: right; white-space: nowrap;
   font-variant-numeric: tabular-nums; }
 
-/* Sortable tables */
-th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
-th.sortable:hover { color: var(--tblr-primary); }
-.arr { color: var(--tblr-primary); font-size: .85em; }
-.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* ── Allocation bars ──────────────────────────────────────────────────────── */
+.alloc-name { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+.alloc-dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.progress { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+.progress-bar { height: 100%; border-radius: 2px; transition: width 0.3s; }
+
+/* ── Custom chart tooltip ─────────────────────────────────────────────────── */
+.chart-tip {
+  position: fixed; pointer-events: none; z-index: 9999;
+  background: var(--bg-card); color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 12px; font-size: .82rem;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0,0,0,.4);
+  opacity: 0; transition: opacity .1s;
+}
+.chart-tip.visible { opacity: 1; }
+.hide-amounts .chart-tip { filter: blur(8px); }
+
+/* ── Performance cards (horizontal scroll) ────────────────────────────────── */
+.perf-cards {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scroll-snap-type: x mandatory;
+}
+.perf-cards::-webkit-scrollbar { height: 4px; }
+.perf-cards::-webkit-scrollbar-track { background: transparent; }
+.perf-cards::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.perf-card {
+  flex: 0 0 280px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  scroll-snap-align: start;
+  transition: border-color 0.15s;
+}
+.perf-card:hover { border-color: var(--text-muted); }
+.perf-card-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 2px;
+}
+.perf-card-sub {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+.perf-card-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.perf-card-diff {
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Connection status ────────────────────────────────────────────────────── */
+.sync-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  padding: 3px 10px;
+  border-radius: 12px;
+}
+.sync-ok { background: var(--green-bg); color: var(--green); }
+.sync-err { background: var(--red-bg); color: var(--red); }
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn:hover { background: var(--bg-card-hover); }
+.btn-primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+.btn-primary:hover { background: #f0b84d; color: #000; }
+.btn-sm { padding: 5px 12px; font-size: 0.8rem; }
+
+/* ── Performance section header ───────────────────────────────────────────── */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.section-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+/* ── Search input ─────────────────────────────────────────────────────────── */
+input.search {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 7px 14px;
+  font-size: 0.85rem;
+  outline: none;
+  width: 200px;
+}
+input.search::placeholder { color: var(--text-muted); }
+input.search:focus { border-color: var(--text-muted); }
+
+/* ── Empty state ──────────────────────────────────────────────────────────── */
+.empty { text-align: center; padding: 60px 20px; }
+.empty-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; }
+.empty-subtitle { color: var(--text-secondary); margin-bottom: 20px; }
+
+/* ── Utility ──────────────────────────────────────────────────────────────── */
+.d-flex { display: flex; }
+.align-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.gap-2 { gap: 12px; }
+.gap-3 { gap: 20px; }
+.flex-wrap { flex-wrap: wrap; }
+.fw-bold { font-weight: 700; }
+.fw-800 { font-weight: 800; }
+.small { font-size: 0.82rem; }
+.muted { color: var(--text-secondary); }
+
+/* ── Responsive ───────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+  .main { margin-left: 0; }
+  .content { padding: 16px; }
+  .topbar { padding: 0 16px; }
+  .col-8, .col-4, .col-6 { flex: 0 0 100%; }
+}

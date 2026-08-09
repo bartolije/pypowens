@@ -237,8 +237,11 @@ def line_chart(
         )
 
     dots = "".join(
-        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="2.5" fill="{color}">'
+        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="8" fill="transparent" '
+        f'style="cursor:crosshair">'
         f"<title>{_e(label)}: {value:,.2f} {unit}</title></circle>"
+        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="2.5" fill="{color}" '
+        f'style="pointer-events:none"/>'
         for (x, y), (label, value) in zip(coords, points, strict=True)
     )
     # Only first / middle / last labels, otherwise the axis becomes unreadable.

@@ -6,6 +6,16 @@
 // in a data attribute while masking is on — otherwise hovering a bar would leak
 // the very figure the mask is meant to hide.
 function setTooltips(hidden) {
+  // Custom tooltip: data lives in data-tip on the parent element (circle, rect, path).
+  document.querySelectorAll(".chart [data-tip], .donut [data-tip]").forEach((el) => {
+    if (hidden) {
+      if (el.dataset.tipReal === undefined) el.dataset.tipReal = el.dataset.tip;
+      el.dataset.tip = "•••";
+    } else if (el.dataset.tipReal !== undefined) {
+      el.dataset.tip = el.dataset.tipReal;
+    }
+  });
+  // Fallback: any remaining <title> nodes (shouldn't happen after initChartTips).
   document.querySelectorAll(".chart title, .donut title").forEach((node) => {
     if (hidden) {
       if (node.dataset.text === undefined) node.dataset.text = node.textContent;
@@ -103,6 +113,45 @@ function initSearch() {
   });
 }
 
+// --- Custom chart tooltips (replaces sluggish native SVG <title>) -----------
+function initChartTips() {
+  const tip = document.createElement("div");
+  tip.className = "chart-tip";
+  document.body.appendChild(tip);
+
+  // Move <title> text into data-tip so the browser never shows the native
+  // tooltip — and re-use it for our custom one.
+  document.querySelectorAll(".chart [data-tip], .donut [data-tip]").forEach(() => {});
+  document.querySelectorAll(".chart title, .donut title").forEach((t) => {
+    const parent = t.parentElement;
+    if (parent && !parent.dataset.tip) {
+      parent.dataset.tip = t.textContent;
+      t.remove();
+    }
+  });
+
+  function show(e) {
+    const el = e.target.closest("[data-tip]");
+    if (!el) return hide();
+    tip.textContent = el.dataset.tip;
+    tip.classList.add("visible");
+    position(e);
+  }
+  function position(e) {
+    tip.style.left = e.clientX + 12 + "px";
+    tip.style.top = e.clientY - 28 + "px";
+  }
+  function hide() {
+    tip.classList.remove("visible");
+  }
+
+  document.querySelectorAll(".chart, .donut > svg").forEach((svg) => {
+    svg.addEventListener("mousemove", show);
+    svg.addEventListener("mouseleave", hide);
+  });
+}
+
+initChartTips();   // must run before initMask so <title> text is captured before masking
 initMask();
 initSortable();
 initSearch();

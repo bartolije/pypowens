@@ -1,192 +1,192 @@
 {% extends "base.html" %}
-{% block title %}Récap · Powens Finance{% endblock %}
+{% block title %}Patrimoine · Powens Finance{% endblock %}
+
+{% block topbar_left %}
+  <span class="section-title">Patrimoine</span>
+  <nav class="period-pills" style="margin-left: 24px;">
+    <a href="/patrimoine?period=1j" class="{{ 'active' if period == '1j' }}">1J</a>
+    <a href="/patrimoine?period=7j" class="{{ 'active' if period == '7j' }}">7J</a>
+    <a href="/patrimoine?period=1m" class="{{ 'active' if period == '1m' }}">1M</a>
+    <a href="/patrimoine?period=3m" class="{{ 'active' if period == '3m' }}">3M</a>
+    <a href="/patrimoine?period=6m" class="{{ 'active' if period == '6m' }}">6M</a>
+    <a href="/patrimoine?period=ytd" class="{{ 'active' if period == 'ytd' }}">YTD</a>
+    <a href="/patrimoine?period=1a" class="{{ 'active' if period == '1a' }}">1A</a>
+    <a href="/patrimoine?period=tout" class="{{ 'active' if period == 'tout' }}">TOUT</a>
+  </nav>
+{% endblock %}
+
 {% block content %}
 
 {% if not has_accounts %}
   <div class="empty">
     <p class="empty-title">Aucun compte pour le moment</p>
-    <p class="empty-subtitle text-secondary">Connectez une banque pour voir votre patrimoine.</p>
-    <div class="empty-action"><a href="/connect" class="btn btn-primary">+ Connecter une banque</a></div>
+    <p class="empty-subtitle">Connectez une banque pour voir votre patrimoine.</p>
+    <a href="/connect" class="btn btn-primary">+ Connecter une banque</a>
   </div>
 {% else %}
 
-  <div class="card hero-balance mb-3">
-    <div class="card-body">
-      <div class="subheader">Patrimoine net{% if foreign_accounts %} · {{ net_currency }} uniquement{% endif %}</div>
-      <div class="balance mt-1">{{ net | money(net_currency) }}</div>
-      <div class="mt-2 d-flex flex-wrap gap-2 align-items-center">
-        {% if net_diff %}
-        <span class="badge {{ 'bg-green-lt' if net_diff >= 0 else 'bg-red-lt' }}"
-              {% if diff_since %}title="Depuis le relevé du {{ diff_since }}"{% endif %}>
-          {{ '↑' if net_diff >= 0 else '↓' }} {{ net_diff | money(net_currency) }} ({{ '%+.1f'|format(net_diff_pct) }} %)
-          {% if diff_since %}<span class="text-secondary">depuis le {{ diff_since }}</span>{% endif %}
-        </span>
-        {% endif %}
-        <span class="badge bg-secondary-lt">{{ n_accounts }} comptes</span>
-        <span class="badge bg-secondary-lt">{{ n_connections }} connexion{{ 's' if n_connections > 1 }}</span>
+  {# ── Chart + Allocation side by side (above the table, like Finary Synthèse) #}
+  <div class="row mb-3">
+    <div class="col-8">
+      <div class="card">
+        <div class="card-body">
+          <div class="hero-date">{{ today }}</div>
+          <div class="hero-balance amount">{{ net | money(net_currency, 0) }}</div>
+          <div class="d-flex align-center gap-2" style="margin-top: 8px;">
+            {% if net_diff %}
+            <span class="badge {{ 'badge-green' if net_diff >= 0 else 'badge-red' }}">
+              {{ '▲' if net_diff >= 0 else '▼' }} {{ net_diff | money(net_currency) }}
+            </span>
+            <span class="badge {{ 'badge-green' if net_diff >= 0 else 'badge-red' }}">
+              {{ '%+.2f'|format(net_diff_pct) }} %
+            </span>
+            {% endif %}
+          </div>
+          <div style="margin-top: 16px;">{{ net_chart | safe }}</div>
+        </div>
       </div>
-      {% if total_debt %}
-      {# Stated explicitly: the net figure above already nets the debt out, and a
-         repartition that showed a loan as a positive slice would contradict it. #}
-      <div class="text-secondary small mt-2">
-        actifs <span class="amount">{{ total_assets | money(net_currency) }}</span>
-        · dettes <span class="text-danger">−<span class="amount">{{ total_debt | money(net_currency) }}</span></span>
+    </div>
+    <div class="col-4">
+      <div class="card" style="height: 100%;">
+        <div class="card-body">
+          <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 20px;">Performance</h3>
+          {% if net_diff %}
+          <div class="text-secondary small" style="margin-bottom: 8px;">Plus-value · {{ diff_label or "depuis le début" }}</div>
+          <div style="font-size: 1.8rem; font-weight: 800; margin-bottom: 6px;" class="{{ 'text-green' if net_diff >= 0 else 'text-red' }}">
+            <span class="amount">{{ ('+' if net_diff >= 0 else '') }}{{ net_diff | money(net_currency) }}</span>
+          </div>
+          <span class="badge {{ 'badge-green' if net_diff >= 0 else 'badge-red' }}">{{ '%+.2f'|format(net_diff_pct) }} %</span>
+          {% endif %}
+          <p class="text-secondary small" style="margin-top: 20px; line-height: 1.6;">
+            La plus-value latente est la variation de votre patrimoine sur la période sélectionnée.
+          </p>
+          <div style="margin-top: 24px;">
+            <h4 style="font-size: 0.92rem; font-weight: 600; margin-bottom: 12px;">Répartition</h4>
+            {% for a in allocation %}
+            <div class="d-flex justify-between align-center" style="margin-bottom: 6px;">
+              <span class="d-flex align-center" style="gap: 8px;">
+                <span class="alloc-dot" style="background:{{ a.color }}"></span>
+                <span class="small">{{ a.name }}</span>
+              </span>
+              <span class="small text-secondary">{{ '%.0f'|format(a.pct) }} %</span>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
       </div>
-      {% endif %}
     </div>
   </div>
 
-  <div class="card mb-3">
-    <div class="card-header">
-      <h3 class="card-title">Évolution du patrimoine</h3>
-      <span class="text-secondary small ms-2">
-        {% if history_points > 1 %}{{ history_points }} relevés enregistrés localement
-        {% else %}un relevé par jour d'utilisation, conservé en local{% endif %}
+  {# ── Asset table in a card ──────────────────────────────────────── #}
+  <div class="card">
+    <div class="card-body" style="padding-bottom: 0;">
+      <div class="tabs" style="margin-bottom: 16px;">
+        <a class="tab-link active" href="/patrimoine">Actifs</a>
+        <a class="tab-link" href="/patrimoine?view=passifs">Passifs</a>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="sortable" id="patrimoine-table">
+        <thead>
+          <tr>
+            <th>Nom</th>
+            <th>Type</th>
+            <th>Répartition</th>
+            <th class="num">Valeur</th>
+            <th class="num">+/- value</th>
+            <th class="num">Var. 1J</th>
+          </tr>
+        </thead>
+        <tbody>
+          {# ── Total row ────────────────────────────────────── #}
+          <tr class="row-total">
+            <td>
+              <strong>Total</strong>
+              <span class="text-secondary small" style="margin-left: 8px;">{{ n_accounts }} actif{{ 's' if n_accounts > 1 }}</span>
+            </td>
+            <td></td>
+            <td></td>
+            <td class="num" data-sort="{{ net }}">{{ net | money(net_currency) }}</td>
+            <td class="num {{ 'text-green' if (invest_diff or 0) >= 0 else 'text-red' }}">
+              {% if invest_diff %}
+                <span class="amount">{{ invest_diff | money(net_currency) }}</span>
+                <br><span class="small">{{ '▲' if invest_diff >= 0 else '▼' }} {{ '%+.2f'|format(net_diff_pct) }}%</span>
+              {% endif %}
+            </td>
+            <td class="num {{ 'text-green' if (invest_diff or 0) >= 0 else 'text-red' }}">
+              {% if invest_diff %}
+                <span class="amount">{{ invest_diff | money(net_currency) }}</span>
+                <br><span class="small">{{ '▲' if invest_diff >= 0 else '▼' }} {{ '%+.2f'|format(net_diff_pct) }}%</span>
+              {% endif %}
+            </td>
+          </tr>
+
+          {# ── Account rows ─────────────────────────────────── #}
+          {% for fam in families %}
+            {% for acc in fam.accounts %}
+            <tr class="clickable" onclick="location.href='/patrimoine/{{ acc.id }}'">
+              <td>
+                <a href="/patrimoine/{{ acc.id }}" style="color: inherit; text-decoration: none;">
+                  <div class="fw-bold">{{ acc.name or "—" }}</div>
+                  <div class="text-muted small">{{ fam.name }}</div>
+                </a>
+              </td>
+              <td class="text-secondary">{{ fam.name }}</td>
+              <td>
+                {% set pct = (acc.balance or 0) / (total_assets or 1) * 100 %}
+                <div class="repartition">
+                  <div class="repartition-bar"><div class="repartition-fill" style="width: {{ pct|round(1) }}%"></div></div>
+                  {{ '%.1f'|format(pct) }} %
+                </div>
+              </td>
+              <td class="num" data-sort="{{ acc.balance or 0 }}">{{ acc.balance | money(acc.currency or net_currency) }}</td>
+              <td class="num"></td>
+              <td class="num"></td>
+            </tr>
+            {% endfor %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# ── Performance cards ──────────────────────────────────────────── #}
+  {% if invest_rows %}
+  <div class="mt-3">
+    <div class="section-header">
+      <span class="section-title">Ma performance</span>
+      <span class="text-secondary small">
+        Plus-value latente
+        <span class="{{ 'text-green' if invest_diff >= 0 else 'text-red' }}">{{ invest_diff | money(net_currency) }}</span>
       </span>
     </div>
-    <div class="card-body">{{ net_chart | safe }}</div>
-  </div>
-
-  <div class="row row-cards">
-    <div class="col-lg-6">
-      <div class="card">
-        <div class="card-body">
-          <h3 class="card-title">Répartition des actifs</h3>
-          {{ donut | safe }}
-          {% if debt_families %}
-          <div class="text-secondary small mt-2">
-            Hors dettes :
-            {% for d in debt_families %}{{ d.name }}
-            <span class="text-danger"><span class="amount">{{ d.subtotal | money(net_currency) }}</span></span>{{ ", " if not loop.last }}{% endfor %}
-          </div>
+    <div class="perf-cards">
+      {% for row in invest_rows %}
+      <div class="perf-card">
+        <div class="perf-card-name">{{ row.label }}</div>
+        {% if row.code %}<div class="perf-card-sub">{{ row.code }}</div>{% endif %}
+        <div class="perf-card-value amount">{{ row.valuation | money(row.currency) }}</div>
+        <div class="perf-card-diff">
+          {% if row.diff is not none %}
+            <span class="{{ 'text-green' if (row.diff or 0) >= 0 else 'text-red' }}">
+              {{ row.diff | money(row.currency) }}
+              {% if row.diff_percent is not none %}
+                <span class="badge {{ 'badge-green' if row.diff_percent >= 0 else 'badge-red' }}">{{ '%+.2f'|format(row.diff_percent) }} %</span>
+              {% endif %}
+            </span>
           {% endif %}
-        </div>
-      </div>
-    </div>
-    <div class="col-lg-6">
-      <div class="card">
-        <div class="card-body">
-          <h3 class="card-title">Allocation</h3>
-          {% for a in allocation %}
-          <div class="mb-3">
-            <div class="d-flex justify-content-between mb-1">
-              <span class="alloc-name"><span class="alloc-dot" style="background:{{ a.color }}"></span>{{ a.name }}</span>
-              <span><span class="amount fw-bold">{{ a.subtotal | money(net_currency) }}</span>
-                <span class="text-secondary ms-1">{{ '%.0f'|format(a.pct) }} %</span></span>
-            </div>
-            <div class="progress progress-sm">
-              <div class="progress-bar" style="width:{{ a.pct }}%;background:{{ a.color }}"></div>
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="card mt-3">
-    <div class="card-header"><h3 class="card-title">Comptes</h3></div>
-    <div class="card-body">
-      {% for fam in families %}
-      <div class="{{ '' if loop.first else 'mt-4' }}">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <span class="fw-bold">{{ fam.name }}</span>
-          <span class="badge bg-secondary-lt"><span class="amount">{{ fam.subtotal | money(net_currency) }}</span></span>
-        </div>
-        <div class="table-responsive">
-          <table class="table table-vcenter card-table sortable">
-            <thead>
-              <tr><th>Compte</th><th>IBAN</th><th>Type</th><th class="num">Solde</th></tr>
-            </thead>
-            <tbody>
-              {% for acc in fam.accounts %}
-              <tr>
-                <td>{{ acc.name or "—" }}</td>
-                <td class="text-secondary">{{ acc.iban | iban }}</td>
-                <td class="text-secondary">{{ acc.type or "—" }}</td>
-                <td class="num" data-sort="{{ acc.balance or 0 }}">{{ acc.balance | money(acc.currency or net_currency) }}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
         </div>
       </div>
       {% endfor %}
     </div>
   </div>
-
-  {% if invest_rows %}
-  <div class="card mt-3">
-    <div class="card-header">
-      <h3 class="card-title">Lignes détenues</h3>
-      <span class="text-secondary small ms-2">
-        plus-value latente
-        <span class="{{ 'text-green' if invest_diff >= 0 else 'text-red' }}">{{ invest_diff | money(net_currency) }}</span>
-      </span>
-    </div>
-    <div class="table-responsive">
-      <table class="table table-vcenter card-table sortable">
-        <thead>
-          <tr>
-            <th>Ligne</th><th>Compte</th><th class="num">Quantité</th>
-            <th class="num">Valorisation</th><th class="num">+/- value</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in invest_rows %}
-          <tr>
-            <td>{{ row.label }}{% if row.code %}<span class="text-secondary small ms-1">{{ row.code }}</span>{% endif %}</td>
-            <td class="text-secondary">{{ row.account }}</td>
-            <td class="num">{{ '%.4f'|format(row.quantity) if row.quantity is not none else '—' }}</td>
-            <td class="num" data-sort="{{ row.valuation or 0 }}">{{ row.valuation | money(row.currency) }}</td>
-            <td class="num {{ 'text-green' if (row.diff or 0) >= 0 else 'text-red' }}" data-sort="{{ row.diff or 0 }}">
-              {{ row.diff | money(row.currency) }}
-              {% if row.diff_percent is not none %}<span class="text-secondary small">({{ '%+.1f'|format(row.diff_percent) }} %)</span>{% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
   {% endif %}
 
-  {% if foreign_accounts %}
+  {# ── Connections ────────────────────────────────────────────────── #}
   <div class="card mt-3">
-    <div class="card-header">
-      <h3 class="card-title">Comptes en devises étrangères</h3>
-      <span class="text-secondary small ms-2">exclus du patrimoine net (aucun taux de change n'est appliqué)</span>
-    </div>
-    <div class="table-responsive">
-      <table class="table table-vcenter card-table">
-        <thead>
-          <tr><th>Compte</th><th>Type</th><th>Devise</th><th class="num">Solde</th></tr>
-        </thead>
-        <tbody>
-          {% for acc in foreign_accounts %}
-          <tr>
-            <td>{{ acc.name or "—" }}</td>
-            <td class="text-secondary">{{ acc.type or "—" }}</td>
-            <td class="text-secondary">{{ acc.currency }}</td>
-            <td class="num">{{ acc.balance | money(acc.currency) }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-        <tfoot>
-          {% for code, total in foreign_totals.items() %}
-          <tr><td colspan="3" class="text-end fw-bold">Total {{ code }}</td>
-            <td class="num fw-bold">{{ total | money(code) }}</td></tr>
-          {% endfor %}
-        </tfoot>
-      </table>
-    </div>
-  </div>
-  {% endif %}
-
-  <div class="card mt-3">
-    <div class="card-header"><h3 class="card-title">Connexions</h3></div>
-    <div class="table-responsive">
-      <table class="table table-vcenter card-table">
+    <div class="card-header"><h3>Connexions</h3></div>
+    <div class="table-wrap">
+      <table>
         <thead>
           <tr><th>Banque</th><th class="num">Comptes</th><th>Dernière synchro</th><th>État</th><th></th></tr>
         </thead>
@@ -197,19 +197,17 @@
             <td class="num">{{ c.nb_accounts }}</td>
             <td class="text-secondary">{{ c.last_update }}</td>
             <td>
-              {% if c.ok %}<span class="badge bg-green-lt">OK</span>
-              {% else %}<span class="badge bg-red-lt">À reconnecter</span>
-                {% if c.message %}<span class="text-secondary small ms-1">{{ c.message }}</span>{% endif %}
+              {% if c.ok %}<span class="sync-badge sync-ok">● Synchronisé</span>
+              {% else %}<span class="sync-badge sync-err">● À reconnecter</span>
+                {% if c.message %}<span class="text-secondary small" style="margin-left: 6px;">{{ c.message }}</span>{% endif %}
               {% endif %}
             </td>
-            <td class="text-end">
+            <td style="text-align: right;">
               {% if c.id %}
                 {% if c.needs_user %}
-                {# Waiting on the bank's own authentication: only the user can clear
-                   this, so offer the Webview rather than a sync that cannot work. #}
-                <a href="/reconnecter/{{ c.id }}" class="btn btn-sm btn-primary">Reprendre l'authentification</a>
+                <a href="/reconnecter/{{ c.id }}" class="btn btn-sm btn-primary">Reprendre</a>
                 {% else %}
-                <form method="post" action="/synchroniser/{{ c.id }}" class="d-inline">
+                <form method="post" action="/synchroniser/{{ c.id }}" style="display:inline;">
                   <button type="submit" class="btn btn-sm">Synchroniser</button>
                 </form>
                 {% endif %}

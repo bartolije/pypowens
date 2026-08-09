@@ -15,12 +15,14 @@ from pypowens import PowensAPIError, PowensAuthError, PowensClient, PowensRateLi
 from . import (
     accounts,
     analysis,
+    detail,
     frequency,
     imports,
     investments,
     recap,
     recurring,
     store,
+    synthese,
     transactions,
 )
 from .config import Settings, get_settings
@@ -55,8 +57,10 @@ app.mount(
     name="static",
 )
 
+app.include_router(synthese.router)
 app.include_router(accounts.router)
 app.include_router(recap.router)
+app.include_router(detail.router)
 app.include_router(frequency.router)
 app.include_router(recurring.router)
 app.include_router(analysis.router)

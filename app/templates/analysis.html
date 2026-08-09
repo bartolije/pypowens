@@ -3,7 +3,7 @@
 
 {% block content %}
 
-<h2 class="mb-1">Analyse des dépenses</h2>
+<h2 class="mb-2">Analyse des dépenses</h2>
 <div class="text-secondary mb-3">
   {% if has_spend %}
     Tous les chiffres de cette page portent sur les {{ window_months }} derniers mois
@@ -21,28 +21,28 @@
   </div>
 {% else %}
 
-  <div class="row row-cards">
-    <div class="col-sm-6 col-lg-4">
+  <div class="row">
+    <div class="col-4">
       <div class="card">
         <div class="card-body">
-          <div class="subheader">Dépenses moy. / mois</div>
-          <div class="h1 mb-0">{{ avg_spend | money }}</div>
+          <div class="text-secondary small">Dépenses moy. / mois</div>
+          <div class="hero-balance">{{ avg_spend | money }}</div>
         </div>
       </div>
     </div>
-    <div class="col-sm-6 col-lg-4">
+    <div class="col-4">
       <div class="card">
         <div class="card-body">
-          <div class="subheader">Revenus moy. / mois</div>
-          <div class="h1 mb-0 text-green">{{ avg_income | money }}</div>
+          <div class="text-secondary small">Revenus moy. / mois</div>
+          <div class="hero-balance text-green">{{ avg_income | money }}</div>
         </div>
       </div>
     </div>
-    <div class="col-sm-6 col-lg-4">
+    <div class="col-4">
       <div class="card">
         <div class="card-body">
-          <div class="subheader">Épargne moy. / mois</div>
-          <div class="h1 mb-0 {{ 'text-green' if avg_savings >= 0 else 'text-red' }}">{{ avg_savings | money }}</div>
+          <div class="text-secondary small">Épargne moy. / mois</div>
+          <div class="hero-balance {{ 'text-green' if avg_savings >= 0 else 'text-red' }}">{{ avg_savings | money }}</div>
         </div>
       </div>
     </div>
@@ -52,12 +52,12 @@
     <div class="card-header"><h3 class="card-title">Dépenses vs revenus par mois</h3></div>
     <div class="card-body">
       <div class="row">
-        <div class="col-lg-6">
-          <h3 class="subheader">Dépenses</h3>
+        <div class="col-6">
+          <h3 class="text-secondary small">Dépenses</h3>
           {{ spend_chart | safe }}
         </div>
-        <div class="col-lg-6">
-          <h3 class="subheader">Revenus</h3>
+        <div class="col-6">
+          <h3 class="text-secondary small">Revenus</h3>
           {{ income_chart | safe }}
         </div>
       </div>
@@ -67,17 +67,17 @@
   <div class="card mt-3">
     <div class="card-header">
       <h3 class="card-title">Dépenses par catégorie</h3>
-      <span class="text-secondary small ms-2">{{ total_spend | money }} sur la période</span>
+      <span class="text-secondary small" style="margin-left: 8px;">{{ total_spend | money }} sur la période</span>
     </div>
     <div class="card-body">
-      <div class="row row-cards">
-        <div class="col-lg-6">
+      <div class="row">
+        <div class="col-6">
           {{ cat_donut | safe }}
         </div>
-        <div class="col-lg-6">
-          <input type="text" class="form-control form-control-sm search mb-3" placeholder="Rechercher…" data-target="#catTable" style="max-width:260px">
-          <div class="table-responsive">
-            <table class="table table-vcenter card-table sortable" id="catTable">
+        <div class="col-6">
+          <input type="text" class="search mb-3" placeholder="Rechercher…" data-target="#catTable" style="max-width:260px">
+          <div class="table-wrap">
+            <table class="sortable" id="catTable">
               <thead>
                 <tr>
                   <th>Catégorie</th>
@@ -104,16 +104,16 @@
   <div class="card mt-3">
     <div class="card-header"><h3 class="card-title">Récurrent vs ponctuel</h3></div>
     <div class="card-body">
-      <div class="row row-cards">
-        <div class="col-lg-6">
+      <div class="row">
+        <div class="col-6">
           {{ rec_donut | safe }}
         </div>
-        <div class="col-lg-6">
-          <p class="mb-1">Récurrent <strong>{{ recurring_monthly | money }}</strong> /mois
+        <div class="col-6">
+          <p>Récurrent <strong>{{ recurring_monthly | money }}</strong> /mois
             <span class="text-secondary">— {{ recurring_spend | money }} sur la période</span></p>
-          <p class="mb-3">Ponctuel <strong>{{ ponctuel_monthly | money }}</strong> /mois
+          <p>Ponctuel <strong>{{ ponctuel_monthly | money }}</strong> /mois
             <span class="text-secondary">— {{ ponctuel_spend | money }} sur la période</span></p>
-          <p class="text-secondary small mb-0">
+          <p class="text-secondary small">
             Ventilation des dépenses réellement constatées, poste par poste.
             Engagement contractuel des {{ recurring_count }} série{{ 's' if recurring_count > 1 else '' }}
             active{{ 's' if recurring_count > 1 else '' }} détectée{{ 's' if recurring_count > 1 else '' }} :
@@ -129,7 +129,7 @@
   <div class="card mt-3">
     <div class="card-header"><h3 class="card-title">Indicateurs Powens</h3></div>
     <div class="card-body">
-      <ul class="list-unstyled mb-0">
+      <ul style="list-style: none; padding: 0; margin: 0;">
         {% for k, v in indicator_rows %}
         <li><span class="text-secondary">{{ k }}:</span> {{ v }}</li>
         {% endfor %}

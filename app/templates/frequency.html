@@ -2,40 +2,40 @@
 {% block title %}Récurrences · Powens Finance{% endblock %}
 {% block content %}
 
-<h2 class="mb-1">Lignes récurrentes par libellé</h2>
+<h2 class="mb-2">Lignes récurrentes par libellé</h2>
 <div class="text-secondary mb-3">Regroupe les opérations par libellé sur une plage de dates.</div>
 
 <form method="get" action="/recurrences" class="card">
   <div class="card-body">
-    <div class="row g-2 align-items-end">
-      <div class="col-auto">
-        <label class="form-label">Du</label>
-        <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
+    <div class="d-flex align-center gap-2 flex-wrap">
+      <div>
+        <label class="small">Du</label>
+        <input type="date" name="date_from" value="{{ date_from }}" class="search">
       </div>
-      <div class="col-auto">
-        <label class="form-label">Au</label>
-        <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
+      <div>
+        <label class="small">Au</label>
+        <input type="date" name="date_to" value="{{ date_to }}" class="search">
       </div>
-      <div class="col-auto">
-        <label class="form-label">Min. occurrences</label>
-        <input type="number" name="min_count" value="{{ min_count }}" min="1" class="form-control form-control-sm">
+      <div>
+        <label class="small">Min. occurrences</label>
+        <input type="number" name="min_count" value="{{ min_count }}" min="1" class="search">
       </div>
-      <div class="col-auto">
-        <label class="form-label">Type</label>
-        <select name="kind" class="form-select form-select-sm">
+      <div>
+        <label class="small">Type</label>
+        <select name="kind" class="search" style="width: auto;">
           <option value="debit" {{ 'selected' if kind == 'debit' }}>Dépenses</option>
           <option value="credit" {{ 'selected' if kind == 'credit' }}>Revenus</option>
         </select>
       </div>
-      <div class="col-auto">
-        <label class="form-label">Périmètre</label>
-        <select name="scope" class="form-select form-select-sm">
+      <div>
+        <label class="small">Périmètre</label>
+        <select name="scope" class="search" style="width: auto;">
           <option value="spending" {{ 'selected' if scope == 'spending' }}>Comptes courants</option>
           <option value="all" {{ 'selected' if scope == 'all' }}>Tous les comptes</option>
         </select>
       </div>
       <input type="hidden" name="sort" value="{{ sort }}">
-      <div class="col-auto">
+      <div>
         <button class="btn btn-primary">Filtrer</button>
       </div>
     </div>
@@ -44,20 +44,20 @@
 
 <div class="text-secondary mb-3 mt-3">Période : {{ date_from }} → {{ date_to or "aujourd'hui" }}</div>
 
-<div class="row row-cards mb-3">
-  <div class="col-sm-6 col-lg-4">
+<div class="row mb-3">
+  <div class="col-4">
     <div class="card">
       <div class="card-body">
-        <div class="subheader">Libellés récurrents</div>
-        <div class="h1 mb-0 text-primary">{{ nb_labels }}</div>
+        <div class="text-secondary small">Libellés récurrents</div>
+        <div class="hero-balance">{{ nb_labels }}</div>
       </div>
     </div>
   </div>
-  <div class="col-sm-6 col-lg-4">
+  <div class="col-4">
     <div class="card">
       <div class="card-body">
-        <div class="subheader">Occurrences totales</div>
-        <div class="h1 mb-0">{{ occ_all }}</div>
+        <div class="text-secondary small">Occurrences totales</div>
+        <div class="hero-balance">{{ occ_all }}</div>
       </div>
     </div>
   </div>
@@ -74,9 +74,9 @@
 <div class="card">
   <div class="card-header"><h3 class="card-title">Détail par libellé</h3></div>
   <div class="card-body">
-    <input type="text" class="form-control form-control-sm search mb-3" placeholder="Rechercher…" data-target="#recur-table" style="max-width:260px">
-    <div class="table-responsive">
-      <table class="table table-vcenter card-table sortable" id="recur-table">
+    <input type="text" class="search mb-3" placeholder="Rechercher…" data-target="#recur-table" style="max-width:260px">
+    <div class="table-wrap">
+      <table class="sortable" id="recur-table">
         <thead>
           <tr>
             <th>Libellé</th>
@@ -95,7 +95,7 @@
           {% for g in groups %}
           <tr>
             <td><a href="/transactions?label={{ g.key | urlencode }}">{{ g.label }}</a></td>
-            <td><span class="badge bg-secondary-lt">{{ g.category }}</span></td>
+            <td><span class="badge badge-muted">{{ g.category }}</span></td>
             <td class="num" data-sort="{{ g.count }}"><b>{{ g.count }}</b></td>
             <td class="num" data-sort="{{ g.total }}">{{ g.total | money }}</td>
             <td class="num" data-sort="{{ g.avg }}">{{ g.avg | money }}</td>

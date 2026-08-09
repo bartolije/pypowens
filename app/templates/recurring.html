@@ -5,32 +5,32 @@
 <tr {% if it.stale %}class="opacity-50"{% endif %}>
   <td>
     <a href="/transactions?label={{ it.key | urlencode }}">{{ it.merchant }}</a>
-    {% if flags[it.key].new %}<span class="badge bg-azure-lt ms-1">nouveau</span>{% endif %}
+    {% if flags[it.key].new %}<span class="badge badge-muted" style="margin-left: 4px;">nouveau</span>{% endif %}
     {% if it.repriced %}
-    <span class="badge bg-orange-lt ms-1"
+    <span class="badge badge-muted" style="margin-left: 4px;"
           data-amount-title="Cette série s'arrête au {{ it.last_date.strftime('%d/%m/%Y') }}, mais le marchand a prélevé {{ it.merchant_last[1] }} € le {{ it.merchant_last[0].strftime('%d/%m/%Y') }} : le montant a changé, le contrat court toujours.">
       montant changé → {{ it.merchant_last[1] | money }}
     </span>
     {% elif it.stale %}
-    <span class="badge bg-secondary-lt ms-1" title="Plus prélevé depuis {{ it.days_since_last }} jours — probablement résilié">
+    <span class="badge badge-muted" style="margin-left: 4px;" title="Plus prélevé depuis {{ it.days_since_last }} jours — probablement résilié">
       en sommeil
     </span>
     {% endif %}
   </td>
-  <td><span class="badge bg-secondary-lt" title="{{ it.rail }}">{{ it.rail }}</span></td>
+  <td><span class="badge badge-muted" title="{{ it.rail }}">{{ it.rail }}</span></td>
   <td data-sort="{{ it.period_months }}">{{ it.periodicity }}</td>
   <td class="num" data-sort="{{ it.amount }}"
       data-amount-title="Montant typique (médiane). Dernière échéance : {{ it.last_amount }} € le {{ it.last_date.strftime('%d/%m/%Y') }}">
     <span class="amount">{{ it.amount | money }}</span>
     {% if it.last_amount != it.amount %}
-    <span class="text-secondary d-block small">dern. {{ it.last_amount | money }}</span>
+    <span class="text-secondary small" style="display: block;">dern. {{ it.last_amount | money }}</span>
     {% endif %}
-    {% if it.variable %}<span class="badge bg-secondary-lt ms-1" title="Montant qui varie d'une échéance à l'autre">variable</span>{% endif %}
+    {% if it.variable %}<span class="badge badge-muted" style="margin-left: 4px;" title="Montant qui varie d'une échéance à l'autre">variable</span>{% endif %}
   </td>
   <td class="num" data-sort="{{ it.monthly_equiv }}"><span class="amount">{{ it.monthly_equiv | money }}</span></td>
   <td class="num" data-sort="{{ it.drift_pct or 0 }}">
     {% if it.drift_pct is not none and it.drift_pct | abs >= 1 %}
-      <span class="badge {{ 'bg-orange-lt' if it.drift_pct > 0 else 'bg-green-lt' }}"
+      <span class="badge {{ 'badge-muted' if it.drift_pct > 0 else 'badge-green' }}"
             data-amount-title="Depuis la 1re échéance ({{ it.first_amount }} €, {{ it.first_date.strftime('%m/%Y') }})">
         {{ '%+.0f'|format(it.drift_pct) }} %
       </span>
@@ -46,8 +46,8 @@
 {% endmacro %}
 
 {% block content %}
-<div class="d-flex flex-wrap align-items-baseline gap-2 mb-1">
-  <h2 class="mb-0">Abonnements & prélèvements</h2>
+<div class="d-flex flex-wrap align-center justify-between gap-2 mb-2">
+  <h2>Abonnements & prélèvements</h2>
   <span class="text-secondary">
     {% if tout %}toutes les séries répétées, y compris les dépenses courantes
     {% else %}contrats et abonnements identifiés{% endif %}
@@ -63,47 +63,50 @@
 
 <form method="get" action="/abonnements" class="card mb-3">
   <input type="hidden" name="tout" value="{{ tout }}">
-  <div class="card-body py-2">
-    <div class="row g-2 align-items-end">
-      <div class="col-auto">
-        <label class="form-label mb-0 small">Du</label>
-        <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
+  <div class="card-body">
+    <div class="d-flex align-center gap-2 flex-wrap">
+      <div>
+        <label class="small">Du</label>
+        <input type="date" name="date_from" value="{{ date_from }}" class="search">
       </div>
-      <div class="col-auto">
-        <label class="form-label mb-0 small">Au</label>
-        <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
+      <div>
+        <label class="small">Au</label>
+        <input type="date" name="date_to" value="{{ date_to }}" class="search">
       </div>
-      <div class="col-auto"><button class="btn btn-sm btn-primary">Filtrer</button></div>
-      <div class="col-auto">
+      <div><button class="btn btn-sm btn-primary">Filtrer</button></div>
+      <div>
         <span class="text-secondary small">Période : {{ period_from.strftime('%d/%m/%Y') }} → {{ period_to.strftime('%d/%m/%Y') }}</span>
       </div>
     </div>
   </div>
 </form>
 
-<div class="row row-cards">
-  <div class="col-sm-6 col-lg-3">
+<div class="row">
+  <div class="col-4">
     <div class="card"><div class="card-body">
-      <div class="subheader">Engagement /mois</div>
-      <div class="h1 mb-0 text-primary"><span class="amount">{{ total_monthly | money }}</span></div>
+      <div class="text-secondary small">Engagement /mois</div>
+      <div class="hero-balance"><span class="amount">{{ total_monthly | money }}</span></div>
     </div></div>
   </div>
-  <div class="col-sm-6 col-lg-3">
+  <div class="col-4">
     <div class="card"><div class="card-body">
-      <div class="subheader">Soit par an</div>
-      <div class="h1 mb-0"><span class="amount">{{ total_annual | money }}</span></div>
+      <div class="text-secondary small">Soit par an</div>
+      <div class="hero-balance"><span class="amount">{{ total_annual | money }}</span></div>
     </div></div>
   </div>
-  <div class="col-sm-6 col-lg-3">
+  <div class="col-4">
     <div class="card"><div class="card-body">
-      <div class="subheader">Contrats actifs</div>
-      <div class="h1 mb-0">{{ count }}</div>
+      <div class="text-secondary small">Contrats actifs</div>
+      <div class="hero-balance">{{ count }}</div>
     </div></div>
   </div>
-  <div class="col-sm-6 col-lg-3">
+</div>
+
+<div class="row mt-3">
+  <div class="col-4">
     <div class="card"><div class="card-body">
-      <div class="subheader">En sommeil</div>
-      <div class="h1 mb-0">{{ stale_count }}</div>
+      <div class="text-secondary small">En sommeil</div>
+      <div class="hero-balance">{{ stale_count }}</div>
       {% if stale_monthly %}
       <div class="text-secondary small">non compté : <span class="amount">{{ stale_monthly | money }}</span>/mois</div>
       {% endif %}
@@ -112,16 +115,16 @@
 </div>
 
 {% if alerts %}
-<div class="card mt-3 border-warning">
-  <div class="card-header py-2"><h3 class="card-title">⚠️ Changements depuis la dernière visite</h3></div>
-  <div class="list-group list-group-flush">
+<div class="card mt-3">
+  <div class="card-header"><h3 class="card-title">⚠️ Changements depuis la dernière visite</h3></div>
+  <div class="card-body" style="padding: 0;">
     {% for a in alerts %}
-    <div class="list-group-item d-flex flex-wrap align-items-center gap-2">
-      {% if a.new %}<span class="badge bg-azure-lt">nouveau</span>{% endif %}
-      {% if a.increase_pct %}<span class="badge bg-orange-lt">+{{ '%.0f'|format(a.increase_pct) }} %</span>{% endif %}
+    <div class="d-flex flex-wrap align-center gap-2" style="padding: 12px 24px; border-bottom: 1px solid var(--border);">
+      {% if a.new %}<span class="badge badge-muted">nouveau</span>{% endif %}
+      {% if a.increase_pct %}<span class="badge badge-muted">+{{ '%.0f'|format(a.increase_pct) }} %</span>{% endif %}
       <a href="/transactions?label={{ a.item.key | urlencode }}" class="fw-bold">{{ a.item.merchant }}</a>
       <span class="text-secondary">{{ a.item.periodicity | lower }}</span>
-      <span class="ms-auto">
+      <span style="margin-left: auto;">
         {% if a.previous_amount %}<span class="text-secondary"><span class="amount">{{ a.previous_amount | money }}</span> →</span>{% endif %}
         <strong><span class="amount">{{ a.item.amount | money }}</span></strong>
       </span>
@@ -133,13 +136,13 @@
 
 {% if groups %}
 <div class="card mt-3">
-  <div class="card-header py-2"><h3 class="card-title">Répartition par type de dépense</h3></div>
+  <div class="card-header"><h3 class="card-title">Répartition par type de dépense</h3></div>
   <div class="card-body">
-    <div class="row row-cards align-items-center">
-      <div class="col-lg-5">{{ donut | safe }}</div>
-      <div class="col-lg-7">
-        <div class="table-responsive">
-          <table class="table table-vcenter card-table sortable" id="catTable">
+    <div class="row align-center">
+      <div class="col-6">{{ donut | safe }}</div>
+      <div class="col-6">
+        <div class="table-wrap">
+          <table class="sortable" id="catTable">
             <thead>
               <tr>
                 <th>Type</th>
@@ -169,19 +172,19 @@
 
 {% for g in groups %}
 <div class="card mt-3" id="cat-{{ loop.index }}">
-  <div class="card-header py-2">
+  <div class="card-header">
     <h3 class="card-title">{{ g.name }}</h3>
-    <span class="text-secondary small ms-2">
+    <span class="text-secondary small" style="margin-left: 8px;">
       {{ g.count }} contrat{{ 's' if g.count > 1 }}
       {% if g.stale_count %}· {{ g.stale_count }} en sommeil{% endif %}
     </span>
-    <div class="ms-auto">
+    <div style="margin-left: auto;">
       <strong><span class="amount">{{ g.monthly | money }}</span></strong><span class="text-secondary">/mois</span>
-      <span class="text-secondary ms-2">(<span class="amount">{{ g.annual | money }}</span>/an)</span>
+      <span class="text-secondary" style="margin-left: 8px;">(<span class="amount">{{ g.annual | money }}</span>/an)</span>
     </div>
   </div>
-  <div class="table-responsive">
-    <table class="table table-vcenter card-table sortable">
+  <div class="table-wrap">
+    <table class="sortable">
       <thead>
         <tr>
           <th>Marchand</th>

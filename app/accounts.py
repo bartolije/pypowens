@@ -101,7 +101,7 @@ def group_by_day(rows: list[Row]) -> list[Day]:
     return [days[key] for key in sorted(days, reverse=True)]
 
 
-@router.get("/", response_class=HTMLResponse)
+@router.get("/comptes", response_class=HTMLResponse)
 async def accounts_page(
     request: Request,
     client: PowensClient = Depends(get_client),  # noqa: B008
@@ -190,7 +190,7 @@ async def accounts_page(
         "accounts.html",
         {
             "request": request,
-            "active": "accounts",
+            "active": "comptes",
             "currency": base_currency,
             "current_accounts": current,
             "available": available,

@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}{{ account_name }} · Powens Finance{% endblock %}
+
+{% block topbar_left %}
+  <a href="/patrimoine" class="btn btn-sm" style="margin-right: 8px;">← Patrimoine</a>
+  <span class="section-title">{{ account_name }}</span>
+{% endblock %}
+
+{% block content %}
+
+  {# ── Header: account name, last update, sync badge ──────────────── #}
+  <div class="d-flex align-center justify-between" style="margin-bottom: 24px;">
+    <div>
+      <div class="d-flex align-center gap-2" style="margin-bottom: 4px;">
+        <span style="font-size: 1.3rem; font-weight: 700;">{{ account_name }}</span>
+        {% if sync_ok %}
+        <span class="sync-badge sync-ok">Synchronise</span>
+        {% else %}
+        <span class="sync-badge sync-err">Erreur</span>
+        {% endif %}
+      </div>
+      <div class="text-secondary small">
+        {% if last_update %}
+          Derniere mise a jour le {{ last_update.strftime('%d/%m/%Y a %H:%M') }}
+        {% else %}
+          Aucune mise a jour
+        {% endif %}
+        · {{ family }}
+      </div>
+    </div>
+  </div>
+
+  {# ── Tabs ───────────────────────────────────────────────────────── #}
+  <div class="tabs">
+    <span class="tab-link active">Apercu</span>
+    {% if is_invest %}
+    <span class="tab-link">Positions</span>
+    {% endif %}
+  </div>
+
+  {# ── Big balance + variation + period pills ─────────────────────── #}
+  <div class="card mb-3">
+    <div class="card-body">
+      <div class="d-flex align-center justify-between" style="margin-bottom: 16px;">
+        <div>
+          <div class="hero-balance amount">{{ balance | money(currency, 2) }}</div>
+          <div class="d-flex align-center gap-2" style="margin-top: 8px;">
+            {% if diff %}
+            <span class="{{ 'text-green' if diff >= 0 else 'text-red' }} fw-bold small">
+              {{ ('+' if diff >= 0 else '') }}{{ diff | money(currency) }}
+            </span>
+            <span class="badge {{ 'badge-green' if diff >= 0 else 'badge-red' }}">
+              {{ '▲' if diff >= 0 else '▼' }} {{ '%+.2f'|format(diff_pct) }} %
+            </span>
+            {% if diff_since %}
+            <span class="text-muted small">depuis le {{ diff_since }}</span>
+            {% endif %}
+            {% endif %}
+          </div>
+        </div>
+
+        <nav class="period-pills">
+          <span>1J</span>
+          <span>7J</span>
+          <span>1M</span>
+          <span>3M</span>
+          <span>6M</span>
+          <span>YTD</span>
+          <span>1A</span>
+          <span class="active">TOUT</span>
+        </nav>
+      </div>
+
+      {# ── Balance history chart ──────────────────────────────────── #}
+      {{ chart | safe }}
+    </div>
+  </div>
+
+  {# ── Investment details: cost basis + gain card + positions table ─ #}
+  {% if is_invest and invest_rows %}
+
+  <div class="row mb-3">
+    <div class="col-6">
+      <div class="card" style="height: 100%;">
+        <div class="card-body">
+          <div class="text-secondary small" style="margin-bottom: 8px;">Prix de revient total</div>
+          <div style="font-size: 1.5rem; font-weight: 800;">
+            <span class="amount">{{ invest_total_cost | money(currency) }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6">
+      <div class="card" style="height: 100%;">
+        <div class="card-body">
+          <div class="text-secondary small" style="margin-bottom: 8px;">+/- value totale</div>
+          <div style="font-size: 1.5rem; font-weight: 800;" class="{{ 'text-green' if invest_total_diff >= 0 else 'text-red' }}">
+            <span class="amount">{{ ('+' if invest_total_diff >= 0 else '') }}{{ invest_total_diff | money(currency) }}</span>
+            <span class="badge {{ 'badge-green' if invest_total_diff >= 0 else 'badge-red' }}" style="margin-left: 8px; font-size: 0.85rem;">
+              {{ '%+.2f'|format(invest_diff_pct) }} %
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Positions table ────────────────────────────────────────────── #}
+  <div class="card">
+    <div class="card-header">
+      <h3>Positions ({{ invest_rows | length }})</h3>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Ligne</th>
+            <th>Code</th>
+            <th class="num">Quantite</th>
+            <th class="num">Cours</th>
+            <th class="num">Valorisation</th>
+            <th class="num">+/- value</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in invest_rows %}
+          <tr>
+            <td>{{ row.label }}</td>
+            <td class="text-muted small">{{ row.code or '---' }}</td>
+            <td class="num amount">{{ '%.4f'|format(row.quantity) if row.quantity is not none else '---' }}</td>
+            <td class="num amount">{{ row.unit_value | money(row.currency) if row.unit_value is not none else '---' }}</td>
+            <td class="num amount fw-bold">{{ row.valuation | money(row.currency) }}</td>
+            <td class="num">
+              {% if row.diff is not none %}
+              <span class="{{ 'text-green' if (row.diff or 0) >= 0 else 'text-red' }}">
+                {{ ('+' if (row.diff or 0) >= 0 else '') }}{{ row.diff | money(row.currency) }}
+                {% if row.diff_percent is not none %}
+                <span style="margin-left: 4px;">{{ '%+.2f'|format(row.diff_percent) }} %</span>
+                {% endif %}
+              </span>
+              {% else %}
+              ---
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+{% endblock %}
