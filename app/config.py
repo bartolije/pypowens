@@ -28,6 +28,9 @@ class Settings:
     # Reference currency: net worth only sums accounts held in it (no FX rates
     # are fetched, so mixing currencies in a single total would be wrong).
     base_currency: str = "EUR"
+    # OpenFIGI API key for investment classification (sector/country enrichment).
+    # Optional: without it, classification is skipped silently.
+    openfigi_api_key: str | None = None
 
     @property
     def redirect_uri(self) -> str:
@@ -79,4 +82,5 @@ def get_settings() -> Settings:
         port=int(os.environ.get("APP_PORT", "8000")),
         history_months=int(os.environ.get("APP_HISTORY_MONTHS", "36")),
         base_currency=(os.environ.get("APP_BASE_CURRENCY") or "EUR").strip().upper(),
+        openfigi_api_key=os.environ.get("OPENFIGI_API_KEY") or None,
     )

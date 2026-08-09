@@ -12,10 +12,11 @@ from fastapi.responses import HTMLResponse
 from pypowens import Account, PowensClient
 
 from . import store
+from .classify import classify_investments
 from .config import Settings
 from .data import load_accounts, load_connections, load_investments
 from .deps import get_client, get_settings, get_store
-from .helpers import PALETTE, currency_symbol, donut_chart, line_chart
+from .helpers import PALETTE, currency_symbol, donut_chart, line_chart, treemap
 from .web import templates
 
 router = APIRouter()
@@ -236,6 +237,43 @@ async def recap(
     )
     invest_diff = sum((inv.diff or Decimal(0) for inv in investments), Decimal(0))
 
+    # Investment classification (sector / country treemaps).
+    sector_treemap = ""
+    country_treemap = ""
+    isins = [row["code"] for row in invest_rows if row.get("code")]
+    if isins:
+        try:
+            classification = await classify_investments(
+                isins, conn, settings.openfigi_api_key
+            )
+        except Exception:
+            classification = {}
+        if classification:
+            sector_agg: dict[str, float] = {}
+            country_agg: dict[str, float] = {}
+            for row in invest_rows:
+                code = row.get("code")
+                if not code or code not in classification:
+                    continue
+                val = float(row["valuation"] or 0)
+                if val <= 0:
+                    continue
+                info = classification[code]
+                sector = info.get("sector") or "Autre"
+                country = info.get("country") or "Inconnu"
+                sector_agg[sector] = sector_agg.get(sector, 0.0) + val
+                country_agg[country] = country_agg.get(country, 0.0) + val
+            if sector_agg:
+                sector_items = sorted(
+                    sector_agg.items(), key=lambda x: x[1], reverse=True
+                )
+                sector_treemap = treemap(sector_items, unit=symbol)
+            if country_agg:
+                country_items = sorted(
+                    country_agg.items(), key=lambda x: x[1], reverse=True
+                )
+                country_treemap = treemap(country_items, unit=symbol)
+
     # A healthy Powens connection has no state and no error message. States that name
     # a user action are called out separately: a "Synchroniser" button on those can
     # never succeed, because the bank is waiting on the user, not on us.
@@ -295,6 +333,8 @@ async def recap(
             "connections": conns,
             "invest_rows": invest_rows,
             "invest_diff": invest_diff,
+            "sector_treemap": sector_treemap,
+            "country_treemap": country_treemap,
             "foreign_accounts": foreign,
             "foreign_totals": foreign_totals,
             "has_accounts": bool(accounts_list.accounts),

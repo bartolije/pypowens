@@ -362,3 +362,153 @@ def donut_chart(
         f'<circle cx="{cx}" cy="{cy}" r="{inner}" class="donut-hole"/>{center}</svg>'
     )
     return f'<div class="donut">{svg}<ul class="legend">{"".join(legend)}</ul></div>'
+
+
+def treemap(
+    items: list[tuple[str, float]],
+    *,
+    width: int = 400,
+    height: int = 300,
+    unit: str = "\u202f\u20ac",
+) -> str:
+    """Treemap visualization using a squarified slice-and-dice layout.
+
+    ``items`` = list of (label, value). Returns an inline SVG string.
+    Each rectangle shows the label, formatted value, and percentage.
+    """
+    items = [(lbl, abs(float(v))) for lbl, v in items if v]
+    if not items:
+        return '<p class="muted">Aucune donn\u00e9e.</p>'
+
+    total = sum(v for _, v in items)
+    if total <= 0:
+        return '<p class="muted">Aucune donn\u00e9e.</p>'
+
+    # Sort descending for a visually balanced layout.
+    items.sort(key=lambda x: x[1], reverse=True)
+
+    rects: list[tuple[str, float, float, float, float, float, str]] = []
+    _squarify(items, total, 0.0, 0.0, float(width), float(height), rects)
+
+    segments: list[str] = []
+    for i, (label, value, x, y, w, h) in enumerate(rects):
+        color = PALETTE[i % len(PALETTE)]
+        pct = value / total * 100
+
+        # Only render text when the rectangle is large enough.
+        text = ""
+        if w > 50 and h > 28:
+            # Truncate label to fit.
+            max_chars = max(3, int(w / 7))
+            shown = label if len(label) <= max_chars else label[: max_chars - 1] + "\u2026"
+            text += (
+                f'<text x="{x + 6}" y="{y + 16}" class="tm-label">'
+                f"{_e(shown)}</text>"
+            )
+        if w > 40 and h > 42:
+            text += (
+                f'<text x="{x + 6}" y="{y + 30}" class="tm-val amount">'
+                f"{value:,.0f}{unit}</text>"
+            )
+        if w > 40 and h > 56:
+            text += (
+                f'<text x="{x + 6}" y="{y + 43}" class="tm-pct">'
+                f"{pct:.0f}\u202f%</text>"
+            )
+
+        segments.append(
+            f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" '
+            f'rx="3" fill="{color}" opacity="0.85">'
+            f"<title>{_e(label)}: {value:,.0f}{unit} ({pct:.1f}%)</title></rect>"
+            f"{text}"
+        )
+
+    svg = (
+        f'<svg viewBox="0 0 {width} {height}" class="chart treemap" role="img" '
+        f'width="100%" preserveAspectRatio="xMinYMin meet">'
+        f'{"".join(segments)}</svg>'
+    )
+    return svg
+
+
+def _squarify(
+    items: list[tuple[str, float]],
+    total: float,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    out: list[tuple[str, float, float, float, float, float, str]],
+) -> None:
+    """Recursive slice-and-dice: alternate horizontal/vertical splits."""
+    if not items:
+        return
+    if len(items) == 1:
+        label, value = items[0]
+        out.append((label, value, x, y, w, h))
+        return
+
+    # Find the split point that gives the best aspect ratio for the first group.
+    cumulative = 0.0
+    split = 1
+    best_aspect = float("inf")
+    for i, (_, v) in enumerate(items[:-1], 1):
+        cumulative += v
+        frac = cumulative / total
+        if w >= h:
+            # Vertical split: first group occupies a fraction of the width.
+            dim1 = w * frac
+            dim2 = h
+        else:
+            # Horizontal split: first group occupies a fraction of the height.
+            dim1 = w
+            dim2 = h * frac
+        aspect = max(dim1 / dim2, dim2 / dim1) if dim1 > 0 and dim2 > 0 else float("inf")
+        if aspect < best_aspect:
+            best_aspect = aspect
+            split = i
+
+    left = items[:split]
+    right = items[split:]
+    left_total = sum(v for _, v in left)
+    frac = left_total / total if total else 0.5
+
+    if w >= h:
+        # Vertical split.
+        w1 = w * frac
+        _layout_strip(left, left_total, x, y, w1, h, vertical=False, out=out)
+        right_total = total - left_total
+        if right:
+            _squarify(right, right_total, x + w1, y, w - w1, h, out)
+    else:
+        # Horizontal split.
+        h1 = h * frac
+        _layout_strip(left, left_total, x, y, w, h1, vertical=True, out=out)
+        right_total = total - left_total
+        if right:
+            _squarify(right, right_total, x, y + h1, w, h - h1, out)
+
+
+def _layout_strip(
+    items: list[tuple[str, float]],
+    strip_total: float,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    *,
+    vertical: bool,
+    out: list[tuple[str, float, float, float, float, float, str]],
+) -> None:
+    """Lay items out in a strip, stacking along the shorter dimension."""
+    offset = 0.0
+    for label, value in items:
+        frac = value / strip_total if strip_total else 1.0 / len(items)
+        if vertical:
+            iw = w * frac
+            out.append((label, value, x + offset, y, iw, h))
+            offset += iw
+        else:
+            ih = h * frac
+            out.append((label, value, x, y + offset, w, ih))
+            offset += ih

@@ -135,6 +135,28 @@
     </div>
   </div>
 
+  {# ── Sector / Country treemaps ─────────────────────────────────── #}
+  {% if sector_treemap or country_treemap %}
+  <div class="row mb-3">
+    {% if sector_treemap %}
+    <div class="{{ 'col-6' if country_treemap else 'col-12' }}">
+      <div class="card" style="height: 100%;">
+        <div class="card-header"><h3>Par secteur</h3></div>
+        <div class="card-body">{{ sector_treemap | safe }}</div>
+      </div>
+    </div>
+    {% endif %}
+    {% if country_treemap %}
+    <div class="{{ 'col-6' if sector_treemap else 'col-12' }}">
+      <div class="card" style="height: 100%;">
+        <div class="card-header"><h3>Par zone géographique</h3></div>
+        <div class="card-body">{{ country_treemap | safe }}</div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
   {# ── Performance cards ──────────────────────────────────────────── #}
   {% if invest_rows %}
   <div class="mt-3">

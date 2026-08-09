@@ -90,6 +90,16 @@ CREATE TABLE IF NOT EXISTS investment_value (
 );
 CREATE INDEX IF NOT EXISTS idx_invvalue_account_day ON investment_value (account_id, day);
 
+CREATE TABLE IF NOT EXISTS investment_classification (
+    isin          TEXT PRIMARY KEY,
+    sector        TEXT,
+    country       TEXT,
+    security_type TEXT,
+    name          TEXT,
+    ticker        TEXT,
+    updated       TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS imported_transaction (
     fingerprint TEXT PRIMARY KEY,         -- identité stable, deux exports se recouvrent
     account_id  INTEGER NOT NULL,         -- imported_account.id (positif, en base)
