@@ -138,7 +138,11 @@ function initChartTips() {
     position(e);
   }
   function position(e) {
-    tip.style.left = e.clientX + 12 + "px";
+    const tw = tip.offsetWidth || 120;
+    const x = e.clientX + 12 + tw > window.innerWidth
+      ? e.clientX - tw - 12
+      : e.clientX + 12;
+    tip.style.left = x + "px";
     tip.style.top = e.clientY - 28 + "px";
   }
   function hide() {

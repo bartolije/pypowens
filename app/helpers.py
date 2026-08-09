@@ -96,7 +96,7 @@ def bar_chart(
     items: list[tuple[str, float]],
     *,
     width: int = 520,
-    bar_height: int = 22,
+    bar_height: int = 18,
     gap: int = 8,
     unit: str = "€",
     color: str = "#635bff",
@@ -114,7 +114,7 @@ def bar_chart(
         rows.append(
             f'<text x="0" y="{y + bar_height * 0.7}" class="cl">{_e(label)}</text>'
             f'<rect x="{label_w}" y="{y}" width="{w}" height="{bar_height}" '
-            f'rx="5" fill="{color}"><title>{_e(label)}: {value:,.2f} {unit}</title></rect>'
+            f'rx="3" fill="{color}"><title>{_e(label)}: {value:,.2f} {unit}</title></rect>'
             f'<text x="{label_w + w + 6}" y="{y + bar_height * 0.7}" class="cv amount">'
             f'{value:,.0f} {unit}</text>'
         )
@@ -237,10 +237,10 @@ def line_chart(
         )
 
     dots = "".join(
-        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="8" fill="transparent" '
+        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="6" fill="transparent" '
         f'style="cursor:crosshair">'
         f"<title>{_e(label)}: {value:,.2f} {unit}</title></circle>"
-        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="2.5" fill="{color}" '
+        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="2" fill="{color}" '
         f'style="pointer-events:none"/>'
         for (x, y), (label, value) in zip(coords, points, strict=True)
     )
@@ -258,7 +258,7 @@ def line_chart(
         f'preserveAspectRatio="xMinYMin meet">'
         f"{grid}"
         f'<polygon points="{area}" fill="{color}" opacity="0.14"/>'
-        f'<polyline points="{line}" fill="none" stroke="{color}" stroke-width="2" '
+        f'<polyline points="{line}" fill="none" stroke="{color}" stroke-width="1.5" '
         f'stroke-linejoin="round" stroke-linecap="round"/>'
         f"{dots}{ticks}</svg>"
     )
@@ -292,9 +292,9 @@ def sparkline(
     return (
         f'<svg viewBox="0 0 {width + 3} {height}" width="{width + 3}" height="{height}" '
         f'class="spark" aria-hidden="true">'
-        f'<polyline points="{coords}" fill="none" stroke="{color}" stroke-width="1.5" '
+        f'<polyline points="{coords}" fill="none" stroke="{color}" stroke-width="1" '
         f'stroke-linejoin="round" stroke-linecap="round" opacity="{0.35 if flat else 1}"/>'
-        f'<circle cx="{last_x:.1f}" cy="{last_y:.1f}" r="2" fill="{color}"/></svg>'
+        f'<circle cx="{last_x:.1f}" cy="{last_y:.1f}" r="1.5" fill="{color}"/></svg>'
     )
 
 
