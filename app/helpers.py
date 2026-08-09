@@ -305,6 +305,7 @@ def donut_chart(
     unit: str = "€",
     center_top: str | None = None,
     center_bottom: str | None = None,
+    compact: bool = False,
 ) -> str:
     """Donut chart with legend. ``items`` = list of (label, value).
 
@@ -334,12 +335,19 @@ def donut_chart(
             f'A {r} {r} 0 {large} 1 {x2:.2f} {y2:.2f} Z" fill="{color}">'
             f'<title>{_e(label)}: {value:,.2f} {unit} ({frac * 100:.0f}%)</title></path>'
         )
-        legend.append(
-            f'<li><span class="dot" style="background:{color}"></span>'
-            f'<span class="lg-name">{_e(label)}</span>'
-            f'<span class="lg-pct">{frac * 100:.0f} %</span>'
-            f'<span class="lg-val amount">{value:,.0f} {unit}</span></li>'
-        )
+        if compact:
+            legend.append(
+                f'<li><span class="dot" style="background:{color}"></span>'
+                f'<span class="lg-name">{_e(label)}</span>'
+                f'<span class="lg-pct">{frac * 100:.0f} %</span></li>'
+            )
+        else:
+            legend.append(
+                f'<li><span class="dot" style="background:{color}"></span>'
+                f'<span class="lg-name">{_e(label)}</span>'
+                f'<span class="lg-pct">{frac * 100:.0f} %</span>'
+                f'<span class="lg-val amount">{value:,.0f} {unit}</span></li>'
+            )
         angle = end
     center = ""
     if center_top or center_bottom:

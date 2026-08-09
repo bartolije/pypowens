@@ -176,6 +176,7 @@ async def recap(
         size=180,
         center_top=f"{top_account[1]:,.0f} {symbol}".replace(",", " "),
         center_bottom=top_pct,
+        compact=True,
     )
 
     # Colored allocation bars (share of total assets per family), palette aligned

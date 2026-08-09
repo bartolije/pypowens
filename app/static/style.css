@@ -353,11 +353,12 @@ th.sortable:hover { color: var(--text-primary); }
 /* Donut chart */
 .donut { display: flex; gap: 26px; align-items: center; flex-wrap: wrap; }
 .donut > svg { flex: 0 0 auto; }
-/* Vertical donut for narrow panels */
-.donut-vertical .donut { flex-direction: column; align-items: center; gap: 16px; }
-.donut-vertical .donut > svg { margin: 0 auto; }
-.donut-vertical .legend { flex: 0 0 auto; width: 100%;
-  grid-template-columns: auto minmax(0, 1fr) auto; }
+/* Compact donut for narrow panels (3-col legend: dot + name + %) */
+.donut-compact .donut { flex-direction: column; align-items: center; gap: 16px; }
+.donut-compact .donut > svg { margin: 0 auto; }
+.donut-compact .legend { flex: 0 0 auto; width: 100%;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  font-size: .82rem; row-gap: 5px; }
 .donut-hole { fill: var(--bg-card); }
 .donut-c1 { fill: var(--text-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
 .donut-c2 { fill: var(--text-primary); font-size: 17px; font-weight: 800; }
