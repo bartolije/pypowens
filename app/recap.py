@@ -173,7 +173,7 @@ async def recap(
     account_donut = donut_chart(
         account_items[:8],
         unit=symbol,
-        size=180,
+        size=220,
         center_top=f"{top_account[1]:,.0f} {symbol}".replace(",", " "),
         center_bottom=top_pct,
         compact=True,

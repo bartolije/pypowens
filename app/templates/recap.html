@@ -116,7 +116,7 @@
                   <div class="text-muted small">{{ fam.name }}</div>
                 </a>
               </td>
-              <td class="text-secondary">{{ fam.name }}</td>
+              <td class="text-secondary" style="white-space: nowrap;">{{ fam.name }}</td>
               <td>
                 {% set pct = (acc.balance or 0) / (total_assets or 1) * 100 %}
                 <div class="repartition">

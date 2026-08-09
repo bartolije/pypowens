@@ -308,9 +308,10 @@ th.sortable:hover { color: var(--text-primary); }
   gap: 8px;
   font-size: 0.82rem;
   color: var(--text-secondary);
+  white-space: nowrap;
 }
 .repartition-bar {
-  width: 40px; height: 6px;
+  width: 36px; height: 5px;
   background: rgba(255,255,255,0.08);
   border-radius: 3px;
   overflow: hidden;
@@ -348,7 +349,7 @@ th.sortable:hover { color: var(--text-primary); }
 .chart .grid { stroke: var(--text-muted); stroke-opacity: .25; stroke-width: 1; stroke-dasharray: 4 4; }
 .chart polyline { stroke: var(--chart-line); }
 .chart polygon { fill: var(--chart-area); }
-.chart circle { fill: var(--chart-line); }
+/* Hit-area circles are transparent; only the polyline stroke is visible. */
 
 /* Donut chart */
 .donut { display: flex; gap: 26px; align-items: center; flex-wrap: wrap; }

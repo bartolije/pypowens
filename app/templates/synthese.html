@@ -127,10 +127,10 @@
         {% if row.diff is not none %}
           <span class="{{ 'text-green' if (row.diff or 0) >= 0 else 'text-red' }}">
             {{ ('+' if (row.diff or 0) >= 0 else '') }}{{ row.diff | money(row.currency) }}
-            {% if row.diff_percent is not none %}
-              <span style="margin-left: 4px;">{{ '%+.2f'|format(row.diff_percent) }} %</span>
-            {% endif %}
           </span>
+          {% if row.diff_percent is not none %}
+            <span class="{{ 'text-green' if row.diff_percent >= 0 else 'text-red' }}" style="margin-left: 6px;">{{ '%+.2f'|format(row.diff_percent) }} %</span>
+          {% endif %}
         {% endif %}
       </div>
     </div>
