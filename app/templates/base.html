@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Powens Finance{% endblock %}</title>
   {# Police auto-hébergée : chaque affichage notifiait Google (IP, UA, Referer). #}
-  <link rel="stylesheet" href="/static/vendor/fonts.css">
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/vendor/fonts.css?v={{ static_v }}">
+  <link rel="stylesheet" href="/static/style.css?v={{ static_v }}">
   <script>
     if (localStorage.getItem("pf-hide") !== "0") {
       document.documentElement.classList.add("hide-amounts");

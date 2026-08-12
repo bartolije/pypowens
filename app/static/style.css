@@ -552,11 +552,15 @@ input.search:focus { border-color: var(--text-muted); }
 /* ── Responsive ───────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   /* La sidebar devient une barre horizontale défilante : la masquer laissait
-     l'application SANS AUCUNE navigation sur mobile. */
+     l'application SANS AUCUNE navigation sur mobile. Le body est un flex en
+     LIGNE : sans le passer en colonne, la sidebar statique devient un item
+     pleine largeur qui écrase .main à 0 px — page noire, nav flottante. */
+  body { flex-direction: column; }
   .sidebar {
     position: static;
     width: 100%;
     height: auto;
+    flex: 0 0 auto;
     flex-direction: row;
     align-items: center;
     overflow-x: auto;
@@ -565,6 +569,7 @@ input.search:focus { border-color: var(--text-muted); }
     padding: 6px 10px;
     gap: 4px;
   }
+  .main { width: 100%; }
   .sidebar-brand span { display: none; }
   .sidebar-nav { flex-direction: row; gap: 2px; }
   .sidebar-link { white-space: nowrap; padding: 6px 10px; }
