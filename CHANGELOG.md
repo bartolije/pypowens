@@ -6,6 +6,38 @@ All notable changes to this project. Format loosely based on
 
 ## [0.2.0] — unreleased
 
+### Audit du 12/08/2026 (résumé — le détail est dans les six commits d'implémentation)
+
+#### Library — breaking-ish
+- **Les retries ne rejouent plus les POST non idempotents** : un timeout sur
+  `POST /auth/init` pouvait créer des utilisateurs Powens en double
+  (facturables) ; un rejeu de `/auth/token/access` brûle un code à usage
+  unique. Un 429 reste rejouable partout ; 5xx/réseau seulement sur
+  GET/HEAD/PUT/DELETE. `Retry-After` est plafonné à 60 s, avec ±20 % de jitter.
+- **La pagination refuse un `_links.next` hors de l'hôte de l'API** (le bearer
+  permanent y serait attaché) et journalise ses troncatures (`MAX_PAGES`).
+- `yfinance` sort des dépendances du wheel (extra `[app]`) : la lib ne dépend
+  que de `httpx`.
+
+#### Library — fixed/added
+- `_parse_decimal` rejette `NaN`/`Infinity` (un seul NaN rendait toute somme
+  NaN, silencieusement). `AuthToken.access_token` est masqué du `repr`.
+- `build_webview_url` : `extra` ne peut plus écraser `client_id`/`redirect_uri`/
+  `code` ; `domain` dérivé via `urlsplit`.
+- `iter_transactions`/`list_transactions` acceptent `account_id` (endpoint par
+  compte) ; `max_transactions` plafonne la taille de page demandée.
+- Logger `pypowens` (retries, pagination, création d'utilisateur).
+
+#### Application (résumé)
+- Données : WAL + busy_timeout, backup quotidien (`.backups/`), état token
+  atomique et fail-fast, logging. Chiffres corrigés : `diff_percent` ×100,
+  fenêtres d'historique, TWR à VL partielles, moyennes par mois couverts,
+  `parse_amount` anglo-saxon. Webview : jeton `state` anti-CSRF + persistance
+  du token échangé. Sécurité locale : TrustedHost, refus des POST cross-site,
+  police auto-hébergée. Produit : onglet Passifs, alertes d'abonnements
+  persistantes avec acquittement, requalification des flux de performance,
+  export CSV, navigation mobile, mots-clés de catégorisation en mot entier.
+
 ### Library (`pypowens`)
 
 #### Added

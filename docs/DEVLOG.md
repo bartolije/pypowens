@@ -13,6 +13,45 @@ App web locale (FastAPI) par-dessus le wrapper `pypowens`, dans **ce même repo*
    biennal, libellé marchand, catégorie, montant, €/mois).
 3. **Analyse des dépenses** (revenus/dépenses, catégories, récurrent vs ponctuel).
 
+## Audit complet du 12/08/2026 — implémenté
+
+Audit lib + app + tests (~60 findings), puis correction en 5 phases, une par
+commit (`21c15a8` → `c38db6b`), 275 → 346 tests, couverture 84 → 88 %, mypy
+étendu à `app/` :
+
+0. **Données** : WAL + busy_timeout (collision app/collecteur = solde du jour
+   perdu), backup quotidien avec rotation (`.backups/`), `.powens_state.json`
+   atomique + fail-fast si corrompu (créait un utilisateur Powens en silence),
+   logging partout.
+1. **Chiffres faux** : `diff_percent` (fraction API) ×100 sur 3 pages,
+   « TOUT » tronqué à 180 jours, TWR faussé par les jours à VL partielle
+   (forward-fill), moyennes divisées par les mois couverts, `parse_amount`
+   anglo-saxon (corruption ×1000), NaN, alertes d'abonnements corrompues par
+   les vues filtrées, snapshots écrasés à chaque GET.
+2. **Intégration** : plus de retry des POST non idempotents (double
+   `create_user`), Retry-After plafonné + jitter, hôte des `_links.next`
+   vérifié (fuite du bearer), `state` anti-CSRF sur le Webview + token échangé
+   persisté, renouvellement du token dans le collecteur, yfinance en thread
+   avec timeout (gelait l'event loop) et sorti des deps du wheel.
+3. **Fluidité** : lru_cache sur les normalisations (3-4 exécutions/txn),
+   médiane O(1) au clustering, single-flight sur le cache, fenêtre jamais
+   rétrécie, `account_id` sur les endpoints transactions.
+4. **Filet** : env de test isolé (le vrai .env fuyait), horloge figée
+   (time-machine), `filterwarnings=error`, CI `uv sync --locked` + plancher de
+   couverture + mypy app, TrustedHost + refus des POST cross-site + open
+   redirect, police auto-hébergée, migrations `PRAGMA user_version`.
+5. **Produit** : module `wealth.py` (recap/synthese fusionnés), onglet Passifs
+   réel, alertes persistantes jusqu'à acquittement, requalification des flux
+   depuis /performance, export CSV, nav mobile + `/recurrences` désorpheline,
+   mots-clés courts en mot entier.
+
+**Backlog restant de l'audit** : budgets par catégorie (la sidebar l'a promis
+longtemps), webhooks Powens (remplacerait le polling du collecteur), endpoints
+lib non couverts (transactionsclusters, pockets, loans, documents, DELETE
+/users), accessibilité (tooltips SVG, focus-visible, aria), macros Jinja pour
+les 3 sélecteurs de période, hypothesis sur les parsers, comparaison à un
+indice par ISIN.
+
 ## Statut
 
 | Étape | Sujet | État |
