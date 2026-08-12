@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
+from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
@@ -13,9 +15,10 @@ from pypowens import PowensClient
 
 from . import store
 from .config import Settings
-from .data import load_accounts, load_connections, load_investments
+from .data import load_accounts, load_connections, load_investments, load_transactions
 from .deps import get_client, get_settings, get_store
-from .helpers import currency_symbol, line_chart
+from .enrich import resolve_category_txn
+from .helpers import currency_symbol, day_label_fr, line_chart
 from .recap import TYPE_TO_FAMILY
 from .web import templates
 
@@ -35,11 +38,15 @@ def _today_fr() -> str:
     return f"{d.day:02d} {_MONTHS_FR[d.month - 1]} {d.year}"
 
 
+_log = logging.getLogger(__name__)
+
+
 @router.get("/patrimoine/{account_id}", response_class=HTMLResponse)
 async def account_detail(
     request: Request,
     account_id: int,
     period: str = "tout",
+    tab: str = "apercu",
     client: PowensClient = Depends(get_client),  # noqa: B008
     settings: Settings = Depends(get_settings),  # noqa: B008
     conn: sqlite3.Connection = Depends(get_store),  # noqa: B008
@@ -146,12 +153,49 @@ async def account_detail(
         float(invest_total_diff / invest_total_cost * 100) if invest_total_cost else 0.0
     )
 
+    # ── Transactions tab ────────────────────────────────────────────
+    transactions_by_day: list[dict] = []
+    transaction_count = 0
+    if tab == "transactions":
+        try:
+            all_txns = await load_transactions(client, conn=conn)
+            account_txns = [t for t in all_txns if t.id_account == account_id]
+            account_txns.sort(key=lambda t: t.date or date.min, reverse=True)
+            overrides = store.all_overrides(conn)
+            by_day: dict[date, list[dict]] = defaultdict(list)
+            for txn in account_txns:
+                txn_date = txn.date or date.min
+                by_day[txn_date].append({
+                    "wording": txn.simplified_wording or txn.wording or "---",
+                    "category": resolve_category_txn(txn, overrides),
+                    "amount": txn.value or Decimal(0),
+                })
+            for day_key in sorted(by_day, reverse=True):
+                transactions_by_day.append({
+                    "label": day_label_fr(day_key),
+                    "transactions": by_day[day_key],
+                })
+            transaction_count = len(account_txns)
+        except Exception:
+            _log.exception("Failed to load transactions for account %s", account_id)
+
+    # ── Analyse tab ─────────────────────────────────────────────────
+    avg_balance = Decimal(0)
+    min_balance = Decimal(0)
+    max_balance = Decimal(0)
+    if tab == "analyse" and history:
+        balances = [bal for _, bal in history]
+        avg_balance = sum(balances) / len(balances)
+        min_balance = min(balances)
+        max_balance = max(balances)
+
     return templates.TemplateResponse(
         request,
         "detail.html",
         {
             "request": request,
             "active": "recap",
+            "tab": tab,
             "account": account,
             "account_name": account.name or f"Compte #{account_id}",
             "family": family,
@@ -173,5 +217,10 @@ async def account_detail(
             "invest_diff_pct": invest_diff_pct,
             "today": _today_fr(),
             "period": period.lower(),
+            "transactions_by_day": transactions_by_day,
+            "transaction_count": transaction_count,
+            "avg_balance": avg_balance,
+            "min_balance": min_balance,
+            "max_balance": max_balance,
         },
     )

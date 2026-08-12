@@ -102,6 +102,9 @@ def _currency_of(account: Account, default: str) -> str:
 async def recap(
     request: Request,
     period: str = "tout",
+    type: str | None = None,  # noqa: A002
+    institution: str | None = None,
+    group: str = "0",
     client: PowensClient = Depends(get_client),  # noqa: B008
     settings: Settings = Depends(get_settings),  # noqa: B008
     conn: sqlite3.Connection = Depends(get_store),  # noqa: B008
@@ -144,6 +147,45 @@ async def recap(
         for name in FAMILY_ORDER
         if grouped[name]
     ]
+
+    # Collect unique family and connection names for filter pills.
+    family_names = [fam["name"] for fam in families]
+
+    # Build account_id -> connection_name mapping for institution filter.
+    account_to_connection: dict[int, str] = {}
+    for connection in connections:
+        conn_name = (
+            connection.connector.name
+            if connection.connector and connection.connector.name
+            else "Banque"
+        )
+        for acc in connection.accounts:
+            if acc.id is not None:
+                account_to_connection[acc.id] = conn_name
+    connection_names = sorted(set(account_to_connection.values()))
+
+    # Normalise filter values (None if empty string).
+    type_filter = type if type else None
+    institution_filter = institution if institution else None
+
+    # Apply type filter: keep only matching families.
+    if type_filter:
+        families = [fam for fam in families if fam["name"] == type_filter]
+
+    # Apply institution filter: keep only accounts whose connection matches.
+    if institution_filter:
+        filtered_families = []
+        for fam in families:
+            matching = [
+                acc for acc in fam["accounts"]
+                if account_to_connection.get(acc.id) == institution_filter
+            ]
+            if matching:
+                sub = sum((a.balance or Decimal(0) for a in matching), Decimal(0))
+                filtered_families.append(
+                    {"name": fam["name"], "accounts": matching, "subtotal": sub}
+                )
+        families = filtered_families
 
     # A repartition can only describe parts of a positive whole, so debt is kept out
     # of it. Connecting a mortgage otherwise turns a 256 k€ loan into a "25 % share of
@@ -341,5 +383,10 @@ async def recap(
             "has_accounts": bool(accounts_list.accounts),
             "today": _today_fr(),
             "period": period.lower(),
+            "type_filter": type_filter,
+            "institution": institution_filter,
+            "group": group,
+            "family_names": family_names,
+            "connection_names": connection_names,
         },
     )

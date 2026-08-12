@@ -2,16 +2,18 @@
 {% block title %}Patrimoine · Powens Finance{% endblock %}
 
 {% block topbar_left %}
+  {# Build base query string that preserves active filters across period changes #}
+  {% set base_params = [] %}
+  {% if type_filter %}{% set _ = base_params.append('type=' ~ (type_filter | urlencode)) %}{% endif %}
+  {% if institution %}{% set _ = base_params.append('institution=' ~ (institution | urlencode)) %}{% endif %}
+  {% if group == "1" %}{% set _ = base_params.append('group=1') %}{% endif %}
+  {% set base_qs = base_params | join('&') %}
+
   <span class="section-title">Patrimoine</span>
   <nav class="period-pills" style="margin-left: 24px;">
-    <a href="/patrimoine?period=1j" class="{{ 'active' if period == '1j' }}">1J</a>
-    <a href="/patrimoine?period=7j" class="{{ 'active' if period == '7j' }}">7J</a>
-    <a href="/patrimoine?period=1m" class="{{ 'active' if period == '1m' }}">1M</a>
-    <a href="/patrimoine?period=3m" class="{{ 'active' if period == '3m' }}">3M</a>
-    <a href="/patrimoine?period=6m" class="{{ 'active' if period == '6m' }}">6M</a>
-    <a href="/patrimoine?period=ytd" class="{{ 'active' if period == 'ytd' }}">YTD</a>
-    <a href="/patrimoine?period=1a" class="{{ 'active' if period == '1a' }}">1A</a>
-    <a href="/patrimoine?period=tout" class="{{ 'active' if period == 'tout' }}">TOUT</a>
+    {% for p in ['1j','7j','1m','3m','6m','ytd','1a','tout'] %}
+    <a href="/patrimoine?period={{ p }}{{ '&' ~ base_qs if base_qs }}" class="{{ 'active' if period == p }}">{{ p | upper }}</a>
+    {% endfor %}
   </nav>
 {% endblock %}
 
@@ -62,12 +64,58 @@
   {# ── Asset table in a card ──────────────────────────────────────── #}
   <div class="card">
     <div class="card-body" style="padding-bottom: 0;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-        <div class="tabs">
-          <a class="tab-link active" href="/patrimoine">Actifs</a>
-          <a class="tab-link" href="/patrimoine?view=passifs">Passifs</a>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <div class="tabs" style="margin-bottom: 0;">
+          <a class="tab-link active" href="/patrimoine?period={{ period }}{{ '&' ~ base_qs if base_qs }}">Actifs</a>
+          <a class="tab-link" href="/patrimoine?view=passifs&period={{ period }}{{ '&' ~ base_qs if base_qs }}">Passifs</a>
         </div>
-        <input type="text" class="search" placeholder="Rechercher..." data-target="#patrimoine-table">
+        <div class="d-flex align-center gap-2">
+          {% set group_qs_parts = [] %}
+          {% if type_filter %}{% set _ = group_qs_parts.append('type=' ~ (type_filter | urlencode)) %}{% endif %}
+          {% if institution %}{% set _ = group_qs_parts.append('institution=' ~ (institution | urlencode)) %}{% endif %}
+          {% set group_qs = group_qs_parts | join('&') %}
+          <a href="/patrimoine?period={{ period }}{{ '&' ~ group_qs if group_qs }}&group={{ '0' if group == '1' else '1' }}" class="toggle-switch">
+            <span class="toggle-track {{ 'on' if group == '1' }}"><span class="toggle-knob"></span></span>
+            Grouper par type
+          </a>
+          <input type="text" class="search" placeholder="Rechercher..." data-target="#patrimoine-table">
+        </div>
+      </div>
+
+      {# ── Filter pills ──────────────────────────────────────────── #}
+      <div class="d-flex align-center gap-2 flex-wrap" style="margin-bottom: 12px;">
+        {% for fam_name in family_names %}
+          {% if type_filter == fam_name %}
+            {# Active: clicking clears the filter #}
+            {% set clear_params = [] %}
+            {% if institution %}{% set _ = clear_params.append('institution=' ~ (institution | urlencode)) %}{% endif %}
+            {% if group == "1" %}{% set _ = clear_params.append('group=1') %}{% endif %}
+            {% set clear_qs = clear_params | join('&') %}
+            <a href="/patrimoine?period={{ period }}{{ '&' ~ clear_qs if clear_qs }}" class="filter-pill active">&#10005; {{ fam_name }}</a>
+          {% else %}
+            {% set pill_params = [] %}
+            {% if institution %}{% set _ = pill_params.append('institution=' ~ (institution | urlencode)) %}{% endif %}
+            {% if group == "1" %}{% set _ = pill_params.append('group=1') %}{% endif %}
+            {% set pill_qs = pill_params | join('&') %}
+            <a href="/patrimoine?period={{ period }}&type={{ fam_name | urlencode }}{{ '&' ~ pill_qs if pill_qs }}" class="filter-pill">+ {{ fam_name }}</a>
+          {% endif %}
+        {% endfor %}
+        <span style="width: 1px; height: 20px; background: var(--border); margin: 0 4px;"></span>
+        {% for conn_name in connection_names %}
+          {% if institution == conn_name %}
+            {% set clear_params = [] %}
+            {% if type_filter %}{% set _ = clear_params.append('type=' ~ (type_filter | urlencode)) %}{% endif %}
+            {% if group == "1" %}{% set _ = clear_params.append('group=1') %}{% endif %}
+            {% set clear_qs = clear_params | join('&') %}
+            <a href="/patrimoine?period={{ period }}{{ '&' ~ clear_qs if clear_qs }}" class="filter-pill active">&#10005; {{ conn_name }}</a>
+          {% else %}
+            {% set pill_params = [] %}
+            {% if type_filter %}{% set _ = pill_params.append('type=' ~ (type_filter | urlencode)) %}{% endif %}
+            {% if group == "1" %}{% set _ = pill_params.append('group=1') %}{% endif %}
+            {% set pill_qs = pill_params | join('&') %}
+            <a href="/patrimoine?period={{ period }}&institution={{ conn_name | urlencode }}{{ '&' ~ pill_qs if pill_qs }}" class="filter-pill">+ {{ conn_name }}</a>
+          {% endif %}
+        {% endfor %}
       </div>
     </div>
     <div class="table-wrap">
@@ -107,7 +155,38 @@
           </tr>
 
           {# ── Account rows ─────────────────────────────────── #}
-          {% for fam in families %}
+          {% if group == "1" %}
+            {% for fam in families %}
+            <tr class="row-total">
+              <td colspan="6">
+                <strong>{{ fam.name }}</strong>
+                <span class="text-secondary small" style="margin-left: 8px;">{{ fam.accounts|length }} compte{{ 's' if fam.accounts|length > 1 }}</span>
+                <span class="text-secondary small" style="margin-left: 8px;">{{ fam.subtotal | money(net_currency) }}</span>
+              </td>
+            </tr>
+            {% for acc in fam.accounts %}
+            <tr class="clickable" onclick="location.href='/patrimoine/{{ acc.id }}'">
+              <td>
+                <a href="/patrimoine/{{ acc.id }}" style="color: inherit; text-decoration: none;">
+                  <div class="fw-bold">{{ acc.name or "—" }}</div>
+                </a>
+              </td>
+              <td class="text-secondary" style="white-space: nowrap;">{{ fam.name }}</td>
+              <td>
+                {% set pct = (acc.balance or 0) / (total_assets or 1) * 100 %}
+                <div class="repartition">
+                  <div class="repartition-bar"><div class="repartition-fill" style="width: {{ pct|round(1) }}%"></div></div>
+                  {{ '%.1f'|format(pct) }} %
+                </div>
+              </td>
+              <td class="num" data-sort="{{ acc.balance or 0 }}">{{ acc.balance | money(acc.currency or net_currency) }}</td>
+              <td class="num"></td>
+              <td class="num"></td>
+            </tr>
+            {% endfor %}
+            {% endfor %}
+          {% else %}
+            {% for fam in families %}
             {% for acc in fam.accounts %}
             <tr class="clickable" onclick="location.href='/patrimoine/{{ acc.id }}'">
               <td>
@@ -129,7 +208,8 @@
               <td class="num"></td>
             </tr>
             {% endfor %}
-          {% endfor %}
+            {% endfor %}
+          {% endif %}
         </tbody>
       </table>
     </div>

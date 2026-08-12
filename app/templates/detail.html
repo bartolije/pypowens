@@ -25,13 +25,16 @@
 
   {# ── Tabs ───────────────────────────────────────────────────────── #}
   <div class="tabs">
-    <a class="tab-link active" href="#apercu">Aperçu</a>
+    <a class="tab-link {{ 'active' if tab == 'apercu' }}" href="/patrimoine/{{ account.id }}?period={{ period }}&tab=apercu">Aperçu</a>
     {% if is_invest %}
-    <a class="tab-link" href="#positions">Positions</a>
+    <a class="tab-link {{ 'active' if tab == 'positions' }}" href="/patrimoine/{{ account.id }}?period={{ period }}&tab=positions">Positions</a>
     {% endif %}
+    <a class="tab-link {{ 'active' if tab == 'transactions' }}" href="/patrimoine/{{ account.id }}?period={{ period }}&tab=transactions">Transactions</a>
+    <a class="tab-link {{ 'active' if tab == 'analyse' }}" href="/patrimoine/{{ account.id }}?period={{ period }}&tab=analyse">Analyse</a>
   </div>
 
-  {# ── Big balance + variation + period pills ─────────────────────── #}
+  {# ── Aperçu tab: Big balance + chart ────────────────────────────── #}
+  {% if tab not in ('transactions', 'analyse') %}
   <div class="card mb-3" id="apercu">
     <div class="card-body">
       <div class="d-flex align-center justify-between" style="margin-bottom: 16px;">
@@ -53,14 +56,14 @@
         </div>
 
         <nav class="period-pills">
-          <a href="/patrimoine/{{ account.id }}?period=1j" class="{{ 'active' if period == '1j' }}">1J</a>
-          <a href="/patrimoine/{{ account.id }}?period=7j" class="{{ 'active' if period == '7j' }}">7J</a>
-          <a href="/patrimoine/{{ account.id }}?period=1m" class="{{ 'active' if period == '1m' }}">1M</a>
-          <a href="/patrimoine/{{ account.id }}?period=3m" class="{{ 'active' if period == '3m' }}">3M</a>
-          <a href="/patrimoine/{{ account.id }}?period=6m" class="{{ 'active' if period == '6m' }}">6M</a>
-          <a href="/patrimoine/{{ account.id }}?period=ytd" class="{{ 'active' if period == 'ytd' }}">YTD</a>
-          <a href="/patrimoine/{{ account.id }}?period=1a" class="{{ 'active' if period == '1a' }}">1A</a>
-          <a href="/patrimoine/{{ account.id }}?period=tout" class="{{ 'active' if period == 'tout' }}">TOUT</a>
+          <a href="/patrimoine/{{ account.id }}?period=1j&tab={{ tab }}" class="{{ 'active' if period == '1j' }}">1J</a>
+          <a href="/patrimoine/{{ account.id }}?period=7j&tab={{ tab }}" class="{{ 'active' if period == '7j' }}">7J</a>
+          <a href="/patrimoine/{{ account.id }}?period=1m&tab={{ tab }}" class="{{ 'active' if period == '1m' }}">1M</a>
+          <a href="/patrimoine/{{ account.id }}?period=3m&tab={{ tab }}" class="{{ 'active' if period == '3m' }}">3M</a>
+          <a href="/patrimoine/{{ account.id }}?period=6m&tab={{ tab }}" class="{{ 'active' if period == '6m' }}">6M</a>
+          <a href="/patrimoine/{{ account.id }}?period=ytd&tab={{ tab }}" class="{{ 'active' if period == 'ytd' }}">YTD</a>
+          <a href="/patrimoine/{{ account.id }}?period=1a&tab={{ tab }}" class="{{ 'active' if period == '1a' }}">1A</a>
+          <a href="/patrimoine/{{ account.id }}?period=tout&tab={{ tab }}" class="{{ 'active' if period == 'tout' }}">TOUT</a>
         </nav>
       </div>
 
@@ -139,6 +142,67 @@
           {% endfor %}
         </tbody>
       </table>
+    </div>
+  </div>
+  {% endif %}
+  {% endif %}
+
+  {# ── Transactions tab ─────────────────────────────────────────── #}
+  {% if tab == "transactions" %}
+  <div class="card mt-3">
+    <div class="card-header">
+      <h3>Transactions</h3>
+      <span class="text-secondary small">{{ transaction_count }} opération{{ 's' if transaction_count > 1 }}</span>
+    </div>
+    {% if transactions_by_day %}
+    <div class="table-wrap">
+      <table>
+        <tbody>
+          {% for day in transactions_by_day %}
+          <tr class="row-total">
+            <td colspan="3"><strong>{{ day.label }}</strong></td>
+          </tr>
+          {% for txn in day.transactions %}
+          <tr>
+            <td>{{ txn.wording }}</td>
+            <td class="text-secondary">{{ txn.category }}</td>
+            <td class="num {{ 'text-green' if txn.amount > 0 else 'text-red' }}">
+              <span class="amount">{{ txn.amount | money(currency) }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="card-body">
+      <p class="text-secondary">Aucune transaction</p>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# ── Analyse tab ──────────────────────────────────────────────── #}
+  {% if tab == "analyse" %}
+  <div class="row mt-3">
+    <div class="col-4">
+      <div class="card"><div class="card-body">
+        <div class="text-secondary small">Solde moyen</div>
+        <div style="font-size: 1.3rem; font-weight: 700;" class="amount">{{ avg_balance | money(currency) }}</div>
+      </div></div>
+    </div>
+    <div class="col-4">
+      <div class="card"><div class="card-body">
+        <div class="text-secondary small">Solde min</div>
+        <div style="font-size: 1.3rem; font-weight: 700;" class="amount">{{ min_balance | money(currency) }}</div>
+      </div></div>
+    </div>
+    <div class="col-4">
+      <div class="card"><div class="card-body">
+        <div class="text-secondary small">Solde max</div>
+        <div style="font-size: 1.3rem; font-weight: 700;" class="amount">{{ max_balance | money(currency) }}</div>
+      </div></div>
     </div>
   </div>
   {% endif %}

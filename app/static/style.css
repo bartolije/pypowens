@@ -521,6 +521,34 @@ input.search:focus { border-color: var(--text-muted); }
 .small { font-size: 0.82rem; }
 .muted { color: var(--text-secondary); }
 
+/* ── Filter pills ────────────────────────────────────────────────────────── */
+.filter-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 5px 14px; border-radius: 20px; font-size: 0.82rem; font-weight: 500;
+  color: var(--text-secondary); border: 1px solid var(--border);
+  text-decoration: none; transition: all 0.15s;
+}
+.filter-pill:hover { border-color: var(--text-muted); color: var(--text-primary); }
+.filter-pill.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+
+/* ── Toggle switch ───────────────────────────────────────────────────────── */
+.toggle-switch {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 0.85rem; color: var(--text-secondary);
+  cursor: pointer; text-decoration: none;
+}
+.toggle-switch:hover { color: var(--text-primary); }
+.toggle-track {
+  width: 36px; height: 20px; border-radius: 10px;
+  background: var(--border); position: relative; transition: background 0.15s;
+}
+.toggle-track.on { background: var(--accent); }
+.toggle-knob {
+  width: 16px; height: 16px; border-radius: 50%; background: white;
+  position: absolute; top: 2px; left: 2px; transition: left 0.15s;
+}
+.toggle-track.on .toggle-knob { left: 18px; }
+
 /* ── Responsive ───────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .sidebar { display: none; }
