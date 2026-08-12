@@ -14,15 +14,15 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Form, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from pypowens import PowensClient, Transaction
 
 from . import store
 from .config import Settings
-from .data import load_accounts, load_internal_ids, load_spending_transactions
+from .data import load_accounts, load_internal_ids, load_spending_transactions, load_transactions
 from .deps import get_client, get_settings, get_store
-from .enrich import all_categories, merchant_key, resolve_category
+from .enrich import all_categories, merchant_key, resolve_category, resolve_category_txn
 from .helpers import line_chart, month_key, month_label_fr
 from .web import templates
 
@@ -121,3 +121,50 @@ async def set_category(
     # internes sont suivis ("//" est une URL schéma-relative vers un autre hôte).
     target = back if back.startswith("/") and not back.startswith("//") else "/"
     return RedirectResponse(target, status_code=303)
+
+
+@router.get("/export.csv")
+async def export_csv(
+    client: PowensClient = Depends(get_client),
+    settings: Settings = Depends(get_settings),
+    conn: sqlite3.Connection = Depends(get_store),
+) -> Response:
+    """Tout l'historique en CSV : dates, comptes, libellés, catégories résolues.
+
+    L'app importe des relevés mais ne restituait rien — les catégories corrigées
+    à la main restaient enfermées dans la base locale.
+    """
+    txns = await load_transactions(client, months=settings.history_months, conn=conn)
+    internal = await load_internal_ids(client, months=settings.history_months, conn=conn)
+    overrides = store.all_overrides(conn)
+    accounts = await load_accounts(client, conn=conn)
+    names = {a.id: (a.name or f"#{a.id}") for a in accounts.accounts}
+
+    import csv
+    import io
+
+    out = io.StringIO()
+    writer = csv.writer(out, delimiter=";")
+    writer.writerow(["date", "compte", "libelle", "categorie", "montant", "interne"])
+    for t in sorted(txns, key=lambda t: t.date or date.min):
+        if t.date is None or t.value is None:
+            continue
+        writer.writerow(
+            [
+                t.date.isoformat(),
+                names.get(t.id_account, ""),
+                t.simplified_wording or t.wording or "",
+                resolve_category_txn(t, overrides),
+                # Décimale en virgule : le fichier revient dans le même Excel
+                # français que les relevés qu'on importe.
+                str(t.value).replace(".", ","),
+                "oui" if t.id in internal else "",
+            ]
+        )
+    filename = f"transactions-{date.today().isoformat()}.csv"
+    return Response(
+        # BOM UTF-8 : sans lui, Excel (Windows) lit les accents en mojibake.
+        "\ufeff" + out.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

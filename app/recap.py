@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import date
 from decimal import Decimal
 from typing import Any
 
@@ -17,41 +16,11 @@ from .classify import classify_investments
 from .config import Settings
 from .data import load_accounts, load_connections, load_investments
 from .deps import get_client, get_settings, get_store
-from .helpers import PALETTE, currency_symbol, donut_chart, line_chart, treemap
+from .helpers import currency_symbol, donut_chart, line_chart, treemap
+from .wealth import FAMILY_ORDER, build_invest_rows, family_of
 from .web import templates
 
 router = APIRouter()
-
-# Families are rendered in this declared order (empty ones are skipped).
-FAMILY_ORDER = [
-    "Comptes courants",
-    "Épargne",
-    "Investissement",
-    "Assurance-vie",
-    "Retraite",
-    "Crédits",
-    "Autre",
-]
-
-# Powens account ``type`` -> family label.
-TYPE_TO_FAMILY = {
-    "checking": "Comptes courants",
-    "card": "Comptes courants",
-    "livret_a": "Épargne",
-    "ldds": "Épargne",
-    "csl": "Épargne",
-    "cel": "Épargne",
-    "pel": "Épargne",
-    "savings": "Épargne",
-    "cat": "Épargne",
-    "market": "Investissement",
-    "pea": "Investissement",
-    "lifeinsurance": "Assurance-vie",
-    "per": "Retraite",
-    "loan": "Crédits",
-    "mortgage": "Crédits",
-    "consumercredit": "Crédits",
-}
 
 
 # Connection states that only the user can clear, by going back through the bank's
@@ -79,21 +48,6 @@ STATE_LABELS = {
 }
 
 
-_MONTHS_FR = [
-    "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
-    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre",
-]
-
-
-def _today_fr() -> str:
-    d = date.today()
-    return f"{d.day:02d} {_MONTHS_FR[d.month - 1]} {d.year}"
-
-
-def _family_of(account_type: str | None) -> str:
-    """Map a raw account type to its family label (unknown -> 'Autre')."""
-    return TYPE_TO_FAMILY.get(account_type or "", "Autre")
-
 
 def _currency_of(account: Account, default: str) -> str:
     return (account.currency or default).upper()
@@ -103,6 +57,7 @@ def _currency_of(account: Account, default: str) -> str:
 async def recap(
     request: Request,
     period: str = "tout",
+    view: str = "actifs",
     type: str | None = None,  # noqa: A002
     institution: str | None = None,
     group: str = "0",
@@ -133,7 +88,7 @@ async def recap(
     subtotals: dict[str, Decimal] = {name: Decimal(0) for name in FAMILY_ORDER}
     net = Decimal(0)
     for acc in accounts:
-        fam = _family_of(acc.type)
+        fam = family_of(acc.type)
         grouped[fam].append(acc)
         balance = acc.balance or Decimal(0)
         subtotals[fam] += balance
@@ -198,12 +153,14 @@ async def recap(
     total_debt = -sum((fam["subtotal"] for fam in debts), Decimal(0))
 
     symbol = currency_symbol(base_currency)
-    donut = donut_chart(
-        [(fam["name"], float(fam["subtotal"])) for fam in assets],
-        unit=symbol,
-        center_top="Actifs",
-        center_bottom=f"{total_assets / 1000:,.0f} k{symbol}".replace(",", " "),
-    )
+
+    # L'onglet Passifs montre les familles à solde négatif (crédits) ; le tableau
+    # Actifs, les autres. Avant : lien mort — le paramètre n'était pas lu et les
+    # dettes, incluses dans le net, n'étaient consultables nulle part.
+    view = "passifs" if view == "passifs" else "actifs"
+    display_families = debts if view == "passifs" else assets
+    table_total = -total_debt if view == "passifs" else total_assets
+    pct_base = abs(table_total) or Decimal(1)
 
     # Per-account donut for the right panel (Finary shows accounts, not families).
     account_items = sorted(
@@ -222,18 +179,6 @@ async def recap(
         compact=True,
     )
 
-    # Colored allocation bars (share of total assets per family), palette aligned
-    # with the donut order.
-    total_pct = float(total_assets) or 1.0
-    allocation = [
-        {
-            "name": fam["name"],
-            "subtotal": fam["subtotal"],
-            "pct": float(fam["subtotal"]) / total_pct * 100,
-            "color": PALETTE[i % len(PALETTE)],
-        }
-        for i, fam in enumerate(assets)
-    ]
 
     # Record today's balances (au plus une fois par jour — le collecteur reste la
     # référence), then measure the variation against the first day of the window.
@@ -249,7 +194,6 @@ async def recap(
         net_diff = Decimal(0)
         net_diff_pct = 0.0
         diff_since = None
-    diff_label = f"depuis le {diff_since}" if diff_since else None
 
     net_chart = line_chart(
         [(day.strftime("%d/%m"), float(value)) for day, value in history],
@@ -260,30 +204,9 @@ async def recap(
     # Security lines behind the investment accounts (best effort — see loader).
     investments = await load_investments(client)
     account_names = {a.id: (a.name or f"#{a.id}") for a in accounts_list.accounts}
-    invest_rows = sorted(
-        (
-            {
-                "id_account": inv.id_account,
-                "account": account_names.get(inv.id_account, "—"),
-                "label": inv.label or inv.code or "—",
-                "code": inv.code,
-                "quantity": inv.quantity,
-                "valuation": inv.valuation,
-                "diff": inv.diff,
-                # Fraction côté API (0.1699 = +16,99 %) → pourcents à l'affichage.
-                "diff_percent": inv.diff_percent * 100 if inv.diff_percent is not None else None,
-                "currency": inv.currency or base_currency,
-            }
-            for inv in investments
-        ),
-        key=lambda row: row["valuation"] or Decimal(0),
-        reverse=True,
+    invest_rows, invest_diff, invest_diff_pct = build_invest_rows(
+        investments, account_names, base_currency
     )
-    invest_diff = sum((inv.diff or Decimal(0) for inv in investments), Decimal(0))
-    # Plus-value latente rapportée au prix de revient des titres (cf. synthese).
-    invest_valuation = sum((inv.valuation or Decimal(0) for inv in investments), Decimal(0))
-    invest_cost = invest_valuation - invest_diff
-    invest_diff_pct = float(invest_diff / invest_cost * 100) if invest_cost else 0.0
 
     # Variation sur un jour : le dernier jour archivé strictement avant aujourd'hui.
     prev = store.previous_net_worth(conn, currency=base_currency)
@@ -373,19 +296,16 @@ async def recap(
             "net": net,
             "total_assets": total_assets,
             "total_debt": total_debt,
-            "debt_families": debts,
             "net_currency": base_currency,
             "net_diff": net_diff,
             "net_diff_pct": net_diff_pct,
             "diff_since": diff_since,
-            "diff_label": diff_label,
             "net_chart": net_chart,
-            "history_points": len(history),
-            "allocation": allocation,
             "n_accounts": len(accounts),
-            "n_connections": len(connections),
-            "families": families,
-            "donut": donut,
+            "families": display_families,
+            "view": view,
+            "table_total": table_total,
+            "pct_base": pct_base,
             "account_donut": account_donut,
             "connections": conns,
             "invest_rows": invest_rows,
@@ -396,9 +316,7 @@ async def recap(
             "sector_treemap": sector_treemap,
             "country_treemap": country_treemap,
             "foreign_accounts": foreign,
-            "foreign_totals": foreign_totals,
             "has_accounts": bool(accounts_list.accounts),
-            "today": _today_fr(),
             "period": period.lower(),
             "type_filter": type_filter,
             "institution": institution_filter,

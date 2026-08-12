@@ -6,6 +6,10 @@
 {% endblock %}
 
 {% block content %}
+<div class="d-flex justify-between align-center mb-2">
+  <span></span>
+  <a class="btn btn-sm" href="/export.csv" title="Tout l'historique, catégories corrigées comprises">Exporter (CSV)</a>
+</div>
 
 {% if not has_accounts %}
   <div class="empty">

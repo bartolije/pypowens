@@ -235,3 +235,57 @@ def test_nan_balance_cannot_poison_the_history():
     assert _parse_decimal("Infinity") is None
     assert _parse_decimal("-Infinity") is None
     assert _parse_decimal("12.5") == Decimal("12.5")
+
+
+# ------------------------------------------------------- alertes persistantes
+
+def _sync(conn, *series):
+    return store.sync_series(conn, list(series))
+
+
+def test_alert_survives_reloads_until_acknowledged(conn):
+    netflix = Series("NETFLIX", "Netflix", Decimal("13.49"))
+    _sync(conn, netflix)  # premier passage : tout est nouveau, aucune alerte
+
+    spotify = Series("SPOTIFY", "Spotify", Decimal("10.99"))
+    changes = _sync(conn, netflix, spotify)
+    assert changes[store.series_key(spotify)]["new"] is True
+
+    # F5 : l'ancien diff one-shot faisait disparaître l'alerte ici.
+    changes = _sync(conn, netflix, spotify)
+    assert changes[store.series_key(spotify)]["new"] is True
+
+    assert store.acknowledge_alerts(conn) == 1
+    changes = _sync(conn, netflix, spotify)
+    assert changes[store.series_key(spotify)]["new"] is False
+
+
+def test_increase_alert_keeps_the_previous_amount(conn):
+    netflix = Series("NETFLIX", "Netflix", Decimal("13.49"))
+    _sync(conn, netflix)
+    raised = Series("NETFLIX", "Netflix", Decimal("15.49"))
+    changes = _sync(conn, raised)
+    key = store.series_key(raised)
+    assert changes[key]["increase_pct"] == pytest.approx(14.8, abs=0.1)
+    assert changes[key]["previous_amount"] == Decimal("13.49")
+
+    # Toujours visible après rechargement, avec le même « avant → après ».
+    changes = _sync(conn, raised)
+    assert changes[key]["increase_pct"] == pytest.approx(14.8, abs=0.1)
+    assert changes[key]["previous_amount"] == Decimal("13.49")
+
+    store.acknowledge_alerts(conn)
+    assert _sync(conn, raised)[key]["increase_pct"] is None
+
+
+def test_acknowledged_increase_does_not_retrigger_without_change(conn):
+    netflix = Series("NETFLIX", "Netflix", Decimal("13.49"))
+    _sync(conn, netflix)
+    raised = Series("NETFLIX", "Netflix", Decimal("15.49"))
+    _sync(conn, raised)
+    store.acknowledge_alerts(conn)
+    # Même montant au passage suivant : pas de nouvelle alerte fantôme.
+    changes = _sync(conn, raised)
+    key = store.series_key(raised)
+    assert changes[key]["increase_pct"] is None
+    assert changes[key]["new"] is False

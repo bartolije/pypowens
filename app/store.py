@@ -15,6 +15,7 @@ below the cost of one Powens round-trip.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, timedelta
@@ -47,7 +48,12 @@ CREATE TABLE IF NOT EXISTS series_state (
     period_months REAL,
     first_seen    TEXT NOT NULL,
     last_seen     TEXT NOT NULL,
-    acknowledged  INTEGER NOT NULL DEFAULT 0
+    acknowledged  INTEGER NOT NULL DEFAULT 0,
+    -- Alerte persistante : posée à la détection (nouvel abonnement / hausse) et
+    -- affichée jusqu'à acquittement — avant, un simple F5 la faisait disparaître.
+    alert_kind    TEXT,                   -- 'new' | 'increase' | NULL
+    alert_previous TEXT,                  -- montant d'avant la hausse
+    alert_pct     REAL                    -- hausse en %
 );
 
 -- Requalification manuelle d'un mouvement pour le calcul de performance. Aucune
@@ -151,7 +157,24 @@ def connect(db_path: Path) -> sqlite3.Connection:
 # ``if`` par colonne copié-collé, et l'état d'une base se lit d'une requête.
 _MIGRATIONS: list[tuple[int, str]] = [
     (1, "ALTER TABLE imported_account ADD COLUMN powens_account_id INTEGER"),
+    (2, "ALTER TABLE series_state ADD COLUMN alert_kind TEXT"),
+    (3, "ALTER TABLE series_state ADD COLUMN alert_previous TEXT"),
+    (4, "ALTER TABLE series_state ADD COLUMN alert_pct REAL"),
 ]
+
+
+def _column_exists(conn: sqlite3.Connection, statement: str) -> bool:
+    """Une migration ``ADD COLUMN`` est-elle déjà appliquée ?
+
+    Nécessaire pour les bases d'avant le versionnage (``user_version = 0``) :
+    une table peut y être fraîche (créée à l'instant par le SCHEMA, donc à jour)
+    pendant qu'une autre est ancienne — l'état se constate colonne par colonne.
+    """
+    m = re.match(r"ALTER TABLE (\w+) ADD COLUMN (\w+)", statement)
+    if not m:
+        return False
+    table, column = m.groups()
+    return column in {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
@@ -159,18 +182,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
     rien sur une table déjà présente, et SQLite n'a pas d'``ADD COLUMN IF NOT
     EXISTS``)."""
     current = int(conn.execute("PRAGMA user_version").fetchone()[0])
-    if current == 0:
-        # Bases d'avant le versionnage (ou fraîches, le SCHEMA étant à jour) :
-        # constater l'état réel plutôt que rejouer la migration 1 à l'aveugle.
-        columns = {
-            row["name"] for row in conn.execute("PRAGMA table_info(imported_account)")
-        }
-        if "powens_account_id" in columns:
-            current = 1
     for version, statement in _MIGRATIONS:
-        if version > current:
+        if version <= current:
+            continue
+        if not _column_exists(conn, statement):
             conn.execute(statement)
-            current = version
+        current = version
     conn.execute(f"PRAGMA user_version = {current}")
     conn.commit()
 
@@ -794,7 +811,8 @@ def sync_series(
     known = {
         row["series_key"]: row
         for row in conn.execute(
-            "SELECT series_key, amount, first_seen FROM series_state"
+            "SELECT series_key, amount, first_seen, acknowledged,"
+            " alert_kind, alert_previous, alert_pct FROM series_state"
         )
     }
     first_run = not known
@@ -810,10 +828,27 @@ def sync_series(
             delta = float((item.amount - previous) / previous)
             if delta >= increase_threshold:
                 increase_pct = delta * 100
+
+        # L'alerte est un ÉTAT, pas un événement : posée à la détection, elle
+        # reste affichée jusqu'à l'acquittement explicite. L'ancien diff one-shot
+        # la faisait disparaître au premier rechargement de page.
+        alert: tuple[str | None, str | None, float | None, int]
+        if row is None and not first_run:
+            alert = ("new", None, None, 0)
+        elif increase_pct is not None:
+            alert = ("increase", str(previous), increase_pct, 0)
+        elif row is not None and row["alert_kind"] and not row["acknowledged"]:
+            alert = (row["alert_kind"], row["alert_previous"], row["alert_pct"], 0)
+        else:
+            alert = (None, None, None, 1 if row is not None and row["acknowledged"] else 0)
+        kind, alert_previous, alert_pct, acknowledged = alert
+
         result[key] = {
-            "new": row is None and not first_run,
-            "previous_amount": previous,
-            "increase_pct": increase_pct,
+            "new": kind == "new",
+            "previous_amount": (
+                Decimal(alert_previous) if alert_previous is not None else previous
+            ),
+            "increase_pct": alert_pct if kind == "increase" else None,
             "first_seen": date.fromisoformat(row["first_seen"]) if row else today,
         }
         rows.append(
@@ -824,15 +859,30 @@ def sync_series(
                 float(item.period_months),
                 row["first_seen"] if row else today.isoformat(),
                 today.isoformat(),
+                acknowledged,
+                kind,
+                alert_previous,
+                alert_pct,
             )
         )
 
     if rows:
         conn.executemany(
             "INSERT OR REPLACE INTO series_state"
-            " (series_key, merchant, amount, period_months, first_seen, last_seen)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
+            " (series_key, merchant, amount, period_months, first_seen, last_seen,"
+            "  acknowledged, alert_kind, alert_previous, alert_pct)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             rows,
         )
         conn.commit()
     return result
+
+
+def acknowledge_alerts(conn: sqlite3.Connection) -> int:
+    """Acquitte toutes les alertes en attente ; retourne le nombre acquitté."""
+    cursor = conn.execute(
+        "UPDATE series_state SET acknowledged = 1 WHERE alert_kind IS NOT NULL"
+        " AND acknowledged = 0"
+    )
+    conn.commit()
+    return cursor.rowcount or 0

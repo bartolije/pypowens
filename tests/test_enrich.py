@@ -250,3 +250,29 @@ def test_card_payments_are_never_internal():
             wording="ENSEIGNE"),
     ]
     assert internal_transfer_ids(txns) == set()
+
+
+# ------------------------------------------------- mots-clés courts ambigus
+
+@pytest.mark.parametrize(
+    ("wording", "not_category"),
+    [
+        ("STATIONNEMENT VILLE", "Carburant"),        # "STATION" ⊄ STATIONNEMENT
+        ("TRANSPORTS DUPONT", "Sport / Loisirs"),    # "SPORT" ⊄ TRANSPORTS
+        ("FREELANCE JEAN", "Télécom / Internet"),    # "FREE" ⊄ FREELANCE
+        ("MENUISERIE ENIX", "Énergie / Eau"),        # "ENI" ⊄ MENUISERIE/ENIX
+    ],
+)
+def test_short_keywords_no_longer_match_inside_words(wording, not_category):
+    assert categorize(wording) != not_category
+
+
+@pytest.mark.parametrize(
+    ("wording", "category"),
+    [
+        ("STATION SERVICE DUPONT", "Carburant"),  # le mot entier matche toujours
+        ("CANAL", "Streaming / Médias"),
+    ],
+)
+def test_short_keywords_still_match_as_whole_words(wording, category):
+    assert categorize(wording) == category

@@ -9,12 +9,12 @@ est juste un nombre crédible.
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, Form, Query, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from pypowens import Account, Investment, PowensClient
 
@@ -73,6 +73,10 @@ class Card:
     performance: perf.Performance | None
     chart: str
     points: int
+    # Flux qualifiés de la période, pour la requalification manuelle : la seule
+    # échappatoire aux heuristiques (« prime » d'assurance lue comme un gain,
+    # « achat » d'un virement lu comme un ordre de bourse) était inaccessible.
+    flows: list[perf.Flow] = field(default_factory=list)
 
 
 def _lines_of(investments: list[Investment]) -> list[Line]:
@@ -157,17 +161,18 @@ async def performance_page(
             i.id: i.valuation for i in held if i.id is not None and i.valuation is not None
         }
         points = perf.reconstruct_series(values, quantities)
+        flows = perf.qualify_flows(txns, account_id=account.id or 0, overrides=overrides)
         computed = perf.compute(
             account_id=account.id or 0,
             points=points,
-            flows=perf.qualify_flows(
-                txns, account_id=account.id or 0, overrides=overrides
-            ),
+            flows=flows,
             since=since,
             coverage=perf.series_coverage(
                 values, valuations, account.balance, cash=cash
             ),
         )
+        # Les flux affichés : ceux de la fenêtre, les plus récents d'abord.
+        window_flows = [f for f in flows if since is None or f.day >= since]
         cards.append(
             Card(
                 account=account,
@@ -179,6 +184,7 @@ async def performance_page(
                 performance=computed,
                 chart=_chart(computed.points) if computed else "",
                 points=len(points),
+                flows=list(reversed(window_flows))[:25],
             )
         )
 
@@ -202,3 +208,18 @@ async def performance_page(
             "min_annualize_days": perf.MIN_ANNUALIZE_DAYS,
         },
     )
+
+
+@router.post("/performance/flux")
+async def requalify_flow(
+    txn_id: int = Form(...),
+    kind: str = Form(...),
+    conn: sqlite3.Connection = Depends(get_store),  # noqa: B008
+) -> RedirectResponse:
+    """Requalifie un mouvement (apport / gain / achat-vente) pour la performance.
+
+    ``kind`` hors du vocabulaire (``__auto__``) efface l'override et rend la main
+    à l'heuristique.
+    """
+    store.set_flow_override(conn, txn_id, kind)
+    return RedirectResponse("/performance", status_code=303)

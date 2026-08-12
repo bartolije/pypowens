@@ -214,11 +214,32 @@ _TYPE_CATEGORY_FALLBACK = {"fee": "Frais bancaires", "market_fee": "Frais bancai
 _ACTIVE_RULES: list[tuple[str, tuple[str, ...]]] = load_local_rules() + CATEGORY_RULES
 
 
+# Mots-clés courts qui ne matchent qu'en MOT ENTIER. En sous-chaîne, "STATION"
+# classait STATIONNEMENT VILLE en Carburant, "SPORT" rangeait TRANSPORTS DUPONT
+# en Loisirs, "FREE" attrapait FREELANCE et "ENI" n'importe quel MENUISIER. Les
+# autres mots-clés restent des sous-chaînes : "ASSUR" doit continuer d'attraper
+# ASSURANCES et ASSUREUR.
+_WHOLE_WORD_KEYWORDS = frozenset({"STATION", "SPORT", "TOTAL", "CANAL", "PRET", "FREE", "ENI"})
+
+_WORD_BOUNDARY = r"(?<![0-9A-ZÀ-ÿ]){}(?![0-9A-ZÀ-ÿ])"
+
+
+@lru_cache(maxsize=256)
+def _word_re(keyword: str) -> re.Pattern[str]:
+    return re.compile(_WORD_BOUNDARY.format(re.escape(keyword)))
+
+
+def _kw_match(keyword: str, up: str) -> bool:
+    if keyword in _WHOLE_WORD_KEYWORDS:
+        return bool(_word_re(keyword).search(up))
+    return keyword in up
+
+
 @lru_cache(maxsize=16384)
 def _categorize_default(up: str) -> str:
     """Parcours des ~200 mots-clés, mémoïsé par libellé (règles fixes du process)."""
     for label, keywords in _ACTIVE_RULES:
-        if any(kw in up for kw in keywords):
+        if any(_kw_match(kw, up) for kw in keywords):
             return label
     return "Autre"
 
@@ -230,7 +251,7 @@ def categorize(
     up = (text or "").upper()
     if rules is not None:  # jeu de règles ad hoc : pas de cache
         for label, keywords in rules:
-            if any(kw in up for kw in keywords):
+            if any(_kw_match(kw, up) for kw in keywords):
                 return label
         return "Autre"
     return _categorize_default(up)

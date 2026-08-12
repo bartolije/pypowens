@@ -20,23 +20,13 @@ from .data import load_accounts, load_connections, load_investments, load_transa
 from .deps import get_client, get_settings, get_store
 from .enrich import resolve_category_txn
 from .helpers import currency_symbol, day_label_fr, line_chart
-from .recap import TYPE_TO_FAMILY
+from .wealth import TYPE_TO_FAMILY, today_fr
 from .web import templates
 
 router = APIRouter()
 
-_MONTHS_FR = [
-    "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
-    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre",
-]
-
 # Account types that hold investment positions.
 _INVEST_TYPES = frozenset({"market", "pea", "lifeinsurance", "per"})
-
-
-def _today_fr() -> str:
-    d = date.today()
-    return f"{d.day:02d} {_MONTHS_FR[d.month - 1]} {d.year}"
 
 
 _log = logging.getLogger(__name__)
@@ -219,7 +209,7 @@ async def account_detail(
             "invest_total_diff": invest_total_diff,
             "invest_total_cost": invest_total_cost,
             "invest_diff_pct": invest_diff_pct,
-            "today": _today_fr(),
+            "today": today_fr(),
             "period": period.lower(),
             "transactions_by_day": transactions_by_day,
             "transaction_count": transaction_count,

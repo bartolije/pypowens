@@ -4,6 +4,7 @@
 {% block topbar_left %}
   {# Build base query string that preserves active filters across period changes #}
   {% set base_params = [] %}
+  {% if view == 'passifs' %}{% set _ = base_params.append('view=passifs') %}{% endif %}
   {% if type_filter %}{% set _ = base_params.append('type=' ~ (type_filter | urlencode)) %}{% endif %}
   {% if institution %}{% set _ = base_params.append('institution=' ~ (institution | urlencode)) %}{% endif %}
   {% if group == "1" %}{% set _ = base_params.append('group=1') %}{% endif %}
@@ -52,8 +53,8 @@
       <div class="card" style="height: 100%;">
         <div class="card-body">
           <div class="tabs" style="margin-bottom: 16px;">
-            <span class="tab-link active">Actifs</span>
-            <span class="tab-link">Passifs</span>
+            <span class="tab-link {{ 'active' if view != 'passifs' }}">Actifs</span>
+            <span class="tab-link {{ 'active' if view == 'passifs' }}">Passifs</span>
           </div>
           <div class="donut-compact">{{ account_donut | safe }}</div>
         </div>
@@ -65,12 +66,17 @@
   <div class="card">
     <div class="card-body" style="padding-bottom: 0;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        {% set filter_params = [] %}
+        {% if type_filter %}{% set _ = filter_params.append('type=' ~ (type_filter | urlencode)) %}{% endif %}
+        {% if institution %}{% set _ = filter_params.append('institution=' ~ (institution | urlencode)) %}{% endif %}
+        {% if group == "1" %}{% set _ = filter_params.append('group=1') %}{% endif %}
+        {% set filter_qs = filter_params | join('&') %}
         <div class="tabs" style="margin-bottom: 0;">
-          <a class="tab-link active" href="/patrimoine?period={{ period }}{{ '&' ~ base_qs if base_qs }}">Actifs</a>
-          <a class="tab-link" href="/patrimoine?view=passifs&period={{ period }}{{ '&' ~ base_qs if base_qs }}">Passifs</a>
+          <a class="tab-link {{ 'active' if view != 'passifs' }}" href="/patrimoine?period={{ period }}{{ '&' ~ filter_qs if filter_qs }}">Actifs</a>
+          <a class="tab-link {{ 'active' if view == 'passifs' }}" href="/patrimoine?view=passifs&period={{ period }}{{ '&' ~ filter_qs if filter_qs }}">Passifs</a>
         </div>
         <div class="d-flex align-center gap-2">
-          {% set group_qs_parts = [] %}
+          {% set group_qs_parts = [] %}{% if view == 'passifs' %}{% set _ = group_qs_parts.append('view=passifs') %}{% endif %}
           {% if type_filter %}{% set _ = group_qs_parts.append('type=' ~ (type_filter | urlencode)) %}{% endif %}
           {% if institution %}{% set _ = group_qs_parts.append('institution=' ~ (institution | urlencode)) %}{% endif %}
           {% set group_qs = group_qs_parts | join('&') %}
@@ -87,13 +93,13 @@
         {% for fam_name in family_names %}
           {% if type_filter == fam_name %}
             {# Active: clicking clears the filter #}
-            {% set clear_params = [] %}
+            {% set clear_params = [] %}{% if view == 'passifs' %}{% set _ = clear_params.append('view=passifs') %}{% endif %}
             {% if institution %}{% set _ = clear_params.append('institution=' ~ (institution | urlencode)) %}{% endif %}
             {% if group == "1" %}{% set _ = clear_params.append('group=1') %}{% endif %}
             {% set clear_qs = clear_params | join('&') %}
             <a href="/patrimoine?period={{ period }}{{ '&' ~ clear_qs if clear_qs }}" class="filter-pill active">&#10005; {{ fam_name }}</a>
           {% else %}
-            {% set pill_params = [] %}
+            {% set pill_params = [] %}{% if view == 'passifs' %}{% set _ = pill_params.append('view=passifs') %}{% endif %}
             {% if institution %}{% set _ = pill_params.append('institution=' ~ (institution | urlencode)) %}{% endif %}
             {% if group == "1" %}{% set _ = pill_params.append('group=1') %}{% endif %}
             {% set pill_qs = pill_params | join('&') %}
@@ -103,13 +109,13 @@
         <span style="width: 1px; height: 20px; background: var(--border); margin: 0 4px;"></span>
         {% for conn_name in connection_names %}
           {% if institution == conn_name %}
-            {% set clear_params = [] %}
+            {% set clear_params = [] %}{% if view == 'passifs' %}{% set _ = clear_params.append('view=passifs') %}{% endif %}
             {% if type_filter %}{% set _ = clear_params.append('type=' ~ (type_filter | urlencode)) %}{% endif %}
             {% if group == "1" %}{% set _ = clear_params.append('group=1') %}{% endif %}
             {% set clear_qs = clear_params | join('&') %}
             <a href="/patrimoine?period={{ period }}{{ '&' ~ clear_qs if clear_qs }}" class="filter-pill active">&#10005; {{ conn_name }}</a>
           {% else %}
-            {% set pill_params = [] %}
+            {% set pill_params = [] %}{% if view == 'passifs' %}{% set _ = pill_params.append('view=passifs') %}{% endif %}
             {% if type_filter %}{% set _ = pill_params.append('type=' ~ (type_filter | urlencode)) %}{% endif %}
             {% if group == "1" %}{% set _ = pill_params.append('group=1') %}{% endif %}
             {% set pill_qs = pill_params | join('&') %}
@@ -139,7 +145,7 @@
             </td>
             <td></td>
             <td></td>
-            <td class="num" data-sort="{{ net }}">{{ net | money(net_currency) }}</td>
+            <td class="num" data-sort="{{ table_total }}">{{ table_total | money(net_currency) }}</td>
             {# +/- value : plus-value latente des titres, rapportée à leur prix de revient #}
             <td class="num {{ 'text-green' if (invest_diff or 0) >= 0 else 'text-red' }}">
               {% if invest_diff %}
@@ -175,7 +181,7 @@
               </td>
               <td class="text-secondary" style="white-space: nowrap;">{{ fam.name }}</td>
               <td>
-                {% set pct = (acc.balance or 0) / (total_assets or 1) * 100 %}
+                {% set pct = ((acc.balance or 0) | abs) / pct_base * 100 %}
                 <div class="repartition">
                   <div class="repartition-bar"><div class="repartition-fill" style="width: {{ pct|round(1) }}%"></div></div>
                   {{ '%.1f'|format(pct) }} %
@@ -199,7 +205,7 @@
               </td>
               <td class="text-secondary" style="white-space: nowrap;">{{ fam.name }}</td>
               <td>
-                {% set pct = (acc.balance or 0) / (total_assets or 1) * 100 %}
+                {% set pct = ((acc.balance or 0) | abs) / pct_base * 100 %}
                 <div class="repartition">
                   <div class="repartition-bar"><div class="repartition-fill" style="width: {{ pct|round(1) }}%"></div></div>
                   {{ '%.1f'|format(pct) }} %

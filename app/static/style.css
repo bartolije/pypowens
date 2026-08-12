@@ -551,7 +551,23 @@ input.search:focus { border-color: var(--text-muted); }
 
 /* ── Responsive ───────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .sidebar { display: none; }
+  /* La sidebar devient une barre horizontale défilante : la masquer laissait
+     l'application SANS AUCUNE navigation sur mobile. */
+  .sidebar {
+    position: static;
+    width: 100%;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 6px 10px;
+    gap: 4px;
+  }
+  .sidebar-brand span { display: none; }
+  .sidebar-nav { flex-direction: row; gap: 2px; }
+  .sidebar-link { white-space: nowrap; padding: 6px 10px; }
   .main { margin-left: 0; }
   .content { padding: 16px; }
   .topbar { padding: 0 16px; }

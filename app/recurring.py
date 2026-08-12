@@ -22,7 +22,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from . import store
 from .data import MAX_WINDOW_MONTHS, load_internal_ids, load_spending_transactions
@@ -477,6 +477,15 @@ def _parse_date(value: str | None) -> date | None:
         return date.fromisoformat(value[:10])
     except ValueError:
         return None
+
+
+@router.post("/abonnements/acquitter")
+async def acknowledge_alerts(
+    conn: sqlite3.Connection = Depends(get_store),  # noqa: B008
+) -> RedirectResponse:
+    """Acquitte les alertes « nouveau / hausse » — elles persistent jusqu'ici."""
+    store.acknowledge_alerts(conn)
+    return RedirectResponse("/abonnements", status_code=303)
 
 
 @router.get("/abonnements", response_class=HTMLResponse)

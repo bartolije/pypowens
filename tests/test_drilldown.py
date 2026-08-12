@@ -155,3 +155,17 @@ def test_callback_state_is_single_use(client):
         "/callback", params={"code": "abc", "state": "one-shot"}, follow_redirects=False
     )
     assert replay.status_code == 400
+
+
+# ---------------------------------------------------------------------- export
+
+def test_export_csv_streams_the_history_with_categories(client):
+    response = client.get("/export.csv")
+    assert response.status_code == 200
+    assert "text/csv" in response.headers["content-type"]
+    assert 'attachment; filename="transactions-' in response.headers["content-disposition"]
+    body = response.text
+    assert "date;compte;libelle;categorie;montant;interne" in body
+    assert "NETFLIX.COM" in body
+    assert "Streaming / Médias" in body
+    assert "-13,49" in body  # décimale en virgule, comme les relevés importés

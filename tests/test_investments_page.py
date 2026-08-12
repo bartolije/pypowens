@@ -207,3 +207,27 @@ def test_the_invested_amount_is_a_line_total_not_a_unit_price(client):
     (line,) = _lines_of([Inv()])
     assert line.invested == Decimal("33030.00")
     assert line.invested != line.unit_price
+
+
+def test_flow_requalification_is_reachable_and_persists(client):
+    """set_flow_override existait mais AUCUNE route ne l'appelait : la seule
+    échappatoire aux heuristiques de flux était inaccessible depuis l'UI."""
+    # (Le jeu de test n'a pas de transaction sur le PEA, donc pas de bloc
+    # « Flux de la période » rendu ici — la route, elle, se teste directement.)
+    response = client.post(
+        "/performance/flux", data={"txn_id": "42", "kind": "income"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    import app.main
+    from app import store as store_mod
+    conn = app.main.app.state.store
+    assert store_mod.flow_overrides(conn) == {42: "income"}
+
+    # __auto__ efface l'override et rend la main à l'heuristique.
+    client.post(
+        "/performance/flux", data={"txn_id": "42", "kind": "__auto__"},
+        follow_redirects=False,
+    )
+    assert store_mod.flow_overrides(conn) == {}

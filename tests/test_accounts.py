@@ -234,8 +234,26 @@ def test_debt_is_netted_out_of_net_worth(client, fake_client):
 
     app.data.clear_cache()
     body = _text(client.get("/patrimoine").text)
-    # 59 500 of assets minus the 256 797,68 loan.
-    assert "-197 297,68 €" in body
+    # 59 500 d'actifs moins le prêt de 256 797,68 : le solde héro (arrondi à
+    # l'euro) reflète la dette ; la ligne Total du tableau, elle, totalise la
+    # vue affichée (actifs OU passifs), plus le net global.
+    assert "-197 298 €" in body or "-197 297 €" in body
+    # Le tableau Actifs totalise les seuls actifs.
+    assert "59 500,00 €" in body
+
+
+def test_passifs_tab_lists_the_debts(client, fake_client):
+    """L'onglet Passifs était un lien mort : les dettes, incluses dans le net,
+    n'étaient consultables nulle part."""
+    _with_loan(fake_client)
+    import app.data
+
+    app.data.clear_cache()
+    body = _text(client.get("/patrimoine", params={"view": "passifs"}).text)
+    assert "-256 797,68 €" in body  # la ligne Total de la vue passifs
+    assert "PRET IMMO" in body
+    # Et le tableau ne liste pas les familles d'actifs (le donut de droite, si).
+    assert "PEA Investissement" not in body
 
 
 def test_debt_is_excluded_from_the_repartition(client, fake_client):

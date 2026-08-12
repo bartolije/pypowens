@@ -117,7 +117,12 @@
 
 {% if alerts %}
 <div class="card mt-3">
-  <div class="card-header"><h3 class="card-title">⚠️ Changements depuis la dernière visite</h3></div>
+  <div class="card-header d-flex align-center justify-between">
+    <h3 class="card-title">⚠️ Changements à examiner</h3>
+    <form method="post" action="/abonnements/acquitter" style="margin: 0;">
+      <button type="submit" class="btn">J'ai vu, masquer</button>
+    </form>
+  </div>
   <div class="card-body" style="padding: 0;">
     {% for a in alerts %}
     <div class="d-flex flex-wrap align-center gap-2" style="padding: 12px 24px; border-bottom: 1px solid var(--border);">

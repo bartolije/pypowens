@@ -309,3 +309,10 @@ def test_a_genuinely_dead_series_is_not_called_repriced():
     items = detect_recurring(txns, today=date(2026, 3, 25))
     assert items and items[0].stale is True
     assert items[0].repriced is False  # no merchant_last set, nothing charged since
+
+
+def test_acquitter_route_clears_the_alert_banner(client):
+    """POST /abonnements/acquitter : les alertes persistent jusqu'à ce clic."""
+    response = client.post("/abonnements/acquitter", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/abonnements"

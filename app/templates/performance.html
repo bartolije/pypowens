@@ -188,6 +188,45 @@
     Cliquer un en-tête trie le tableau — par titre, montant investi, plus-value ou poids.
   </div>
   {% endif %}
+
+  {# ── Flux de la période : la main de l'utilisateur tranche ce que les
+        heuristiques devinent mal (« prime » d'assurance ≠ gain, « achat »
+        d'une voiture ≠ ordre de bourse). ─────────────────────────────── #}
+  {% if card.flows %}
+  <details class="card-body" style="padding-top: 12px;">
+    <summary class="text-secondary small" style="cursor: pointer;">
+      Flux de la période ({{ card.flows | length }}) — requalifier un mouvement mal classé
+    </summary>
+    <div class="table-wrap" style="margin-top: 8px;">
+      <table>
+        <thead>
+          <tr><th>Date</th><th>Libellé</th><th class="num">Montant</th><th>Nature</th></tr>
+        </thead>
+        <tbody>
+          {% for f in card.flows %}
+          <tr>
+            <td style="white-space: nowrap;">{{ f.day.strftime('%d/%m/%y') }}</td>
+            <td>{{ f.label }}</td>
+            <td class="num"><span class="amount">{{ f.amount | money(currency) }}</span></td>
+            <td>
+              <form method="post" action="/performance/flux" style="display: flex; gap: 4px; margin: 0;">
+                <input type="hidden" name="txn_id" value="{{ f.txn_id }}">
+                <select name="kind" class="search">
+                  <option value="external" {{ 'selected' if f.kind == 'external' }}>Apport / retrait</option>
+                  <option value="income" {{ 'selected' if f.kind == 'income' }}>Gain / frais</option>
+                  <option value="trade" {{ 'selected' if f.kind == 'trade' }}>Achat / vente</option>
+                  <option value="__auto__">— auto —</option>
+                </select>
+                <button type="submit" class="btn btn-sm">OK</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% endif %}
 </div>
 {% else %}
 <div class="card"><div class="card-body text-secondary">
