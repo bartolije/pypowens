@@ -197,6 +197,15 @@ CATEGORY_RULES: list[tuple[str, tuple[str, ...]]] = [
                                "ZALANDO", "EMMA SLEEP", "APPLE")),
 ]
 
+# Catégorie spéciale : une opération classée ainsi est traitée comme un
+# virement entre ses propres comptes — EXCLUE des dépenses, revenus, abonnements
+# et analyses, exactement comme les paires miroir détectées automatiquement.
+# C'est la soupape manuelle pour ce que l'heuristique ne peut pas deviner :
+# « VIR Jeremie Bartoli » d'une banque vers une autre, jambes typées
+# différemment par les deux connecteurs, ou montant éclaté vers plusieurs
+# comptes à l'arrivée.
+INTERNAL_CATEGORY = "Virement interne"
+
 # Categories that describe day-to-day consumption rather than a contract. A
 # subscriptions view must never present these as subscriptions: two visits to the
 # same restaurant a year apart look exactly like an annual renewal.
@@ -301,6 +310,7 @@ def all_categories() -> list[str]:
     for label in (*_TYPE_CATEGORY_OVERRIDE.values(), *_TYPE_CATEGORY_FALLBACK.values()):
         if label not in labels:
             labels.append(label)
+    labels.append(INTERNAL_CATEGORY)
     labels.append("Autre")
     return labels
 

@@ -24,7 +24,7 @@ from pypowens import (
 )
 
 from . import store
-from .enrich import internal_transfer_ids
+from .enrich import INTERNAL_CATEGORY, internal_transfer_ids, merchant_key
 
 # Accounts where day-to-day spending actually happens. Investment (market/pea/per/
 # lifeinsurance), savings (livret*/csl/ldds...) and loan accounts are excluded from
@@ -289,6 +289,21 @@ async def load_internal_ids(
     if cached is not None:
         return cached
     extra = _imported(conn, None, all_txns)
-    ids = internal_transfer_ids([*all_txns, *extra] if extra else all_txns)
+    pool = [*all_txns, *extra] if extra else all_txns
+    ids = internal_transfer_ids(pool)
+    # Marquage MANUEL : un libellé corrigé en « Virement interne » (page détail)
+    # exclut toutes ses opérations, dans les deux sens. C'est la seule issue pour
+    # les flux que l'heuristique miroir ne voit pas : jambes typées différemment
+    # par les deux connecteurs, montant éclaté vers plusieurs comptes à l'arrivée,
+    # banques synchronisées à des dates différentes. La fraîcheur est garantie
+    # par le clear_cache() du POST /categorie.
+    if conn is not None:
+        flagged = {
+            k for k, cat in store.all_overrides(conn).items() if cat == INTERNAL_CATEGORY
+        }
+        if flagged:
+            ids |= {
+                t.id for t in pool if t.id is not None and merchant_key(t) in flagged
+            }
     _set(key, ids)
     return ids

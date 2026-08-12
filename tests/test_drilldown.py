@@ -169,3 +169,39 @@ def test_export_csv_streams_the_history_with_categories(client):
     assert "NETFLIX.COM" in body
     assert "Streaming / Médias" in body
     assert "-13,49" in body  # décimale en virgule, comme les relevés importés
+
+
+# ------------------------------------------------------- virement interne manuel
+
+def test_flagging_a_label_as_internal_excludes_it_everywhere(client):
+    """CCF → Bourso puis Bourso → 3 comptes : l'heuristique miroir ne voit pas
+    ces flux (jambes typées différemment, montants éclatés). Le marquage manuel
+    « Virement interne » est la soupape — et il doit exclure PARTOUT."""
+    # Avant : Netflix est un abonnement détecté et compte dans les dépenses.
+    assert "NETFLIX.COM" in client.get("/abonnements").text
+
+    posted = client.post(
+        "/categorie",
+        data={"label": "NETFLIX.COM", "category": "Virement interne", "back": "/"},
+        follow_redirects=False,
+    )
+    assert posted.status_code == 303
+
+    # Après : plus un abonnement…
+    assert "NETFLIX.COM" not in client.get("/abonnements").text
+    # …marqué comme virement interne sur le drill-down (listé, non compté)…
+    assert "virement interne" in client.get(
+        "/transactions", params={"label": "NETFLIX.COM"}
+    ).text
+    # …et retour à la normale quand on rend la main à l'heuristique.
+    client.post(
+        "/categorie",
+        data={"label": "NETFLIX.COM", "category": "__auto__", "back": "/"},
+        follow_redirects=False,
+    )
+    assert "NETFLIX.COM" in client.get("/abonnements").text
+
+
+def test_the_category_form_offers_virement_interne(client):
+    body = client.get("/transactions", params={"label": "NETFLIX.COM"}).text
+    assert "Virement interne" in body

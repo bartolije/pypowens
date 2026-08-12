@@ -20,7 +20,13 @@ from pypowens import PowensClient, Transaction
 
 from . import store
 from .config import Settings
-from .data import load_accounts, load_internal_ids, load_spending_transactions, load_transactions
+from .data import (
+    clear_cache,
+    load_accounts,
+    load_internal_ids,
+    load_spending_transactions,
+    load_transactions,
+)
 from .deps import get_client, get_settings, get_store
 from .enrich import all_categories, merchant_key, resolve_category, resolve_category_txn
 from .helpers import line_chart, month_key, month_label_fr
@@ -117,6 +123,9 @@ async def set_category(
         store.clear_override(conn, label)
     else:
         store.set_override(conn, label, category)
+    # L'ensemble des virements internes (cache) dépend des overrides : marquer un
+    # libellé « Virement interne » doit prendre effet au rechargement, pas au TTL.
+    clear_cache()
     # Une valeur de formulaire ne choisit jamais un domaine : seuls les chemins
     # internes sont suivis ("//" est une URL schéma-relative vers un autre hôte).
     target = back if back.startswith("/") and not back.startswith("//") else "/"
