@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
@@ -142,7 +143,7 @@ async def recap(
     for name in FAMILY_ORDER:
         grouped[name].sort(key=lambda a: a.balance or Decimal(0), reverse=True)
 
-    families = [
+    families: list[dict[str, Any]] = [
         {"name": name, "accounts": grouped[name], "subtotal": subtotals[name]}
         for name in FAMILY_ORDER
         if grouped[name]
@@ -174,16 +175,16 @@ async def recap(
 
     # Apply institution filter: keep only accounts whose connection matches.
     if institution_filter:
-        filtered_families = []
-        for fam in families:
+        filtered_families: list[dict[str, Any]] = []
+        for family in families:
             matching = [
-                acc for acc in fam["accounts"]
+                acc for acc in family["accounts"]
                 if account_to_connection.get(acc.id) == institution_filter
             ]
             if matching:
                 sub = sum((a.balance or Decimal(0) for a in matching), Decimal(0))
                 filtered_families.append(
-                    {"name": fam["name"], "accounts": matching, "subtotal": sub}
+                    {"name": family["name"], "accounts": matching, "subtotal": sub}
                 )
         families = filtered_families
 
@@ -296,7 +297,7 @@ async def recap(
     # Investment classification (sector / country treemaps).
     sector_treemap = ""
     country_treemap = ""
-    isins = [row["code"] for row in invest_rows if row.get("code")]
+    isins = [str(row["code"]) for row in invest_rows if row.get("code")]
     if isins:
         try:
             classification = await classify_investments(
@@ -308,7 +309,7 @@ async def recap(
             sector_agg: dict[str, float] = {}
             country_agg: dict[str, float] = {}
             for row in invest_rows:
-                code = row.get("code")
+                code = str(row.get("code") or "")
                 if not code or code not in classification:
                     continue
                 val = float(row["valuation"] or 0)

@@ -81,9 +81,9 @@ async def analysis(
     spend_by_month: dict[str, Decimal] = defaultdict(Decimal)
     income_by_month: dict[str, Decimal] = defaultdict(Decimal)
     for t in spend:
-        spend_by_month[month_key(t.date)] += abs(t.value)
+        spend_by_month[month_key(t.date)] += abs(t.value or Decimal(0))
     for t in income:
-        income_by_month[month_key(t.date)] += t.value
+        income_by_month[month_key(t.date)] += t.value or Decimal(0)
 
     total_spend = sum(spend_by_month.values(), Decimal(0))
     total_income = sum(income_by_month.values(), Decimal(0))
@@ -105,7 +105,7 @@ async def analysis(
     overrides = store.all_overrides(conn)
     cat_totals: dict[str, Decimal] = defaultdict(Decimal)
     for t in spend:
-        cat_totals[resolve_category_txn(t, overrides)] += abs(t.value)
+        cat_totals[resolve_category_txn(t, overrides)] += abs(t.value or Decimal(0))
     ordered = sorted(cat_totals.items(), key=lambda kv: kv[1], reverse=True)
     top = ordered[:TOP_CATEGORIES]
     if ordered[TOP_CATEGORIES:]:
@@ -130,10 +130,11 @@ async def analysis(
     )
     recurring_ids = {tid for item in recurring_items for tid in item.txn_ids}
     recurring_spend = sum(
-        (abs(t.value) for t in spend if t.id in recurring_ids), Decimal(0)
+        (abs(t.value or Decimal(0)) for t in spend if t.id in recurring_ids), Decimal(0)
     )
     ponctuel_spend = total_spend - recurring_spend
-    recurring_monthly = (recurring_spend / WINDOW).quantize(Decimal("0.01"))
+    # Même dénominateur que les moyennes : les mois réellement couverts.
+    recurring_monthly = (recurring_spend / months_covered).quantize(Decimal("0.01"))
     ponctuel_monthly = (ponctuel_spend / WINDOW).quantize(Decimal("0.01"))
     # Contractual commitment (sum of the €/month of each active series): a
     # forward-looking figure, deliberately distinct from what was actually spent.

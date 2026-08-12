@@ -356,3 +356,45 @@ async def test_expired_cache_never_shrinks_the_window(fake_client):
         assert covered == 24
     finally:
         data.clear_cache()
+
+
+# ------------------------------------------------------------- sécurité web
+
+def test_cross_site_post_is_refused(client):
+    """Sans auth ni cookie, l'Origin est la seule frontière anti-CSRF."""
+    response = client.post(
+        "/categorie",
+        data={"label": "NETFLIX", "category": "Streaming / Médias", "back": "/"},
+        headers={"Origin": "https://evil.example"},
+    )
+    assert response.status_code == 403
+
+
+def test_same_origin_post_is_accepted(client):
+    response = client.post(
+        "/categorie",
+        data={"label": "NETFLIX", "category": "Streaming / Médias", "back": "/comptes"},
+        headers={"Origin": "http://127.0.0.1:8000"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/comptes"
+
+
+def test_open_redirect_via_back_is_neutralised(client):
+    """`back` vient d'un champ de formulaire : jamais un domaine externe."""
+    for hostile in ("https://evil.example/phish", "//evil.example", "javascript:alert(1)"):
+        response = client.post(
+            "/categorie",
+            data={"label": "NETFLIX", "category": "__auto__", "back": hostile},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert response.headers["location"] == "/"
+
+
+def test_foreign_host_header_is_refused(client):
+    """DNS rebinding : un domaine hostile résolvant vers 127.0.0.1 devient
+    same-origin et peut lire les soldes — l'en-tête Host le trahit."""
+    response = client.get("/", headers={"Host": "evil.example"})
+    assert response.status_code == 400

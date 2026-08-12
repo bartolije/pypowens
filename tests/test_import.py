@@ -186,7 +186,9 @@ def test_fingerprint_separates_accounts():
 
 @pytest.fixture
 def conn(tmp_path):
-    return store.connect(tmp_path / "store.db")
+    connection = store.connect(tmp_path / "store.db")
+    yield connection
+    connection.close()
 
 
 def test_reimporting_the_same_statement_adds_nothing(conn):
@@ -418,8 +420,11 @@ def test_the_migration_adds_the_column_to_an_existing_database(tmp_path):
     legacy.close()
 
     conn = store.connect(path)
-    (row,) = conn.execute("SELECT label, powens_account_id FROM imported_account")
-    assert (row["label"], row["powens_account_id"]) == ("CCF", None)
+    try:
+        (row,) = conn.execute("SELECT label, powens_account_id FROM imported_account")
+        assert (row["label"], row["powens_account_id"]) == ("CCF", None)
+    finally:
+        conn.close()
 
 
 # ------------------------------------------------------- la fusion, par les routes
@@ -433,8 +438,16 @@ def _text(html: str) -> str:
 
 
 def _months_ago(count: int) -> date:
-    """Le 15 du mois situé ``count`` mois avant celui-ci."""
-    total = date.today().year * 12 + date.today().month - 1 - count
+    """Le 15 du mois situé ``count`` mois avant celui-ci.
+
+    Ancré sur ``FROZEN_TODAY`` (pas ``date.today()``) : ces constantes de module
+    sont évaluées à l'import, AVANT que la fixture ne gèle l'horloge — un mélange
+    horloge réelle / horloge gelée faisait entrer OLD en collision avec la borne
+    de recouvrement du connecteur.
+    """
+    from tests.conftest import FROZEN_TODAY
+
+    total = FROZEN_TODAY.year * 12 + FROZEN_TODAY.month - 1 - count
     return date(total // 12, total % 12 + 1, 15)
 
 

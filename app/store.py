@@ -146,17 +146,33 @@ def connect(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
-def _migrate(conn: sqlite3.Connection) -> None:
-    """Ajoute les colonnes apparues après coup.
+# Migrations ordonnées, suivies par ``PRAGMA user_version``. Chaque entrée est
+# (numéro, instruction) ; en ajouter une NOUVELLE à la fin suffit — plus de bloc
+# ``if`` par colonne copié-collé, et l'état d'une base se lit d'une requête.
+_MIGRATIONS: list[tuple[int, str]] = [
+    (1, "ALTER TABLE imported_account ADD COLUMN powens_account_id INTEGER"),
+]
 
-    ``CREATE TABLE IF NOT EXISTS`` ne fait rien sur une table déjà présente : une base
-    créée avant une colonne ne l'aurait jamais, et SQLite n'a pas de
-    ``ADD COLUMN IF NOT EXISTS``.
-    """
-    columns = {row["name"] for row in conn.execute("PRAGMA table_info(imported_account)")}
-    if "powens_account_id" not in columns:
-        conn.execute("ALTER TABLE imported_account ADD COLUMN powens_account_id INTEGER")
-        conn.commit()
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Rejoue les migrations manquantes (``CREATE TABLE IF NOT EXISTS`` ne fait
+    rien sur une table déjà présente, et SQLite n'a pas d'``ADD COLUMN IF NOT
+    EXISTS``)."""
+    current = int(conn.execute("PRAGMA user_version").fetchone()[0])
+    if current == 0:
+        # Bases d'avant le versionnage (ou fraîches, le SCHEMA étant à jour) :
+        # constater l'état réel plutôt que rejouer la migration 1 à l'aveugle.
+        columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(imported_account)")
+        }
+        if "powens_account_id" in columns:
+            current = 1
+    for version, statement in _MIGRATIONS:
+        if version > current:
+            conn.execute(statement)
+            current = version
+    conn.execute(f"PRAGMA user_version = {current}")
+    conn.commit()
 
 
 # ------------------------------------------------------------------- backup

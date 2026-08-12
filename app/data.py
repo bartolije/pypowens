@@ -92,7 +92,7 @@ async def load_accounts(
             if cached is None:
                 cached = await client.list_accounts(include_disabled=False)
                 _set("accounts", cached)
-    data: AccountsList = cached  # type: ignore[assignment]
+    data: AccountsList = cached
     if conn is None:
         return data
     extra = [Account.from_api(raw) for raw in store.imported_accounts(conn)]
@@ -108,11 +108,11 @@ async def load_accounts(
 async def load_connections(client: PowensClient, *, ttl: float = 120) -> list[Connection]:
     cached = _get("connections", ttl)
     if cached is not None:
-        return cached  # type: ignore[return-value]
+        return cached
     async with _lock("connections"):
         cached = _get("connections", ttl)
         if cached is not None:
-            return cached  # type: ignore[return-value]
+            return cached
         data = await client.list_connections(expand="connector,accounts")
         _set("connections", data)
         return data
@@ -126,11 +126,11 @@ async def load_investments(client: PowensClient, *, ttl: float = 300) -> list[In
     """
     cached = _get("investments", ttl)
     if cached is not None:
-        return cached  # type: ignore[return-value]
+        return cached
     async with _lock("investments"):
         cached = _get("investments", ttl)
         if cached is not None:
-            return cached  # type: ignore[return-value]
+            return cached
         try:
             data = await client.list_investments()
         except PowensAPIError:
@@ -146,7 +146,7 @@ async def _load_history(
 
     Fetches only when the cache is cold or covers a narrower window than asked for.
     """
-    cached: tuple[int, list[Transaction]] | None = _get(_TXN_KEY, ttl)  # type: ignore[assignment]
+    cached: tuple[int, list[Transaction]] | None = _get(_TXN_KEY, ttl)
     if cached is not None and cached[0] >= months:
         return cached
 
@@ -287,7 +287,7 @@ async def load_internal_ids(
     key = _INTERNAL_KEY + ("+imports" if conn is not None else "")
     cached = _get(key, ttl)
     if cached is not None:
-        return cached  # type: ignore[return-value]
+        return cached
     extra = _imported(conn, None, all_txns)
     ids = internal_transfer_ids([*all_txns, *extra] if extra else all_txns)
     _set(key, ids)

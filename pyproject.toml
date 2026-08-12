@@ -29,7 +29,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio>=0.24", "respx>=0.21", "ruff>=0.6", "mypy>=1.11"]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5",
+    "respx>=0.21",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "time-machine>=2.14",  # horloge figée : les fixtures ne dépendent plus du jour de la CI
+]
 app = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
@@ -54,12 +62,37 @@ testpaths = ["tests"]
 # so the root must be importable however pytest is invoked — `pytest` alone does
 # not add the cwd to sys.path, only `python -m pytest` does.
 pythonpath = ["."]
+# Un marqueur mal orthographié doit échouer, pas être ignoré en silence.
+addopts = "--strict-markers"
+filterwarnings = [
+    "error",
+    # Starlette annonce le passage à httpx2 — hors de notre contrôle.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+    # pytest-asyncio déprécie sa fixture de politique d'event loop interne.
+    "ignore:.*event_loop_policy.*:DeprecationWarning",
+]
 
 [tool.mypy]
 python_version = "3.11"
 strict = true
-# The published library is type-gated; the local app is not (yet).
-files = ["src/pypowens"]
+# The published library is fully strict; the app is checked too, but with the
+# annotation-coverage flags relaxed (see override below) — real type errors in
+# function bodies are caught without demanding annotations everywhere yet.
+files = ["src/pypowens", "app"]
+
+[[tool.mypy.overrides]]
+module = "app.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+disallow_untyped_decorators = false
+disallow_any_generics = false
+warn_return_any = false
+no_implicit_reexport = false
+
+[[tool.mypy.overrides]]
+module = "yfinance"
+ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 100

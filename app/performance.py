@@ -20,6 +20,7 @@ réseau ni SQLite, ce qui le rend testable sans l'un ni l'autre.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -182,7 +183,7 @@ def classify(txn: TxnLike, *, overrides: dict[int, str] | None = None) -> str:
 
 
 def qualify_flows(
-    txns: list[TxnLike],
+    txns: Sequence[TxnLike],
     *,
     account_id: int,
     overrides: dict[int, str] | None = None,

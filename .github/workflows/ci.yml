@@ -27,14 +27,18 @@ jobs:
 
       # setup-uv already provisions a venv and exports VIRTUAL_ENV; installing
       # --system would target the runner's apt-managed Python and fail.
-      - name: Install project
-        run: uv pip install -e ".[app,dev]"
+      # --locked : la CI installe EXACTEMENT uv.lock — une release transitive de
+      # httpx/fastapi ne peut plus casser une PR sans commit.
+      - name: Install project (locked)
+        run: uv sync --locked --extra app --extra dev
 
       - name: Lint
         run: uv run ruff check .
 
-      - name: Types (library only — the app is not type-gated yet)
-        run: uv run mypy src/pypowens
+      - name: Types (library strict + app)
+        run: uv run mypy src/pypowens app
 
-      - name: Tests
-        run: uv run pytest -q
+      # Le seuil empêche la couverture de dériver en silence : les 5 modules à
+      # zéro test de l'audit du 12/08 passaient une CI verte.
+      - name: Tests (with coverage floor)
+        run: uv run pytest -q --cov=app --cov=src/pypowens --cov-fail-under=84

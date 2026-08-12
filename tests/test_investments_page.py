@@ -66,7 +66,9 @@ def test_nav_exposes_the_page(client):
 
 @pytest.fixture
 def conn(tmp_path):
-    return store.connect(tmp_path / "store.db")
+    connection = store.connect(tmp_path / "store.db")
+    yield connection
+    connection.close()
 
 
 async def test_collect_archives_snapshots_and_unit_values(fake_client, conn, monkeypatch):

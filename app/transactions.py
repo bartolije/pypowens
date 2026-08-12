@@ -117,4 +117,7 @@ async def set_category(
         store.clear_override(conn, label)
     else:
         store.set_override(conn, label, category)
-    return RedirectResponse(back or "/", status_code=303)
+    # Une valeur de formulaire ne choisit jamais un domaine : seuls les chemins
+    # internes sont suivis ("//" est une URL schéma-relative vers un autre hôte).
+    target = back if back.startswith("/") and not back.startswith("//") else "/"
+    return RedirectResponse(target, status_code=303)

@@ -19,6 +19,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
@@ -552,20 +553,17 @@ async def recurring_page(
     grouped: dict[str, list[RecurringItem]] = defaultdict(list)
     for it in items:
         grouped[it.category].append(it)
-    groups = sorted(
-        (
-            {
-                "name": name,
-                "items": sorted(rows, key=lambda i: (i.stale, -float(i.monthly_equiv))),
-                "monthly": sum((i.monthly_equiv for i in rows if not i.stale), Decimal("0")),
-                "count": sum(1 for i in rows if not i.stale),
-                "stale_count": sum(1 for i in rows if i.stale),
-            }
-            for name, rows in grouped.items()
-        ),
-        key=lambda g: g["monthly"],
-        reverse=True,
-    )
+    groups: list[dict[str, Any]] = [
+        {
+            "name": name,
+            "items": sorted(rows, key=lambda i: (i.stale, -float(i.monthly_equiv))),
+            "monthly": sum((i.monthly_equiv for i in rows if not i.stale), Decimal("0")),
+            "count": sum(1 for i in rows if not i.stale),
+            "stale_count": sum(1 for i in rows if i.stale),
+        }
+        for name, rows in grouped.items()
+    ]
+    groups.sort(key=lambda g: g["monthly"], reverse=True)
     for group in groups:
         group["annual"] = group["monthly"] * 12
         group["pct"] = float(group["monthly"] / total_monthly * 100) if total_monthly else 0.0

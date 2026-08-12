@@ -7,6 +7,7 @@ import sqlite3
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
@@ -119,7 +120,7 @@ async def account_detail(
     )
 
     # Investments for this account.
-    invest_rows = []
+    invest_rows: list[dict[str, Any]] = []
     invest_total_valuation = Decimal(0)
     invest_total_diff = Decimal(0)
     invest_total_cost = Decimal(0)
@@ -188,7 +189,7 @@ async def account_detail(
     max_balance = Decimal(0)
     if tab == "analyse" and history:
         balances = [bal for _, bal in history]
-        avg_balance = sum(balances) / len(balances)
+        avg_balance = sum(balances, Decimal(0)) / len(balances)
         min_balance = min(balances)
         max_balance = max(balances)
 

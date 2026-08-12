@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
+from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Protocol
@@ -291,7 +292,7 @@ _INTERNAL_WORDING = re.compile(
 )
 
 
-def internal_transfer_ids(transactions: list[Txn], *, day_tolerance: int = 3) -> set[int]:
+def internal_transfer_ids(transactions: Sequence[Txn], *, day_tolerance: int = 3) -> set[int]:
     """Identify transfers moving money between the user's own accounts.
 
     Two signals:
@@ -307,7 +308,7 @@ def internal_transfer_ids(transactions: list[Txn], *, day_tolerance: int = 3) ->
     # Wording heuristic.
     for t in transfers:
         text = t.simplified_wording or t.wording or ""
-        if _INTERNAL_WORDING.search(text):
+        if t.id is not None and _INTERNAL_WORDING.search(text):
             ids.add(t.id)
 
     # Mirror detection.
@@ -320,7 +321,7 @@ def internal_transfer_ids(transactions: list[Txn], *, day_tolerance: int = 3) ->
         used: set[int] = set()
         for d in debits:
             for c in credits:
-                if c.id in used or d.id == c.id:
+                if d.id is None or c.id is None or c.id in used or d.id == c.id:
                     continue
                 if d.id_account != c.id_account and abs((d.date - c.date).days) <= day_tolerance:
                     ids.add(d.id)

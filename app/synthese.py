@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from decimal import Decimal
+from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
@@ -51,7 +52,7 @@ async def synthese(
         subtotals[fam] += acc.balance or Decimal(0)
 
     total_assets = sum((v for v in subtotals.values() if v > 0), Decimal(0))
-    assets = [
+    assets: list[dict[str, Any]] = [
         {"name": name, "subtotal": subtotals[name]}
         for name in FAMILY_ORDER
         if subtotals[name] > 0

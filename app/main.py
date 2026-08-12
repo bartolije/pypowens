@@ -4,13 +4,16 @@ Webview connect flow."""
 from __future__ import annotations
 
 import logging
+import os
 import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from pypowens import PowensAPIError, PowensAuthError, PowensClient, PowensRateLimitError
 
@@ -64,6 +67,41 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Powens Finance", lifespan=lifespan)
+
+# Hôtes loopback seulement ("testserver" est le TestClient). Un domaine hostile
+# résolvant vers 127.0.0.1 (DNS rebinding) devenait same-origin et pouvait LIRE
+# soldes et transactions — l'app n'ayant aucune authentification. Derrière un
+# proxy authentifiant (APP_ALLOW_REMOTE=1), le Host est celui du proxy : à lui
+# de filtrer.
+_LOCAL_HOSTS = ["127.0.0.1", "localhost", "::1", "testserver"]
+if not (os.environ.get("APP_ALLOW_REMOTE") or "").strip():
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=_LOCAL_HOSTS)
+
+
+@app.middleware("http")
+async def _reject_cross_site_posts(request: Request, call_next):
+    """Refuse les POST issus d'une autre origine (CSRF sans cookie ni token).
+
+    Les 5 POST de l'app (catégorie, import, suppression, rattachement, synchro)
+    n'ont aucune protection propre et l'app aucune authentification : n'importe
+    quelle page web ouverte dans le navigateur pouvait soumettre un formulaire
+    vers http://127.0.0.1:8000/… Les navigateurs modernes joignent toujours
+    ``Origin`` aux POST cross-site ; une requête sans Origin (curl, tests) est
+    locale par construction.
+    """
+    if request.method == "POST" and not (os.environ.get("APP_ALLOW_REMOTE") or "").strip():
+        origin = request.headers.get("origin") or request.headers.get("referer")
+        if origin:
+            host = urlsplit(origin).hostname
+            if host not in ("127.0.0.1", "localhost", "::1", "testserver"):
+                return PlainTextResponse(
+                    "Requête cross-site refusée : cette application n'accepte que "
+                    "les formulaires émis par ses propres pages.",
+                    status_code=403,
+                )
+    return await call_next(request)
+
+
 app.mount(
     "/static",
     StaticFiles(directory=str(Path(__file__).resolve().parent / "static")),
@@ -111,7 +149,7 @@ def _error_page(
 
 
 @app.exception_handler(PowensAuthError)
-async def powens_auth_error(request: Request, exc: PowensAuthError) -> HTMLResponse:
+async def powens_auth_error(request: Request, exc: PowensAuthError) -> Response:
     """A 401/403 means the token died. Try to renew it once, then replay the page."""
     already_retried = request.query_params.get(_RETRY_FLAG) == "1"
     renewed = not already_retried and await try_renew(

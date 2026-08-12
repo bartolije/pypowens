@@ -394,7 +394,7 @@ def treemap(
     # Sort descending for a visually balanced layout.
     items.sort(key=lambda x: x[1], reverse=True)
 
-    rects: list[tuple[str, float, float, float, float, float, str]] = []
+    rects: list[tuple[str, float, float, float, float, float]] = []
     _squarify(items, total, 0.0, 0.0, float(width), float(height), rects)
 
     segments: list[str] = []
@@ -445,7 +445,7 @@ def _squarify(
     y: float,
     w: float,
     h: float,
-    out: list[tuple[str, float, float, float, float, float, str]],
+    out: list[tuple[str, float, float, float, float, float]],
 ) -> None:
     """Recursive slice-and-dice: alternate horizontal/vertical splits."""
     if not items:
@@ -505,7 +505,7 @@ def _layout_strip(
     h: float,
     *,
     vertical: bool,
-    out: list[tuple[str, float, float, float, float, float, str]],
+    out: list[tuple[str, float, float, float, float, float]],
 ) -> None:
     """Lay items out in a strip, stacking along the shorter dimension."""
     offset = 0.0

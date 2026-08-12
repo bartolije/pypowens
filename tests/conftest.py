@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 from datetime import date, timedelta
 
 import pytest
+import time_machine
 
 from pypowens import (
     AccountsList,
@@ -17,6 +18,44 @@ from pypowens import (
     Investment,
     Transaction,
 )
+
+# Un 15 du mois : les pas de 30 jours de build_dataset dérivent d'environ un jour
+# par mois, et un ancrage en début/fin de mois faisait retomber deux échéances
+# dans le même mois calendaire ~25 % des jours de l'année — la fixture ne
+# produisait alors que 13 mois distincts au lieu des 14 annoncés.
+FROZEN_TODAY = date(2026, 6, 15)
+
+
+@pytest.fixture(autouse=True)
+def _frozen_clock():
+    """Horloge figée : le jeu de test ne dépend plus du jour d'exécution de la CI."""
+    with time_machine.travel(FROZEN_TODAY, tick=False):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _isolated_env(monkeypatch, tmp_path):
+    """Neutralise le .env réel du poste, chargé à l'import de app.config.
+
+    Sans cela, les tests qui appellent ``get_settings()`` directement héritaient
+    des vrais identifiants (POWENS_*, OPENFIGI_API_KEY) — risque de faux vert et
+    d'appel réseau accidentel avec de vraies credentials.
+    """
+    for var in (
+        "POWENS_CLIENT_ID",
+        "POWENS_CLIENT_SECRET",
+        "POWENS_ACCESS_TOKEN",
+        "OPENFIGI_API_KEY",
+        "APP_HOST",
+        "APP_PORT",
+        "APP_ALLOW_REMOTE",
+        "APP_HISTORY_MONTHS",
+        "APP_BASE_CURRENCY",
+    ):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("POWENS_DOMAIN", "test-sandbox")
+    monkeypatch.setenv("APP_DB_PATH", str(tmp_path / "isolated.db"))
+    monkeypatch.setenv("APP_STATE_PATH", str(tmp_path / "isolated-state.json"))
 
 
 def _account(
