@@ -162,6 +162,19 @@ async def recap(
     table_total = -total_debt if view == "passifs" else total_assets
     pct_base = abs(table_total) or Decimal(1)
 
+    # Vue non groupée : une seule liste triée par valeur décroissante (en valeur
+    # absolue, pour que les passifs classent le plus gros crédit en premier).
+    # L'ancien ordre — famille par famille — éparpillait les gros comptes.
+    flat_accounts = sorted(
+        (
+            {"account": acc, "family": fam["name"]}
+            for fam in display_families
+            for acc in fam["accounts"]
+        ),
+        key=lambda row: abs(row["account"].balance or Decimal(0)),
+        reverse=True,
+    )
+
     # Per-account donut for the right panel (Finary shows accounts, not families).
     account_items = sorted(
         ((a.name or "—", float(a.balance or 0)) for a in accounts if (a.balance or 0) > 0),
@@ -303,6 +316,7 @@ async def recap(
             "net_chart": net_chart,
             "n_accounts": len(accounts),
             "families": display_families,
+            "flat_accounts": flat_accounts,
             "view": view,
             "table_total": table_total,
             "pct_base": pct_base,

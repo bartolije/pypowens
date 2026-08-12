@@ -92,3 +92,26 @@ async def test_openfigi_shorter_response_does_not_crash(conn):
     # Dégradé mais jamais cassé : fallback pays par préfixe ISIN.
     assert result["FR0000120073"]["country"] == "France"
     assert result["US0378331005"]["country"] == "États-Unis"
+
+
+# ------------------------------------------------------------- traduction FR
+
+def test_sectors_and_countries_come_out_in_french(conn):
+    from app.classify import translate_classification
+
+    entry = {"sector": "Technology", "country": "United States", "name": "X"}
+    translated = translate_classification(entry)
+    assert translated["sector"] == "Technologie"
+    assert translated["country"] == "États-Unis"
+    # Inconnu ou déjà traduit : identité, jamais d'erreur.
+    already_fr = translate_classification({"sector": "Technologie", "country": None})
+    assert already_fr["sector"] == "Technologie"
+
+
+async def test_cached_english_entries_are_translated_on_read(conn):
+    """Le cache 30 jours contient de l'anglais (entrées d'avant la traduction) :
+    la traduction s'applique à la lecture, sans migration."""
+    _save_cache(conn, "US0378331005", {"sector": "Technology", "country": "United States"})
+    result = await classify_investments(["US0378331005"], conn, None)
+    assert result["US0378331005"]["sector"] == "Technologie"
+    assert result["US0378331005"]["country"] == "États-Unis"

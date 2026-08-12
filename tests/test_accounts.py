@@ -321,3 +321,13 @@ def test_unknown_state_still_says_something(client, fake_client):
     app.data.clear_cache()
     body = _text(client.get("/patrimoine").text)
     assert "etatInedit" in body
+
+
+def test_patrimoine_default_order_is_value_descending(client):
+    """Vue non groupée : les comptes sont triés par valeur décroissante, toutes
+    familles confondues — plus éparpillés famille par famille."""
+    body = client.get("/patrimoine").text
+    pea = body.index("PEA")
+    livret = body.index("Livret")
+    courant = body.index("M BARTOLI") if "M BARTOLI" in body else body.index("Compte courant")
+    assert pea < livret < courant  # 42 000 > 15 000 > 2 500

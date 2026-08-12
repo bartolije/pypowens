@@ -49,6 +49,86 @@ ISIN_COUNTRY: dict[str, str] = {
     "XX": "Inconnu",
 }
 
+# Les secteurs arrivent en anglais : les 11 secteurs Yahoo Finance, plus les
+# ``marketSector`` d'OpenFIGI (utilisés en repli quand Yahoo ne répond pas).
+# Les treemaps « Par secteur / Par zone » sont en français partout ailleurs.
+SECTOR_FR: dict[str, str] = {
+    # Yahoo Finance
+    "Technology": "Technologie",
+    "Financial Services": "Services financiers",
+    "Financial": "Services financiers",
+    "Healthcare": "Santé",
+    "Consumer Cyclical": "Consommation discrétionnaire",
+    "Consumer Defensive": "Consommation de base",
+    "Industrials": "Industrie",
+    "Energy": "Énergie",
+    "Utilities": "Services collectifs",
+    "Real Estate": "Immobilier",
+    "Basic Materials": "Matériaux",
+    "Communication Services": "Communication",
+    # OpenFIGI marketSector (repli)
+    "Equity": "Actions",
+    "Govt": "Obligations d'État",
+    "Corp": "Obligations d'entreprise",
+    "Curncy": "Devises",
+    "Comdty": "Matières premières",
+    "Index": "Indices",
+    "Mtge": "Créances hypothécaires",
+    "Muni": "Obligations municipales",
+    "Pfd": "Actions de préférence",
+    "M-Mkt": "Monétaire",
+}
+
+# Yahoo renvoie le pays du siège en anglais ; le repli par préfixe ISIN
+# (ISIN_COUNTRY ci-dessus) est déjà en français.
+COUNTRY_FR: dict[str, str] = {
+    "United States": "États-Unis",
+    "United Kingdom": "Royaume-Uni",
+    "Netherlands": "Pays-Bas",
+    "Germany": "Allemagne",
+    "Ireland": "Irlande",
+    "Switzerland": "Suisse",
+    "Belgium": "Belgique",
+    "Spain": "Espagne",
+    "Italy": "Italie",
+    "Sweden": "Suède",
+    "Denmark": "Danemark",
+    "Norway": "Norvège",
+    "Finland": "Finlande",
+    "Austria": "Autriche",
+    "Portugal": "Portugal",
+    "Luxembourg": "Luxembourg",
+    "Canada": "Canada",
+    "Japan": "Japon",
+    "China": "Chine",
+    "Hong Kong": "Hong Kong",
+    "Taiwan": "Taïwan",
+    "South Korea": "Corée du Sud",
+    "Singapore": "Singapour",
+    "Australia": "Australie",
+    "Brazil": "Brésil",
+    "India": "Inde",
+    "Mexico": "Mexique",
+    "Israel": "Israël",
+    "South Africa": "Afrique du Sud",
+}
+
+
+def translate_classification(entry: dict[str, Any]) -> dict[str, Any]:
+    """Traduit secteur et pays en français (identité si déjà traduit ou inconnu).
+
+    Appliquée à la LECTURE, jamais à l'écriture du cache : les entrées déjà en
+    cache (anglaises ou françaises) ressortent traduites sans migration.
+    """
+    sector = entry.get("sector")
+    country = entry.get("country")
+    return {
+        **entry,
+        "sector": SECTOR_FR.get(sector, sector) if sector else sector,
+        "country": COUNTRY_FR.get(country, country) if country else country,
+    }
+
+
 # Yahoo exchange suffixes keyed by OpenFIGI ``exchCode``.
 _EXCHANGE_SUFFIX: dict[str, str] = {
     "PA": ".PA",
@@ -215,7 +295,7 @@ async def classify_investments(
     missing = [isin for isin in isins if isin not in cached]
 
     if not missing or not api_key:
-        return cached
+        return {isin: translate_classification(e) for isin, e in cached.items()}
 
     # 1. OpenFIGI for instrument metadata.
     figi_data = await _fetch_openfigi(missing, api_key)
@@ -272,4 +352,4 @@ async def classify_investments(
         results[isin] = entry
         _save_cache(conn, isin, entry)
 
-    return results
+    return {isin: translate_classification(e) for isin, e in results.items()}

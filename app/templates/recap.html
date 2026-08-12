@@ -194,16 +194,17 @@
             {% endfor %}
             {% endfor %}
           {% else %}
-            {% for fam in families %}
-            {% for acc in fam.accounts %}
+            {# Tri par valeur décroissante, toutes familles confondues #}
+            {% for row in flat_accounts %}
+            {% set acc = row.account %}
             <tr class="clickable" onclick="location.href='/patrimoine/{{ acc.id }}'">
               <td>
                 <a href="/patrimoine/{{ acc.id }}" style="color: inherit; text-decoration: none;">
                   <div class="fw-bold">{{ acc.name or "—" }}</div>
-                  <div class="text-muted small">{{ fam.name }}</div>
+                  <div class="text-muted small">{{ row.family }}</div>
                 </a>
               </td>
-              <td class="text-secondary" style="white-space: nowrap;">{{ fam.name }}</td>
+              <td class="text-secondary" style="white-space: nowrap;">{{ row.family }}</td>
               <td>
                 {% set pct = ((acc.balance or 0) | abs) / pct_base * 100 %}
                 <div class="repartition">
@@ -215,7 +216,6 @@
               <td class="num"></td>
               <td class="num"></td>
             </tr>
-            {% endfor %}
             {% endfor %}
           {% endif %}
         </tbody>
