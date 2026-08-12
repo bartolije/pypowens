@@ -30,6 +30,11 @@ from .enrich import internal_transfer_ids
 # spending analysis so that securities purchases and savings moves don't inflate it.
 SPENDING_ACCOUNT_TYPES = frozenset({"checking", "card"})
 
+# Plafond des fenêtres dérivées d'un paramètre d'URL : un ?date_from=1900-01-01
+# demandait ~1500 mois, soit le téléchargement de TOUT l'historique Powens, mis
+# en cache définitivement. 10 ans couvrent tout usage réel.
+MAX_WINDOW_MONTHS = 120
+
 _TXN_KEY = "transactions"
 _INTERNAL_KEY = "internal"
 

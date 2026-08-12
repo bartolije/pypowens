@@ -105,6 +105,25 @@ async def bootstrap_client(settings: Settings) -> PowensClient:
     return client
 
 
+def persist_token(settings: Settings, *, access_token: str, id_user: int | None) -> None:
+    """Écrit le token courant dans l'état local (échange de code, renouvellement).
+
+    Sans cette écriture, un token obtenu via ``exchange_code`` ne survivait pas au
+    redémarrage. L'``id_user`` connu est conservé si le nouveau n'est pas fourni.
+    """
+    try:
+        current = _load_state(settings.state_path)
+    except StateFileError:
+        current = {}
+    _save_state(
+        settings.state_path,
+        {
+            "id_user": id_user if id_user is not None else current.get("id_user"),
+            "access_token": access_token,
+        },
+    )
+
+
 async def try_renew(client: PowensClient, settings: Settings) -> bool:
     """Attempt to mint a fresh token for the known user after a 401/403.
 

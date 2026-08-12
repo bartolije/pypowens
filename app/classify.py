@@ -6,6 +6,7 @@ even when both APIs are down. Results are cached in SQLite for 30 days.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sqlite3
 from datetime import date, timedelta
@@ -18,6 +19,9 @@ log = logging.getLogger(__name__)
 # ------------------------------------------------------------------ constants
 
 _CACHE_DAYS = 30
+# Budget global pour l'enrichissement Yahoo (il tourne dans un thread, mais une
+# page ne doit pas attendre son résultat plusieurs minutes pour autant).
+_YAHOO_TIMEOUT = 30.0
 
 ISIN_COUNTRY: dict[str, str] = {
     "FR": "France",
@@ -226,7 +230,21 @@ async def classify_investments(
 
     yahoo_data: dict[str, dict[str, Any]] = {}
     if tickers_map:
-        yahoo_data = _fetch_yahoo_sync(list(tickers_map.keys()))
+        # yfinance est synchrone et sans timeout maîtrisé : appelé en direct dans
+        # une route async, il gelait TOUT l'event loop (pages, statiques compris)
+        # pendant un cache miss lent. Un thread + un plafond global le contiennent.
+        try:
+            yahoo_data = await asyncio.wait_for(
+                asyncio.to_thread(_fetch_yahoo_sync, list(tickers_map.keys())),
+                timeout=_YAHOO_TIMEOUT,
+            )
+        except TimeoutError:
+            log.warning(
+                "Yahoo Finance trop lent (> %.0fs) pour %d tickers — enrichissement "
+                "partiel, retenté au prochain cache miss",
+                _YAHOO_TIMEOUT,
+                len(tickers_map),
+            )
 
     # 3. Merge results.
     results = dict(cached)

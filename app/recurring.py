@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 
 from . import store
-from .data import load_internal_ids, load_spending_transactions
+from .data import MAX_WINDOW_MONTHS, load_internal_ids, load_spending_transactions
 from .deps import get_client, get_settings, get_store
 from .enrich import (
     EVERYDAY_CATEGORIES,
@@ -483,7 +483,7 @@ async def recurring_page(
     d_to = _parse_date(date_to)
     # Window covering the requested range (default: configured history).
     if d_from:
-        months = max(1, math.ceil((date.today() - d_from).days / 30) + 1)
+        months = min(MAX_WINDOW_MONTHS, max(1, math.ceil((date.today() - d_from).days / 30) + 1))
     else:
         months = settings.history_months
 

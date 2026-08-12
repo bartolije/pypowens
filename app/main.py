@@ -4,6 +4,7 @@ Webview connect flow."""
 from __future__ import annotations
 
 import logging
+import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -30,7 +31,7 @@ from .config import Settings, get_settings
 from .data import clear_cache
 from .deps import get_client
 from .deps import get_settings as settings_dep
-from .state import bootstrap_client, try_renew
+from .state import bootstrap_client, persist_token, try_renew
 from .web import templates
 
 # Query flag marking a request already replayed after a token renewal, so a
@@ -196,8 +197,22 @@ async def connect(
         code["code"],
         connector_ids=[connector_id] if connector_id else None,
         lang="fr",
+        extra={"state": _issue_webview_state(request)},
     )
     return RedirectResponse(url)
+
+
+def _issue_webview_state(request: Request) -> str:
+    """Jeton anti-CSRF du parcours Webview, à usage unique.
+
+    Sans lui, ``/callback?code=…`` acceptait n'importe quel code de n'importe
+    quelle origine : un lien piégé suffisait à échanger le code d'un attaquant et
+    à faire basculer l'app entière sur SON utilisateur Powens — la prochaine
+    banque connectée aurait atterri chez lui.
+    """
+    token = secrets.token_urlsafe(16)
+    request.app.state.webview_state = token
+    return token
 
 
 async def _redirect_uri_check(
@@ -253,6 +268,7 @@ async def reconnect(
         connection_id=connection_id,
         flow="reconnect",
         lang="fr",
+        extra={"state": _issue_webview_state(request)},
     )
     return RedirectResponse(url)
 
@@ -295,8 +311,34 @@ async def callback(
         )
 
     if code:
-        # Some setups hand back an authorization code to swap for a permanent token.
-        await client.exchange_code(code)
+        # Un code ne s'échange que si le retour porte le jeton ``state`` émis par
+        # NOTRE départ vers le Webview — voir :func:`_issue_webview_state`.
+        expected = getattr(request.app.state, "webview_state", None)
+        if not expected or not secrets.compare_digest(params.get("state", ""), expected):
+            return _error_page(
+                request,
+                status_code=400,
+                title="Retour du Webview non reconnu",
+                detail=(
+                    "Ce retour porte un code d'autorisation mais pas le jeton de "
+                    "sécurité émis au départ du parcours : il n'est pas échangé."
+                ),
+                hints=[
+                    "Reprendre le parcours depuis « + Banque » (le jeton est à usage unique).",
+                    "Ce blocage est attendu si l'URL de callback a été ouverte "
+                    "depuis un lien externe.",
+                ],
+                technical=f"paramètres reçus : {reported}",
+            )
+        request.app.state.webview_state = None  # usage unique
+        token = await client.exchange_code(code)
+        # Persister : sinon ce token ne survit pas au redémarrage de l'app.
+        if token.access_token:
+            persist_token(
+                request.app.state.settings,
+                access_token=token.access_token,
+                id_user=token.id_user,
+            )
     elif connection_id is None:
         # Neither a code, nor an id, nor an error: the Webview came back with nothing
         # usable. Say so, with what it did send, rather than claiming success.

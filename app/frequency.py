@@ -19,7 +19,7 @@ from pypowens import PowensClient
 
 from . import store
 from .config import Settings
-from .data import load_internal_ids, load_spending_transactions
+from .data import MAX_WINDOW_MONTHS, load_internal_ids, load_spending_transactions
 from .deps import get_client, get_settings, get_store
 from .enrich import merchant_key, resolve_category
 from .helpers import bar_chart
@@ -150,7 +150,7 @@ async def recurrences(
 
     # Load a window that covers the requested range (default: configured history).
     if d_from:
-        months = max(1, math.ceil((date.today() - d_from).days / 30) + 1)
+        months = min(MAX_WINDOW_MONTHS, max(1, math.ceil((date.today() - d_from).days / 30) + 1))
     else:
         months = settings.history_months
     txns = await load_spending_transactions(

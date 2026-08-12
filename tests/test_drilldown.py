@@ -114,8 +114,44 @@ def test_callback_without_usable_parameters_is_reported(client):
 
 
 def test_callback_tolerates_an_empty_connection_id(client):
+    client.app.state.webview_state = "expected-state"
     response = client.get(
-        "/callback", params={"connection_id": "", "code": "abc"}, follow_redirects=False
+        "/callback",
+        params={"connection_id": "", "code": "abc", "state": "expected-state"},
+        follow_redirects=False,
     )
     assert response.status_code == 307
     assert response.headers["location"] == "/patrimoine?connected=1"
+
+
+def test_callback_refuses_a_code_without_the_issued_state(client):
+    """Un lien piégé /callback?code=… ne doit JAMAIS échanger le code.
+
+    Sans jeton ``state``, n'importe quelle page pouvait faire basculer l'app sur
+    l'utilisateur Powens d'un attaquant (fixation de session).
+    """
+    client.app.state.webview_state = "expected-state"
+    response = client.get(
+        "/callback", params={"code": "attacker-code"}, follow_redirects=False
+    )
+    assert response.status_code == 400
+    assert "non reconnu" in response.text
+
+    # État déjà consommé ou jamais émis : même refus.
+    client.app.state.webview_state = None
+    response = client.get(
+        "/callback", params={"code": "abc", "state": "stale"}, follow_redirects=False
+    )
+    assert response.status_code == 400
+
+
+def test_callback_state_is_single_use(client):
+    client.app.state.webview_state = "one-shot"
+    first = client.get(
+        "/callback", params={"code": "abc", "state": "one-shot"}, follow_redirects=False
+    )
+    assert first.status_code == 307
+    replay = client.get(
+        "/callback", params={"code": "abc", "state": "one-shot"}, follow_redirects=False
+    )
+    assert replay.status_code == 400

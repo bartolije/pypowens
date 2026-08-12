@@ -8,10 +8,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import random
 from collections.abc import AsyncIterator
 from types import TracebackType
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 
@@ -19,6 +20,7 @@ from .exceptions import (
     PowensAPIError,
     PowensAuthError,
     PowensConfigError,
+    PowensError,
     PowensRateLimitError,
 )
 from .models import (
@@ -45,6 +47,14 @@ API_PATH = "/2.0"
 RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_BACKOFF = 1.0
+# A 5xx or a network error leaves a doubt: the server may have processed the
+# request before failing. Replaying is only safe when a second execution is
+# harmless — a replayed POST /auth/init creates duplicate (billable) users, and
+# a replayed /auth/token/access burns a single-use code.
+IDEMPOTENT_METHODS = frozenset({"GET", "HEAD", "PUT", "DELETE"})
+# Ceiling for server-provided Retry-After: an intermediary answering 3600 would
+# otherwise freeze the calling coroutine for an hour, silently.
+MAX_RETRY_AFTER = 60.0
 # Hard stop for pagination: a misbehaving API repeating the same ``next`` href
 # would otherwise loop forever. 1000 pages x 1000 items covers any real history.
 MAX_PAGES = 1000
@@ -160,6 +170,14 @@ class PowensClient:
 
     def _url(self, endpoint_or_href: str) -> str:
         if endpoint_or_href.startswith(("http://", "https://")):
+            # An absolute href may only point inside this API: the bearer token is
+            # attached to every request, so following a ``_links.next`` towards any
+            # other host would exfiltrate the permanent token.
+            if urlsplit(endpoint_or_href).netloc != urlsplit(self._host).netloc:
+                raise PowensError(
+                    f"Refusing to follow a link outside the API host: {endpoint_or_href!r}"
+                    f" (expected host {self._host!r})."
+                )
             return endpoint_or_href
         if endpoint_or_href.startswith("/"):
             # A pagination href already carries the /2.0 prefix.
@@ -198,7 +216,7 @@ class PowensClient:
                 )
                 return self._handle(response)
             except (PowensAPIError, httpx.TransportError) as exc:
-                delay = self._retry_delay(exc, attempt)
+                delay = self._retry_delay(exc, attempt, method=method)
                 if delay is None:
                     raise
                 attempt += 1
@@ -213,20 +231,34 @@ class PowensClient:
                 )
                 await asyncio.sleep(delay)
 
-    def _retry_delay(self, exc: Exception, attempt: int) -> float | None:
+    def _retry_delay(self, exc: Exception, attempt: int, *, method: str) -> float | None:
         """Seconds to wait before retrying ``exc``, or ``None`` to give up.
 
         Retries 429/5xx and network errors with exponential backoff, honouring
-        ``Retry-After`` when the server provides it.
+        ``Retry-After`` (capped at :data:`MAX_RETRY_AFTER`) when the server
+        provides it. A 429 means "rejected before processing" and is safe to
+        replay on any method; 5xx and transport errors are only replayed on
+        idempotent methods (see :data:`IDEMPOTENT_METHODS`).
         """
         if attempt >= self.max_retries:
             return None
+        idempotent = method.upper() in IDEMPOTENT_METHODS
+        delay: float | None = None
         if isinstance(exc, PowensAPIError):
             if exc.status_code not in RETRY_STATUSES:
                 return None
+            if exc.status_code != 429 and not idempotent:
+                return None
             if exc.retry_after is not None:
-                return exc.retry_after
-        return self.backoff * (2.0**attempt)
+                delay = min(exc.retry_after, MAX_RETRY_AFTER)
+        elif not idempotent:
+            return None
+        if delay is None:
+            delay = self.backoff * (2.0**attempt)
+        # ±20 % of jitter: without it, every process hitting the same 429 (the
+        # app and the collector, say) retries at the same instant and collides
+        # again.
+        return delay * random.uniform(0.8, 1.2)
 
     @staticmethod
     def _handle(response: httpx.Response) -> Any:
@@ -388,18 +420,22 @@ class PowensClient:
         """
         if not self.client_id:
             raise PowensConfigError("client_id is required to build a Webview URL.")
-        params: dict[str, str] = {
-            "domain": self._host.replace("https://", "").replace("http://", ""),
-            "client_id": self.client_id,
-            "redirect_uri": redirect_uri,
-            "code": temporary_code,
-        }
+        # ``extra`` is applied FIRST so it can never override the reserved
+        # parameters below — an extra dict fed from a query string could
+        # otherwise hijack client_id/redirect_uri/code.
+        params: dict[str, str] = dict(extra) if extra else {}
+        params.update(
+            {
+                "domain": urlsplit(self._host).netloc,
+                "client_id": self.client_id,
+                "redirect_uri": redirect_uri,
+                "code": temporary_code,
+            }
+        )
         if connector_ids:
             params["connector_ids"] = ",".join(str(i) for i in connector_ids)
         if connection_id is not None:
             params["connection_id"] = str(connection_id)
-        if extra:
-            params.update(extra)
         segment = (lang or "en").strip("/ ") or "en"
         screen = (flow or "connect").strip("/ ") or "connect"
         return f"https://webview.powens.com/{segment}/{screen}?{urlencode(params)}"

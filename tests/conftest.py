@@ -277,6 +277,9 @@ def client(monkeypatch, fake_client, tmp_path):
     monkeypatch.setenv("POWENS_CLIENT_SECRET", "secret")
     monkeypatch.setenv("POWENS_ACCESS_TOKEN", "fake-token")
     monkeypatch.setenv("APP_DB_PATH", str(tmp_path / "test.db"))
+    # Sans quoi le callback Webview (persist_token) écrirait un vrai
+    # .powens_state.json à la racine du dépôt pendant les tests.
+    monkeypatch.setenv("APP_STATE_PATH", str(tmp_path / "state.json"))
 
     import app.data
     import app.main

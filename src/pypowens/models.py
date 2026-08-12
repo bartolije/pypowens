@@ -53,7 +53,11 @@ def _parse_date(value: Any) -> date | None:
 class AuthToken:
     """Token returned by ``/auth/init`` or ``/auth/renew``."""
 
-    access_token: str
+    # repr=False: c'est un token PERMANENT — un logging.debug("%r", token), une
+    # traceback avec locals (Sentry, --show-locals) l'écrirait en clair dans les
+    # logs. ``raw`` (qui le contient aussi) est déjà masqué ; ce champ l'était
+    # incohéremment resté visible.
+    access_token: str = field(repr=False)
     token_type: str = "Bearer"
     id_user: int | None = None
     type: str | None = None

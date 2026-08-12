@@ -219,3 +219,96 @@ def test_non_loopback_host_allowed_with_optin(monkeypatch):
     monkeypatch.setenv("APP_HOST", "0.0.0.0")
     monkeypatch.setenv("APP_ALLOW_REMOTE", "1")
     assert get_settings().host == "0.0.0.0"
+
+
+# ------------------------------------------------- retries et méthodes non sûres
+
+@respx.mock
+async def test_post_is_not_retried_on_5xx():
+    """Un 5xx laisse le doute : le serveur a pu traiter la requête avant d'échouer.
+
+    Rejouer POST /auth/init peut créer des utilisateurs Powens en double
+    (facturables) ; rejouer /auth/token/access brûle un code à usage unique.
+    """
+    route = respx.post(f"{BASE}/auth/init").mock(
+        return_value=httpx.Response(503, json={"code": "unavailable"})
+    )
+    async with PowensClient("test-sandbox", client_id="i", client_secret="s") as powens:
+        with pytest.raises(PowensAPIError):
+            await powens.create_user()
+    assert route.call_count == 1  # jamais rejoué
+
+
+@respx.mock
+async def test_post_is_not_retried_on_network_error():
+    route = respx.post(f"{BASE}/auth/init").mock(side_effect=httpx.ReadTimeout("boom"))
+    async with PowensClient("test-sandbox", client_id="i", client_secret="s") as powens:
+        with pytest.raises(httpx.ReadTimeout):
+            await powens.create_user()
+    assert route.call_count == 1
+
+
+@respx.mock
+async def test_post_is_retried_on_429():
+    """Un 429 signifie « rejeté avant traitement » : rejouable, même en POST."""
+    route = respx.post(f"{BASE}/auth/init").mock(
+        side_effect=[
+            httpx.Response(429, json={"code": "rateLimit"}),
+            httpx.Response(200, json={"auth_token": "tok", "id_user": 1}),
+        ]
+    )
+    async with PowensClient(
+        "test-sandbox", client_id="i", client_secret="s", backoff=0
+    ) as powens:
+        token = await powens.create_user()
+    assert token.id_user == 1
+    assert route.call_count == 2
+
+
+async def test_retry_after_is_capped():
+    """Un Retry-After de 3600 s ne doit pas geler une coroutine une heure."""
+    async with _client(max_retries=3) as powens:
+        exc = PowensRateLimitError(429, retry_after=3600.0)
+        delay = powens._retry_delay(exc, 0, method="GET")
+    assert delay is not None
+    assert delay <= 60.0 * 1.2  # plafond + jitter max
+
+
+# ------------------------------------------------------- pagination et sécurité
+
+@respx.mock
+async def test_pagination_refuses_to_leak_the_token_to_another_host():
+    """Un _links.next vers un hôte tiers exfiltrerait le bearer permanent."""
+    from pypowens import PowensError
+
+    page = {
+        "transactions": [{"id": 1, "value": "-1.00", "date": "2026-01-01"}],
+        "_links": {"next": {"href": "https://attacker.example/steal"}},
+    }
+    respx.get(f"{BASE}/users/me/transactions").mock(
+        return_value=httpx.Response(200, json=page)
+    )
+    async with _client() as powens:
+        with pytest.raises(PowensError, match="outside the API host"):
+            await powens.list_transactions()
+
+
+def test_auth_token_repr_hides_the_secret():
+    from pypowens.models import AuthToken
+
+    token = AuthToken.from_api({"auth_token": "SUPERSECRET", "id_user": 7})
+    assert "SUPERSECRET" not in repr(token)
+    assert "SUPERSECRET" not in str(token)
+
+
+def test_webview_extra_cannot_override_reserved_params():
+    client = PowensClient("test-sandbox", client_id="real-cid")
+    url = client.build_webview_url(
+        "http://127.0.0.1:8000/callback",
+        "CODE",
+        extra={"client_id": "HIJACKED", "code": "X", "state": "s1"},
+    )
+    assert "client_id=real-cid" in url
+    assert "HIJACKED" not in url
+    assert "code=CODE" in url
+    assert "state=s1" in url  # les paramètres légitimes passent

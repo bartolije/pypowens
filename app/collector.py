@@ -23,12 +23,12 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from pypowens import PowensAPIError, PowensClient
+from pypowens import PowensAPIError, PowensAuthError, PowensClient
 
 from . import store
 from .config import Settings, get_settings
 from .data import SPENDING_ACCOUNT_TYPES
-from .state import bootstrap_client
+from .state import bootstrap_client, try_renew
 
 _log = logging.getLogger(__name__)
 
@@ -139,7 +139,16 @@ async def main() -> None:
         _log.exception("copie de sûreté impossible — la collecte continue sans")
     client = await bootstrap_client(settings)
     try:
-        report = await collect(client, conn, settings=settings)
+        try:
+            report = await collect(client, conn, settings=settings)
+        except PowensAuthError:
+            # Le token finit toujours par mourir. Sans ce renouvellement, le
+            # collecteur s'arrêtait en silence — et chaque jour non collecté est
+            # un solde perdu pour toujours.
+            if not await try_renew(client, settings):
+                raise
+            _log.info("token renouvelé, reprise de la collecte")
+            report = await collect(client, conn, settings=settings)
     finally:
         await client.aclose()
         conn.close()

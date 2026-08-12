@@ -101,8 +101,11 @@ async for txn in powens.iter_transactions(min_date="2026-01-01", income=True):
 
 ### Error handling and retries
 
-429, 5xx and network errors are retried with exponential backoff (3 attempts by
-default, `Retry-After` honoured). Configure with `PowensClient(..., max_retries=…,
+429, 5xx and network errors are retried with exponential backoff and ±20 % jitter
+(1 initial attempt + 3 retries by default, `Retry-After` honoured and capped at
+60 s). A 429 is replayed on any method; 5xx and network errors are only replayed
+on **idempotent** methods (GET/HEAD/PUT/DELETE) — a replayed `POST /auth/init`
+could create duplicate users. Configure with `PowensClient(..., max_retries=…,
 backoff=…)`; `max_retries=0` disables it. Exceptions are raised once the retries
 are exhausted:
 
