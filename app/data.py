@@ -8,6 +8,7 @@ used to trigger two full downloads and keep both lists alive forever.
 
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 import time
 from datetime import date, timedelta
@@ -39,6 +40,18 @@ _TXN_KEY = "transactions"
 _INTERNAL_KEY = "internal"
 
 _cache: dict[str, tuple[float, object]] = {}
+
+# Un verrou par clé : deux requêtes simultanées en cache froid déclenchaient
+# deux téléchargements complets de l'historique (thundering herd). Le second
+# appelant attend le premier puis lit le cache.
+_locks: dict[str, asyncio.Lock] = {}
+
+
+def _lock(key: str) -> asyncio.Lock:
+    lock = _locks.get(key)
+    if lock is None:
+        lock = _locks[key] = asyncio.Lock()
+    return lock
 
 
 def _get(key: str, ttl: float):
@@ -74,8 +87,11 @@ async def load_accounts(
     """
     cached = _get("accounts", ttl)
     if cached is None:
-        cached = await client.list_accounts(include_disabled=False)
-        _set("accounts", cached)
+        async with _lock("accounts"):
+            cached = _get("accounts", ttl)
+            if cached is None:
+                cached = await client.list_accounts(include_disabled=False)
+                _set("accounts", cached)
     data: AccountsList = cached  # type: ignore[assignment]
     if conn is None:
         return data
@@ -93,9 +109,13 @@ async def load_connections(client: PowensClient, *, ttl: float = 120) -> list[Co
     cached = _get("connections", ttl)
     if cached is not None:
         return cached  # type: ignore[return-value]
-    data = await client.list_connections(expand="connector,accounts")
-    _set("connections", data)
-    return data
+    async with _lock("connections"):
+        cached = _get("connections", ttl)
+        if cached is not None:
+            return cached  # type: ignore[return-value]
+        data = await client.list_connections(expand="connector,accounts")
+        _set("connections", data)
+        return data
 
 
 async def load_investments(client: PowensClient, *, ttl: float = 300) -> list[Investment]:
@@ -107,12 +127,16 @@ async def load_investments(client: PowensClient, *, ttl: float = 300) -> list[In
     cached = _get("investments", ttl)
     if cached is not None:
         return cached  # type: ignore[return-value]
-    try:
-        data = await client.list_investments()
-    except PowensAPIError:
-        data = []
-    _set("investments", data)
-    return data
+    async with _lock("investments"):
+        cached = _get("investments", ttl)
+        if cached is not None:
+            return cached  # type: ignore[return-value]
+        try:
+            data = await client.list_investments()
+        except PowensAPIError:
+            data = []
+        _set("investments", data)
+        return data
 
 
 async def _load_history(
@@ -126,19 +150,34 @@ async def _load_history(
     if cached is not None and cached[0] >= months:
         return cached
 
-    min_date = _min_date(months)
-    # ``coming`` transactions are forecast operations not yet debited: keeping them
-    # would inflate the current month and create phantom recurring occurrences.
-    txns = [
-        t
-        async for t in client.iter_transactions(min_date=min_date.isoformat(), limit=1000)
-        if not t.coming
-    ]
-    entry = (months, txns)
-    _set(_TXN_KEY, entry)
-    # A wider history invalidates the internal-transfer set computed on the old one.
-    _cache.pop(_INTERNAL_KEY, None)
-    return entry
+    async with _lock(_TXN_KEY):
+        # Re-vérifier sous le verrou : une requête concurrente a pu remplir le cache.
+        cached = _get(_TXN_KEY, ttl)
+        if cached is not None and cached[0] >= months:
+            return cached
+        # Ne jamais rétrécir la fenêtre : après expiration du TTL, une demande
+        # étroite (1 mois) écraserait l'entrée large (36 mois) et le prochain
+        # /analyse retéléchargerait tout l'historique.
+        stale = _cache.get(_TXN_KEY)
+        if stale is not None:
+            previous_months = stale[1][0]  # type: ignore[index]
+            months = max(months, previous_months)
+
+        min_date = _min_date(months)
+        # ``coming`` transactions are forecast operations not yet debited: keeping
+        # them would inflate the current month and create phantom recurring
+        # occurrences.
+        txns = [
+            t
+            async for t in client.iter_transactions(min_date=min_date.isoformat(), limit=1000)
+            if not t.coming
+        ]
+        entry = (months, txns)
+        _set(_TXN_KEY, entry)
+        # A wider history invalidates the internal-transfer set computed on the old one.
+        _cache.pop(_INTERNAL_KEY, None)
+        _cache.pop(_INTERNAL_KEY + "+imports", None)
+        return entry
 
 
 def _ceilings(
@@ -239,16 +278,17 @@ async def load_internal_ids(
     the same reason — a transfer between two banks only has both legs once both are
     loaded, which is precisely what an import unlocks.
 
-    Not cached when imported rows are involved: the SQLite read is sub-millisecond, and
-    caching would keep a stale exclusion set right after an import.
+    Le résultat est caché AUSSI quand des lignes importées participent : la détection
+    miroir est quadratique par groupe de montant et se payait à chaque requête de
+    /comptes, /analyse et /abonnements. La fraîcheur est garantie par ailleurs —
+    toutes les routes qui modifient les imports appellent ``clear_cache()``.
     """
     _, all_txns = await _load_history(client, months=months, ttl=ttl)
-    extra = _imported(conn, None, all_txns)
-    if extra:
-        return internal_transfer_ids([*all_txns, *extra])
-    cached = _get(_INTERNAL_KEY, ttl)
+    key = _INTERNAL_KEY + ("+imports" if conn is not None else "")
+    cached = _get(key, ttl)
     if cached is not None:
         return cached  # type: ignore[return-value]
-    ids = internal_transfer_ids(all_txns)
-    _set(_INTERNAL_KEY, ids)
+    extra = _imported(conn, None, all_txns)
+    ids = internal_transfer_ids([*all_txns, *extra] if extra else all_txns)
+    _set(key, ids)
     return ids

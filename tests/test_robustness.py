@@ -312,3 +312,47 @@ def test_webview_extra_cannot_override_reserved_params():
     assert "HIJACKED" not in url
     assert "code=CODE" in url
     assert "state=s1" in url  # les paramètres légitimes passent
+
+
+# ---------------------------------------------------------------- cache (suite)
+
+async def test_concurrent_cold_cache_downloads_once(fake_client):
+    """Deux requêtes simultanées en cache froid = UN téléchargement (single-flight)."""
+    import asyncio
+
+    import app.data as data
+
+    calls = {"n": 0}
+    original = fake_client.iter_transactions
+
+    def counting(*args, **kwargs):
+        calls["n"] += 1
+        return original(*args, **kwargs)
+
+    fake_client.iter_transactions = counting
+    data.clear_cache()
+    try:
+        await asyncio.gather(
+            data.load_transactions(fake_client, months=24),
+            data.load_transactions(fake_client, months=24),
+            data.load_transactions(fake_client, months=24),
+        )
+        assert calls["n"] == 1
+    finally:
+        data.clear_cache()
+
+
+async def test_expired_cache_never_shrinks_the_window(fake_client):
+    """Un TTL expiré suivi d'une demande étroite ne doit pas écraser la fenêtre large."""
+    import app.data as data
+
+    data.clear_cache()
+    try:
+        await data.load_transactions(fake_client, months=24)
+        # TTL 0 : l'entrée est périmée ; la demande de 1 mois force un refetch,
+        # qui doit reprendre la fenêtre LARGE, pas la rétrécir.
+        await data.load_transactions(fake_client, months=1, ttl=0)
+        covered = data._cache[data._TXN_KEY][1][0]
+        assert covered == 24
+    finally:
+        data.clear_cache()

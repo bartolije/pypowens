@@ -171,14 +171,23 @@ def _cluster_by_amount(txns: list, tol: float = _AMOUNT_TOL) -> list[list]:
     ordered = sorted(txns, key=lambda t: abs(float(t.value)))
     clusters: list[list] = []
     current: list = []
+    # ``ordered`` étant trié, les montants du cluster courant le sont aussi par
+    # construction : la médiane se lit au milieu de la liste en O(1). L'ancien
+    # ``statistics.median([...])`` recréait et retriait la liste à chaque
+    # itération — O(k² log k) par marchand, payé à chaque affichage de page
+    # (800 passages de supermercado sur 3 ans ≈ 800 tris de 400 éléments).
+    amounts: list[float] = []
     for t in ordered:
         amt = abs(float(t.value))
         if current:
-            med = statistics.median([abs(float(x.value)) for x in current])
+            mid = len(amounts) // 2
+            med = amounts[mid] if len(amounts) % 2 else (amounts[mid - 1] + amounts[mid]) / 2
             if med > 0 and abs(amt - med) / med > tol:
                 clusters.append(current)
                 current = []
+                amounts = []
         current.append(t)
+        amounts.append(amt)
     if current:
         clusters.append(current)
     return clusters

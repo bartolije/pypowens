@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -64,6 +65,13 @@ _NON_NAME = re.compile(r"[^0-9A-Za-zÀ-ÿ&'\-\. ]")
 _MULTISPACE = re.compile(r"\s+")
 
 
+# Mémoïsés : ces normalisations (6 passes de regex) sont appelées 3 à 4 fois par
+# transaction et par page (détecteur, passe stricte, template). Les libellés se
+# répètent massivement — un marchand = des dizaines d'opérations — donc le cache
+# transforme un coût par transaction en coût par libellé distinct.
+
+
+@lru_cache(maxsize=16384)
 def clean_wording(text: str) -> str:
     """Strip references/noise from a wording, keeping the merchant part."""
     w = (text or "").strip()
@@ -78,13 +86,18 @@ def clean_wording(text: str) -> str:
     return w
 
 
-def merchant_key(txn: Txn, *, max_tokens: int = 3) -> str:
-    """Normalized merchant identifier used to group recurring transactions."""
-    raw = txn.simplified_wording or txn.wording or txn.original_wording or ""
+@lru_cache(maxsize=16384)
+def _merchant_key_of(raw: str, max_tokens: int) -> str:
     cleaned = clean_wording(raw)
     tokens = [t for t in cleaned.upper().split() if len(t) > 1]
     key = " ".join(tokens[:max_tokens])
-    return key or (raw or "").upper().strip()[:24] or "INCONNU"
+    return key or raw.upper().strip()[:24] or "INCONNU"
+
+
+def merchant_key(txn: Txn, *, max_tokens: int = 3) -> str:
+    """Normalized merchant identifier used to group recurring transactions."""
+    raw = txn.simplified_wording or txn.wording or txn.original_wording or ""
+    return _merchant_key_of(raw, max_tokens)
 
 
 # ----------------------------------------------------------------- categories
@@ -200,15 +213,26 @@ _TYPE_CATEGORY_FALLBACK = {"fee": "Frais bancaires", "market_fee": "Frais bancai
 _ACTIVE_RULES: list[tuple[str, tuple[str, ...]]] = load_local_rules() + CATEGORY_RULES
 
 
+@lru_cache(maxsize=16384)
+def _categorize_default(up: str) -> str:
+    """Parcours des ~200 mots-clés, mémoïsé par libellé (règles fixes du process)."""
+    for label, keywords in _ACTIVE_RULES:
+        if any(kw in up for kw in keywords):
+            return label
+    return "Autre"
+
+
 def categorize(
     text: str, *, rules: list[tuple[str, tuple[str, ...]]] | None = None
 ) -> str:
     """Best-effort category label from a wording (merchant key or raw)."""
     up = (text or "").upper()
-    for label, keywords in rules if rules is not None else _ACTIVE_RULES:
-        if any(kw in up for kw in keywords):
-            return label
-    return "Autre"
+    if rules is not None:  # jeu de règles ad hoc : pas de cache
+        for label, keywords in rules:
+            if any(kw in up for kw in keywords):
+                return label
+        return "Autre"
+    return _categorize_default(up)
 
 
 def resolve_category(merchant: str, overrides: dict[str, str] | None = None) -> str:

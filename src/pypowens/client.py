@@ -616,6 +616,7 @@ class PowensClient:
         self,
         user_id: int | str = "me",
         *,
+        account_id: int | None = None,
         limit: int = 1000,
         min_date: str | None = None,
         max_date: str | None = None,
@@ -627,6 +628,9 @@ class PowensClient:
         """Stream transactions across all pages (``GET /users/{id}/transactions``).
 
         Dates are ``YYYY-MM-DD`` strings. ``limit`` is the page size (max 1000).
+        ``account_id`` restreint au compte donné via
+        ``GET /users/{id}/accounts/{aid}/transactions`` — bien moins coûteux que
+        de télécharger tout l'historique pour filtrer en mémoire.
         """
         params: dict[str, Any] = {
             "limit": limit,
@@ -637,15 +641,19 @@ class PowensClient:
             "wording": wording,
             "all": "" if include_deleted else None,
         }
-        async for item in self._paginate(
-            f"users/{user_id}/transactions", item_key="transactions", params=params
-        ):
+        endpoint = (
+            f"users/{user_id}/transactions"
+            if account_id is None
+            else f"users/{user_id}/accounts/{account_id}/transactions"
+        )
+        async for item in self._paginate(endpoint, item_key="transactions", params=params):
             yield Transaction.from_api(item)
 
     async def list_transactions(
         self,
         user_id: int | str = "me",
         *,
+        account_id: int | None = None,
         limit: int = 1000,
         max_transactions: int | None = None,
         min_date: str | None = None,
@@ -661,8 +669,12 @@ class PowensClient:
         to fetch everything matching the filters.
         """
         out: list[Transaction] = []
+        # Inutile de demander des pages de 1000 pour en garder 10.
+        if max_transactions is not None:
+            limit = min(limit, max_transactions)
         async for txn in self.iter_transactions(
             user_id,
+            account_id=account_id,
             limit=limit,
             min_date=min_date,
             max_date=max_date,

@@ -246,3 +246,34 @@ async def test_investment_history_without_a_date_sorts_last():
     async with PowensClient("myapp-sandbox", access_token="TOK") as p:
         values = await p.list_investment_history(1)
     assert [v.id for v in values] == [1, 2]
+
+
+@respx.mock
+async def test_transactions_can_be_filtered_by_account():
+    """account_id doit interroger l'endpoint par compte, pas filtrer en mémoire."""
+    route = respx.get(f"{BASE}/users/me/accounts/42/transactions").mock(
+        return_value=httpx.Response(
+            200, json={"transactions": [{"id": 1, "value": "-5.00", "date": "2026-01-02"}]}
+        )
+    )
+    async with PowensClient("myapp-sandbox", access_token="tok") as powens:
+        txns = await powens.list_transactions(account_id=42)
+    assert route.call_count == 1
+    assert [t.id for t in txns] == [1]
+
+
+@respx.mock
+async def test_max_transactions_caps_the_page_size():
+    """Demander 10 transactions ne doit pas télécharger une page de 1000."""
+    captured = {}
+
+    def record(request):
+        captured.update(dict(request.url.params))
+        return httpx.Response(
+            200, json={"transactions": [{"id": 1, "value": "-1.00", "date": "2026-01-01"}]}
+        )
+
+    respx.get(f"{BASE}/users/me/transactions").mock(side_effect=record)
+    async with PowensClient("myapp-sandbox", access_token="tok") as powens:
+        await powens.list_transactions(max_transactions=10)
+    assert captured.get("limit") == "10"
