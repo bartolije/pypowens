@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 import webbrowser
 
@@ -15,6 +16,9 @@ def _open_browser(url: str) -> None:
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s"
+    )
     settings = get_settings()
     url = f"http://{settings.host}:{settings.port}"
     print(f"\n  Powens Finance → {url}\n")

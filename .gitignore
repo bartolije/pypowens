@@ -24,6 +24,8 @@ categories.local.json
 .powens_finance.db
 *.db-journal
 *.db-wal
+*.db-shm
+.backups/
 
 # Tooling caches
 .pytest_cache/

@@ -18,6 +18,7 @@ Utilisable sans l'interface : ``python -m app.collector``.
 from __future__ import annotations
 
 import asyncio
+import logging
 import sqlite3
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -28,6 +29,8 @@ from . import store
 from .config import Settings, get_settings
 from .data import SPENDING_ACCOUNT_TYPES
 from .state import bootstrap_client
+
+_log = logging.getLogger(__name__)
 
 # Comptes dont la valeur bouge sans qu'aucune opération ne l'explique.
 INVESTMENT_TYPES = frozenset({"market", "pea", "per", "lifeinsurance"})
@@ -121,8 +124,19 @@ async def collect(
 
 
 async def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s"
+    )
     settings = get_settings()
     conn = store.connect(settings.db_path)
+    # Copie de sûreté AVANT d'écrire : si ce passage tourne mal, l'état de la
+    # veille reste récupérable dans .backups/.
+    try:
+        written = store.backup(conn, settings.db_path)
+        if written:
+            _log.info("copie de sûreté écrite : %s", written)
+    except (sqlite3.Error, OSError):
+        _log.exception("copie de sûreté impossible — la collecte continue sans")
     client = await bootstrap_client(settings)
     try:
         report = await collect(client, conn, settings=settings)

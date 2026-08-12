@@ -38,7 +38,8 @@ class Settings:
 
     @property
     def state_path(self) -> Path:
-        return _REPO_ROOT / ".powens_state.json"
+        """Persisted Powens id_user + token (overridable, notably for tests)."""
+        return Path(os.environ.get("APP_STATE_PATH") or _REPO_ROOT / ".powens_state.json")
 
     @property
     def db_path(self) -> Path:

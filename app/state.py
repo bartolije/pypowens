@@ -11,26 +11,62 @@ This avoids creating a brand-new Powens user on every run.
 from __future__ import annotations
 
 import json
+import logging
+import os
+import tempfile
 from pathlib import Path
 
 from pypowens import PowensAPIError, PowensClient
 
 from .config import Settings
 
+_log = logging.getLogger(__name__)
+
+
+class StateFileError(RuntimeError):
+    """``.powens_state.json`` existe mais est illisible.
+
+    Levée plutôt qu'avalée : un état corrompu traité comme « pas d'état » ferait
+    créer un nouvel utilisateur Powens, orphelinant toutes les connexions
+    bancaires déjà branchées — silencieusement.
+    """
+
 
 def _load_state(path: Path) -> dict:
     try:
-        return json.loads(path.read_text())
-    except (FileNotFoundError, ValueError):
+        raw = path.read_text()
+    except FileNotFoundError:
         return {}
+    try:
+        data = json.loads(raw)
+    except ValueError as exc:
+        raise StateFileError(
+            f"{path} existe mais n'est pas un JSON valide. Il contenait probablement "
+            "l'id_user et le token d'un utilisateur Powens déjà branché : repartir de "
+            "zéro créerait un nouvel utilisateur et perdrait toutes les connexions. "
+            "Restaurer ou supprimer explicitement ce fichier avant de relancer."
+        ) from exc
+    if not isinstance(data, dict):
+        raise StateFileError(f"{path} ne contient pas un objet JSON — même consigne.")
+    return data
 
 
 def _save_state(path: Path, data: dict) -> None:
-    path.write_text(json.dumps(data, indent=2))
+    # Écriture atomique : ``write_text`` tronque puis écrit, donc un crash au
+    # milieu laisserait un JSON tronqué que le prochain démarrage prendrait pour
+    # un état corrompu. ``mkstemp`` crée par ailleurs le fichier en 0600 dès le
+    # départ — pas de fenêtre où le token serait lisible par d'autres comptes.
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name, suffix=".tmp")
     try:
-        path.chmod(0o600)  # tokens are sensitive
-    except OSError:
-        pass
+        with os.fdopen(fd, "w") as fh:
+            fh.write(json.dumps(data, indent=2))
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 async def bootstrap_client(settings: Settings) -> PowensClient:
@@ -43,17 +79,25 @@ async def bootstrap_client(settings: Settings) -> PowensClient:
 
     # 1. Explicit token from the environment wins.
     if settings.access_token:
+        _log.info("token repris de POWENS_ACCESS_TOKEN (.env)")
         client.access_token = settings.access_token
         return client
 
     # 2. Persisted state.
     state = _load_state(settings.state_path)
     if state.get("access_token"):
+        _log.info("token repris de %s", settings.state_path)
         client.access_token = state["access_token"]
         return client
 
     # 3. Create a new user and persist the token.
     token = await client.create_user()
+    _log.warning(
+        "aucun token existant : NOUVEL utilisateur Powens créé (id_user=%s), "
+        "persisté dans %s",
+        token.id_user,
+        settings.state_path,
+    )
     _save_state(
         settings.state_path,
         {"id_user": token.id_user, "access_token": token.access_token},
@@ -71,17 +115,23 @@ async def try_renew(client: PowensClient, settings: Settings) -> bool:
     if not (settings.client_id and settings.client_secret):
         return False
 
-    id_user = _load_state(settings.state_path).get("id_user")
+    try:
+        id_user = _load_state(settings.state_path).get("id_user")
+    except StateFileError:
+        _log.exception("état local illisible — renouvellement impossible")
+        return False
     if id_user is None:
         return False
 
     try:
         token = await client.renew_token(int(id_user))
     except (PowensAPIError, OSError, ValueError, TypeError):
+        _log.warning("renouvellement du token refusé pour id_user=%s", id_user)
         return False
     if not token.access_token:
         return False
 
+    _log.info("token renouvelé pour id_user=%s", id_user)
     _save_state(
         settings.state_path,
         {"id_user": token.id_user or id_user, "access_token": token.access_token},

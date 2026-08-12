@@ -3,6 +3,7 @@ Webview connect flow."""
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -39,10 +40,21 @@ _RETRY_FLAG = "_retried"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # No-op si le point d'entrée (python -m app) a déjà configuré le logging ;
+    # couvre le lancement direct par ``uvicorn app.main:app``.
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s"
+    )
     settings = get_settings()
     app.state.settings = settings
     app.state.store = store.connect(settings.db_path)
-    app.state.client = await bootstrap_client(settings)
+    try:
+        app.state.client = await bootstrap_client(settings)
+    except BaseException:
+        # Sans quoi un bootstrap raté (réseau, state corrompu) laisserait la
+        # connexion SQLite ouverte derrière un « Application startup failed ».
+        app.state.store.close()
+        raise
     try:
         yield
     finally:

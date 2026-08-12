@@ -6,6 +6,7 @@ Reference: https://docs.powens.com/
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from collections.abc import AsyncIterator
 from types import TracebackType
@@ -34,6 +35,8 @@ from .models import (
     Transaction,
     User,
 )
+
+logger = logging.getLogger("pypowens")
 
 DEFAULT_TIMEOUT = 30.0
 API_PATH = "/2.0"
@@ -199,6 +202,15 @@ class PowensClient:
                 if delay is None:
                     raise
                 attempt += 1
+                logger.warning(
+                    "%s %s failed (%s) — retry %d/%d in %.1fs",
+                    method,
+                    endpoint,
+                    exc,
+                    attempt,
+                    self.max_retries,
+                    delay,
+                )
                 await asyncio.sleep(delay)
 
     def _retry_delay(self, exc: Exception, attempt: int) -> float | None:
@@ -276,7 +288,22 @@ class PowensClient:
             if isinstance(nxt, dict):
                 nxt = nxt.get("href")
             pages += 1
-            if not nxt or not isinstance(nxt, str) or nxt in seen or pages >= MAX_PAGES:
+            if not nxt or not isinstance(nxt, str):
+                break
+            if nxt in seen:
+                logger.warning(
+                    "%s: pagination stopped on a repeated next href after %d page(s) — "
+                    "results may be incomplete",
+                    endpoint,
+                    pages,
+                )
+                break
+            if pages >= MAX_PAGES:
+                logger.warning(
+                    "%s: pagination truncated at MAX_PAGES=%d — results are incomplete",
+                    endpoint,
+                    MAX_PAGES,
+                )
                 break
             seen.add(nxt)
             data = await self._request("GET", nxt, auth=auth)
@@ -297,6 +324,9 @@ class PowensClient:
             auth=False,
         )
         token = AuthToken.from_api(data)
+        # A user was just created server-side: leave a trace, this is billable
+        # state that outlives the process.
+        logger.info("created Powens user id_user=%s", token.id_user)
         if token.access_token:
             self._access_token = token.access_token
         return token

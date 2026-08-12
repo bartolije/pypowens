@@ -162,3 +162,36 @@ def test_periodicity_change_is_a_distinct_series(conn):
         today=day1 + timedelta(days=1),
     )
     assert changes["GYM|Annuel"]["new"] is True
+
+
+# ------------------------------------------------------------------- backup
+
+def test_backup_writes_a_dated_copy_with_data(conn, tmp_path):
+    day = date(2026, 8, 1)
+    store.record_snapshot(conn, [Acc(1, balance=Decimal("100"))], day=day)
+    conn.commit()
+
+    written = store.backup(conn, tmp_path / "t.db", day=day)
+    assert written is not None
+    assert written.parent.name == ".backups"
+    assert written.name == "t-2026-08-01.db"
+
+    # La copie est une vraie base, lisible, avec les données du jour.
+    copy = store.connect(written)
+    try:
+        assert store.net_worth_history(copy) == [(day, Decimal("100"))]
+    finally:
+        copy.close()
+
+
+def test_backup_is_once_per_day(conn, tmp_path):
+    day = date(2026, 8, 1)
+    assert store.backup(conn, tmp_path / "t.db", day=day) is not None
+    assert store.backup(conn, tmp_path / "t.db", day=day) is None  # déjà faite
+
+
+def test_backup_rotation_keeps_most_recent(conn, tmp_path):
+    for offset in range(5):
+        store.backup(conn, tmp_path / "t.db", day=date(2026, 8, 1) + timedelta(days=offset), keep=3)
+    names = sorted(p.name for p in (tmp_path / ".backups").glob("*.db"))
+    assert names == ["t-2026-08-03.db", "t-2026-08-04.db", "t-2026-08-05.db"]

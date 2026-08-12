@@ -130,6 +130,12 @@ def connect(db_path: Path) -> sqlite3.Connection:
     # write below is a single short statement followed by a commit.
     conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    # Le collecteur launchd et l'app web écrivent le même fichier, potentiellement au
+    # même moment. En mode rollback avec busy_timeout=0 (les défauts), la collision
+    # lève "database is locked" immédiatement — côté collecteur, le solde du jour est
+    # alors perdu pour toujours (Powens ne répond qu'au présent).
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     conn.executescript(SCHEMA)
     _migrate(conn)
     conn.commit()
@@ -151,6 +157,51 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "powens_account_id" not in columns:
         conn.execute("ALTER TABLE imported_account ADD COLUMN powens_account_id INTEGER")
         conn.commit()
+
+
+# ------------------------------------------------------------------- backup
+
+
+def backup(
+    conn: sqlite3.Connection,
+    db_path: Path,
+    *,
+    day: date | None = None,
+    keep: int = 30,
+) -> Path | None:
+    """Copie de sûreté quotidienne de la base, avec rotation.
+
+    Cette base est la seule copie au monde des soldes archivés : Powens ne répond
+    qu'au présent, donc une base perdue ne se reconstruit pas. La copie passe par
+    l'API ``sqlite3`` de backup en ligne (cohérente même pendant des écritures,
+    compatible WAL) — jamais par une copie de fichier.
+
+    Une copie par jour au plus : si celle du jour existe déjà, ne rien faire.
+    Retourne le chemin écrit, ou ``None`` si la copie du jour existait.
+    """
+    day = day or date.today()
+    backup_dir = db_path.parent / ".backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    target = backup_dir / f"{db_path.stem.lstrip('.') or 'finance'}-{day.isoformat()}.db"
+    if target.exists():
+        return None
+
+    dest = sqlite3.connect(target)
+    try:
+        with dest:
+            conn.backup(dest)
+    finally:
+        dest.close()
+    try:
+        target.chmod(0o600)  # même sensibilité que la base d'origine
+    except OSError:
+        pass
+
+    # Rotation : ne garder que les `keep` copies les plus récentes.
+    copies = sorted(backup_dir.glob(f"{db_path.stem.lstrip('.') or 'finance'}-*.db"))
+    for old in copies[:-keep]:
+        old.unlink(missing_ok=True)
+    return target
 
 
 # ------------------------------------------------------------ balance history
