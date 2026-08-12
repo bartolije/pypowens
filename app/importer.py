@@ -109,9 +109,19 @@ def parse_amount(raw: str) -> Decimal | None:
         return None
     negative = cleaned.startswith("-") or (cleaned.startswith("(") and cleaned.endswith(")"))
     cleaned = cleaned.strip("()-+")
-    # Virgule décimale française ; un point restant est un séparateur de milliers.
-    if "," in cleaned:
-        cleaned = cleaned.replace(".", "").replace(",", ".")
+    if "," in cleaned and "." in cleaned:
+        # Les deux séparateurs : le DERNIER est la décimale, l'autre les milliers.
+        # Couvre 1.048,63 (français/allemand) et 1,234.56 (exports anglo-saxons,
+        # fréquents chez les néobanques). L'ancien code supposait toujours la
+        # virgule décimale et lisait 1,234.56 comme 1.23456 — un montant corrompu
+        # d'un facteur 1000, sans même compter la ligne en « ignorée ».
+        if cleaned.rfind(",") > cleaned.rfind("."):
+            cleaned = cleaned.replace(".", "").replace(",", ".")
+        else:
+            cleaned = cleaned.replace(",", "")
+    elif "," in cleaned:
+        # Virgule seule : décimale française.
+        cleaned = cleaned.replace(",", ".")
     try:
         value = Decimal(cleaned)
     except InvalidOperation:

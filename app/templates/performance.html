@@ -174,7 +174,7 @@
           </td>
           <td class="num amount {{ 'text-green' if line.diff_percent and line.diff_percent > 0 else 'text-red' if line.diff_percent and line.diff_percent < 0 }}"
               data-sort="{{ line.diff_percent or 0 }}">
-            {% if line.diff_percent is not none %}{{ '%+.2f' | format(line.diff_percent * 100) }} %
+            {% if line.diff_percent is not none %}{{ '%+.2f' | format(line.diff_percent) }} %
             {% else %}—{% endif %}
           </td>
           <td class="num amount" data-sort="{{ line.share or 0 }}">

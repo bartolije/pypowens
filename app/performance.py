@@ -215,13 +215,36 @@ def reconstruct_series(
     l'appelant puisse le dire. Elle ne contient que des titres — pas les liquidités, dont
     l'API ne publie aucune VL.
     """
-    by_day: dict[date, Decimal] = {}
+    per_line: dict[int, dict[date, Decimal]] = {}
     for row in values:
         quantity = quantities.get(row["investment_id"])
         if quantity is None:
             continue
-        by_day[row["day"]] = by_day.get(row["day"], Decimal(0)) + quantity * row["unit_value"]
-    return [Point(day=day, value=by_day[day], reconstructed=True) for day in sorted(by_day)]
+        per_line.setdefault(row["investment_id"], {})[row["day"]] = (
+            quantity * row["unit_value"]
+        )
+    if not per_line:
+        return []
+
+    # Chaque ligne est reportée à sa dernière VL connue (forward-fill) : deux ETF
+    # cotés sur des places différentes n'ont pas les mêmes jours fériés, et un jour
+    # où une seule ligne publie vaudrait la moitié du portefeuille — le chaînage
+    # TWR enregistrerait -50 % puis +100 %, qui ne se compensent pas une fois
+    # composés. Les jours d'avant la première VL d'une ligne sont écartés : le
+    # total y serait partiel, donc faux.
+    all_days = sorted({day for series in per_line.values() for day in series})
+    last: dict[int, Decimal] = {}
+    points: list[Point] = []
+    for day in all_days:
+        for inv_id, series in per_line.items():
+            if day in series:
+                last[inv_id] = series[day]
+        if len(last) < len(per_line):
+            continue
+        points.append(
+            Point(day=day, value=sum(last.values(), Decimal(0)), reconstructed=True)
+        )
+    return points
 
 
 def twr(points: list[Point], flows: list[Flow], *, add_income: bool) -> float | None:

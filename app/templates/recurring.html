@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Abonnements & prélèvements · Powens Finance{% endblock %}
 
-{% macro series_row(it, flags) %}
+{% macro series_row(it) %}
 <tr {% if it.stale %}class="opacity-50"{% endif %}>
   <td>
     <a href="/transactions?label={{ it.key | urlencode }}">{{ it.merchant }}</a>
-    {% if flags[it.key].new %}<span class="badge badge-muted" style="margin-left: 4px;">nouveau</span>{% endif %}
+    {# flags vit sur l'item : indexer par marchand mélangeait deux séries du même émetteur #}
+    {% if it.flags.new %}<span class="badge badge-muted" style="margin-left: 4px;">nouveau</span>{% endif %}
     {% if it.repriced %}
     <span class="badge badge-muted" style="margin-left: 4px;"
           data-amount-title="Cette série s'arrête au {{ it.last_date.strftime('%d/%m/%Y') }}, mais le marchand a prélevé {{ it.merchant_last[1] }} € le {{ it.merchant_last[0].strftime('%d/%m/%Y') }} : le montant a changé, le contrat court toujours.">
@@ -200,7 +201,7 @@
         </tr>
       </thead>
       <tbody>
-        {% for it in g["items"] %}{{ series_row(it, flags) }}{% endfor %}
+        {% for it in g["items"] %}{{ series_row(it) }}{% endfor %}
       </tbody>
     </table>
   </div>

@@ -140,16 +140,18 @@
             <td></td>
             <td></td>
             <td class="num" data-sort="{{ net }}">{{ net | money(net_currency) }}</td>
+            {# +/- value : plus-value latente des titres, rapportée à leur prix de revient #}
             <td class="num {{ 'text-green' if (invest_diff or 0) >= 0 else 'text-red' }}">
               {% if invest_diff %}
                 <span class="amount">{{ invest_diff | money(net_currency) }}</span>
-                <br><span class="small">{{ '▲' if invest_diff >= 0 else '▼' }} {{ '%+.2f'|format(net_diff_pct) }}%</span>
+                <br><span class="small">{{ '▲' if invest_diff >= 0 else '▼' }} {{ '%+.2f'|format(invest_diff_pct) }}%</span>
               {% endif %}
             </td>
-            <td class="num {{ 'text-green' if (invest_diff or 0) >= 0 else 'text-red' }}">
-              {% if invest_diff %}
-                <span class="amount">{{ invest_diff | money(net_currency) }}</span>
-                <br><span class="small">{{ '▲' if invest_diff >= 0 else '▼' }} {{ '%+.2f'|format(net_diff_pct) }}%</span>
+            {# Var. 1J : variation du patrimoine net depuis le dernier jour archivé #}
+            <td class="num {{ 'text-green' if (day_diff or 0) >= 0 else 'text-red' }}">
+              {% if day_diff is not none %}
+                <span class="amount">{{ day_diff | money(net_currency) }}</span>
+                <br><span class="small">{{ '▲' if day_diff >= 0 else '▼' }} {{ '%+.2f'|format(day_diff_pct) }}%</span>
               {% endif %}
             </td>
           </tr>

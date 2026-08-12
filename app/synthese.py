@@ -65,8 +65,8 @@ async def synthese(
         for i, fam in enumerate(assets)
     ]
 
-    # Record & retrieve history.
-    store.record_snapshot(conn, accounts_list.accounts, default_currency=base_currency)
+    # Record (au plus une fois par jour — le collecteur est la référence) & retrieve.
+    store.ensure_snapshot(conn, accounts_list.accounts, default_currency=base_currency)
     since = store.period_to_since(period)
     history = store.net_worth_history(conn, currency=base_currency, since=since)
 
@@ -100,7 +100,8 @@ async def synthese(
                 "quantity": inv.quantity,
                 "valuation": inv.valuation,
                 "diff": inv.diff,
-                "diff_percent": inv.diff_percent,
+                # Fraction côté API (0.1699 = +16,99 %) → pourcents à l'affichage.
+                "diff_percent": inv.diff_percent * 100 if inv.diff_percent is not None else None,
                 "currency": inv.currency or base_currency,
             }
             for inv in investments
@@ -109,11 +110,14 @@ async def synthese(
         reverse=True,
     )
     invest_diff = sum((inv.diff or Decimal(0) for inv in investments), Decimal(0))
-    invest_diff_pct = (
-        float(invest_diff / (total_assets - invest_diff) * 100)
-        if total_assets - invest_diff
-        else 0.0
-    )
+    # Plus-value latente rapportée au PRIX DE REVIENT des titres (valorisation
+    # moins plus-value), comme sur la page détail. L'ancien dénominateur — le
+    # patrimoine total moins la plus-value — mélangeait deux périmètres : 50 k€
+    # investis avec +10 k€ de gain sur 300 k€ de patrimoine affichaient +3,4 %
+    # au lieu de +25 %.
+    invest_valuation = sum((inv.valuation or Decimal(0) for inv in investments), Decimal(0))
+    invest_cost = invest_valuation - invest_diff
+    invest_diff_pct = float(invest_diff / invest_cost * 100) if invest_cost else 0.0
 
     return templates.TemplateResponse(
         request,

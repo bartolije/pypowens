@@ -195,3 +195,43 @@ def test_backup_rotation_keeps_most_recent(conn, tmp_path):
         store.backup(conn, tmp_path / "t.db", day=date(2026, 8, 1) + timedelta(days=offset), keep=3)
     names = sorted(p.name for p in (tmp_path / ".backups").glob("*.db"))
     assert names == ["t-2026-08-03.db", "t-2026-08-04.db", "t-2026-08-05.db"]
+
+
+# ------------------------------------------------------------- history windows
+
+def test_net_worth_history_tout_keeps_the_origin(conn):
+    """« TOUT » doit partir du premier jour archivé, pas des 180 derniers.
+
+    L'ancien ``points[-limit:]`` tronquait la fenêtre ET faisait glisser la
+    « variation depuis le… » chaque jour au lieu de la mesurer depuis l'origine.
+    """
+    start = date(2025, 1, 1)
+    for offset in range(400):
+        store.record_snapshot(
+            conn, [Acc(1, balance=Decimal(offset))], day=start + timedelta(days=offset)
+        )
+    history = store.net_worth_history(conn)
+    assert len(history) <= 180                        # borné pour le SVG
+    assert history[0] == (start, Decimal(0))          # l'origine est conservée
+    assert history[-1] == (start + timedelta(days=399), Decimal(399))
+
+
+def test_net_worth_history_since_filters_before_sampling(conn):
+    start = date(2026, 1, 1)
+    for offset in range(10):
+        store.record_snapshot(
+            conn, [Acc(1, balance=Decimal(offset))], day=start + timedelta(days=offset)
+        )
+    history = store.net_worth_history(conn, since=start + timedelta(days=5))
+    assert history[0][0] == start + timedelta(days=5)
+    assert len(history) == 5
+
+
+def test_nan_balance_cannot_poison_the_history():
+    """Un NaN de l'API ne doit jamais atteindre une somme de soldes."""
+    from pypowens.models import _parse_decimal
+
+    assert _parse_decimal("NaN") is None
+    assert _parse_decimal("Infinity") is None
+    assert _parse_decimal("-Infinity") is None
+    assert _parse_decimal("12.5") == Decimal("12.5")

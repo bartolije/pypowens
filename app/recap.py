@@ -234,10 +234,9 @@ async def recap(
         for i, fam in enumerate(assets)
     ]
 
-    # Record today's balances, then measure the variation against the last recorded
-    # day. This replaces the previous guess based on the undocumented "diff" field,
-    # which only reflected investment revaluation.
-    store.record_snapshot(conn, accounts_list.accounts, default_currency=base_currency)
+    # Record today's balances (au plus une fois par jour — le collecteur reste la
+    # référence), then measure the variation against the first day of the window.
+    store.ensure_snapshot(conn, accounts_list.accounts, default_currency=base_currency)
     since = store.period_to_since(period)
     history = store.net_worth_history(conn, currency=base_currency, since=since)
     if history:
@@ -270,7 +269,8 @@ async def recap(
                 "quantity": inv.quantity,
                 "valuation": inv.valuation,
                 "diff": inv.diff,
-                "diff_percent": inv.diff_percent,
+                # Fraction côté API (0.1699 = +16,99 %) → pourcents à l'affichage.
+                "diff_percent": inv.diff_percent * 100 if inv.diff_percent is not None else None,
                 "currency": inv.currency or base_currency,
             }
             for inv in investments
@@ -279,6 +279,19 @@ async def recap(
         reverse=True,
     )
     invest_diff = sum((inv.diff or Decimal(0) for inv in investments), Decimal(0))
+    # Plus-value latente rapportée au prix de revient des titres (cf. synthese).
+    invest_valuation = sum((inv.valuation or Decimal(0) for inv in investments), Decimal(0))
+    invest_cost = invest_valuation - invest_diff
+    invest_diff_pct = float(invest_diff / invest_cost * 100) if invest_cost else 0.0
+
+    # Variation sur un jour : le dernier jour archivé strictement avant aujourd'hui.
+    prev = store.previous_net_worth(conn, currency=base_currency)
+    if prev is not None and prev[1]:
+        day_diff = net - prev[1]
+        day_diff_pct = float(day_diff / prev[1] * 100)
+    else:
+        day_diff = None
+        day_diff_pct = 0.0
 
     # Investment classification (sector / country treemaps).
     sector_treemap = ""
@@ -376,6 +389,9 @@ async def recap(
             "connections": conns,
             "invest_rows": invest_rows,
             "invest_diff": invest_diff,
+            "invest_diff_pct": invest_diff_pct,
+            "day_diff": day_diff,
+            "day_diff_pct": day_diff_pct,
             "sector_treemap": sector_treemap,
             "country_treemap": country_treemap,
             "foreign_accounts": foreign,

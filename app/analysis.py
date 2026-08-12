@@ -87,8 +87,13 @@ async def analysis(
 
     total_spend = sum(spend_by_month.values(), Decimal(0))
     total_income = sum(income_by_month.values(), Decimal(0))
-    avg_spend = (total_spend / WINDOW).quantize(Decimal("0.01"))
-    avg_income = (total_income / WINDOW).quantize(Decimal("0.01"))
+    # Moyennes sur les mois réellement couverts, pas sur la taille de la fenêtre :
+    # une banque connectée avec 4 mois d'historique divisée par 12 sous-évaluait
+    # toutes les moyennes d'un facteur 3.
+    covered = {k for k in recent if k in spend_by_month or k in income_by_month}
+    months_covered = max(1, len(covered))
+    avg_spend = (total_spend / months_covered).quantize(Decimal("0.01"))
+    avg_income = (total_income / months_covered).quantize(Decimal("0.01"))
     avg_savings = avg_income - avg_spend
 
     spend_bars = [(month_label_fr(k), float(spend_by_month.get(k, Decimal(0)))) for k in recent]

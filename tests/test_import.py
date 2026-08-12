@@ -59,6 +59,12 @@ def _statement(text: bytes = RELEVE, account_id: int = -1):
         ("12,00 €", Decimal("12.00")),
         ("", None),
         ("n/a", None),
+        # Formats anglo-saxons (néobanques) : le DERNIER séparateur est la décimale.
+        # L'ancien code lisait 1,234.56 comme 1.23456 — corruption ×1000 silencieuse.
+        ("1,234.56", Decimal("1234.56")),
+        ("-1,234.56", Decimal("-1234.56")),
+        ("1.048,63", Decimal("1048.63")),      # milliers à l'allemande
+        ("1234.56", Decimal("1234.56")),       # point décimal sans milliers
     ],
 )
 def test_parse_amount_handles_french_formats(raw, expected):

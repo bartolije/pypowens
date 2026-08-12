@@ -22,9 +22,12 @@ def _parse_decimal(value: Any) -> Decimal | None:
     if value is None:
         return None
     try:
-        return Decimal(str(value))
+        parsed = Decimal(str(value))
     except (InvalidOperation, ValueError):
         return None
+    # NaN/Infinity parse without error but poison every downstream aggregate:
+    # a single NaN turns a whole sum() of balances into NaN, silently.
+    return parsed if parsed.is_finite() else None
 
 
 def _parse_datetime(value: Any) -> datetime | None:

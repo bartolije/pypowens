@@ -183,7 +183,8 @@ class FakeClient:
                     "quantity": "120.0",
                     "valuation": "42000.00",
                     "diff": "1200.00",
-                    "diff_percent": "2.94",
+                    # Fraction, comme l'API réelle (0.0294 = +2,94 %) : 1200/(42000-1200).
+                    "diff_percent": "0.0294",
                     "currency": {"id": "EUR"},
                 }
             )

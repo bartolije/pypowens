@@ -282,6 +282,22 @@ def _subtract_months(d: date, months: int) -> date:
     return date(year, month, min(d.day, max_day))
 
 
+def _downsample(
+    points: list[tuple[date, Decimal]], limit: int
+) -> list[tuple[date, Decimal]]:
+    """Réduit à ``limit`` points répartis uniformément, premier et dernier gardés.
+
+    Tronquer aux ``limit`` derniers jours (l'ancien ``points[-limit:]``) mentait
+    deux fois : « TOUT » ne montrait jamais que ~6 mois, et la « variation depuis
+    le JJ/MM » se comparait à une origine qui glissait chaque jour au lieu de
+    rester le début de la fenêtre demandée.
+    """
+    if limit <= 1 or len(points) <= limit:
+        return points
+    step = (len(points) - 1) / (limit - 1)
+    return [points[round(i * step)] for i in range(limit)]
+
+
 def net_worth_history(
     conn: sqlite3.Connection,
     *,
@@ -291,19 +307,21 @@ def net_worth_history(
 ) -> list[tuple[date, Decimal]]:
     """Daily net worth (one point per recorded day), oldest first.
 
-    If *since* is given, only points on or after that date are returned.
+    If *since* is given, only points on or after that date are returned. ``limit``
+    borne le nombre de points par échantillonnage (jamais par troncature) — les
+    montants restent sommés en :class:`Decimal`, pas en ``SUM()`` SQLite (REAL).
     """
-    cursor = conn.execute(
-        "SELECT day, balance FROM balance_snapshot WHERE currency = ? ORDER BY day",
-        (currency.upper(),),
-    )
+    sql = "SELECT day, balance FROM balance_snapshot WHERE currency = ?"
+    params: list[object] = [currency.upper()]
+    if since is not None:
+        sql += " AND day >= ?"
+        params.append(since.isoformat())
+    cursor = conn.execute(sql + " ORDER BY day", params)
     totals: dict[str, Decimal] = {}
     for row in cursor:
         totals[row["day"]] = totals.get(row["day"], Decimal(0)) + Decimal(row["balance"])
     points = [(date.fromisoformat(day), total) for day, total in sorted(totals.items())]
-    if since is not None:
-        points = [(d, v) for d, v in points if d >= since]
-    return points[-limit:]
+    return _downsample(points, limit)
 
 
 def account_balance_history(
@@ -317,26 +335,67 @@ def account_balance_history(
     """Daily balance for a single account, oldest first."""
     sql = (
         "SELECT day, balance FROM balance_snapshot"
-        " WHERE account_id = ? AND currency = ? ORDER BY day"
+        " WHERE account_id = ? AND currency = ?"
     )
     params: list[object] = [account_id, currency.upper()]
-    cursor = conn.execute(sql, params)
+    if since is not None:
+        sql += " AND day >= ?"
+        params.append(since.isoformat())
+    cursor = conn.execute(sql + " ORDER BY day", params)
     points = [
         (date.fromisoformat(row["day"]), Decimal(row["balance"]))
         for row in cursor
     ]
-    if since is not None:
-        points = [(d, v) for d, v in points if d >= since]
-    return points[-limit:]
+    return _downsample(points, limit)
+
+
+def ensure_snapshot(
+    conn: sqlite3.Connection,
+    accounts: Iterable[AccountLike],
+    *,
+    day: date | None = None,
+    default_currency: str = "EUR",
+) -> int:
+    """Écrit le relevé du jour SEULEMENT s'il n'existe pas encore.
+
+    C'est la variante pour les pages web : le collecteur reste la mesure de
+    référence (son dernier passage, 22 h 30, écrase les précédents), et un simple
+    F5 ne doit pas remplacer sa mesure par un instantané pris à n'importe quelle
+    heure. Sans collecteur installé, le premier affichage du jour fournit tout de
+    même un point à la courbe.
+    """
+    day = day or date.today()
+    row = conn.execute(
+        "SELECT 1 FROM balance_snapshot WHERE day = ? LIMIT 1", (day.isoformat(),)
+    ).fetchone()
+    if row:
+        return 0
+    return record_snapshot(conn, accounts, day=day, default_currency=default_currency)
 
 
 def previous_net_worth(
     conn: sqlite3.Connection, *, currency: str = "EUR", before: date | None = None
 ) -> tuple[date, Decimal] | None:
-    """Most recent net worth recorded strictly before ``before`` (default: today)."""
+    """Most recent net worth recorded strictly before ``before`` (default: today).
+
+    Interroge directement le dernier jour archivé : passer par
+    :func:`net_worth_history` exposerait la veille à l'échantillonnage.
+    """
     before = before or date.today()
-    history = [p for p in net_worth_history(conn, currency=currency) if p[0] < before]
-    return history[-1] if history else None
+    row = conn.execute(
+        "SELECT day FROM balance_snapshot WHERE currency = ? AND day < ?"
+        " ORDER BY day DESC LIMIT 1",
+        (currency.upper(), before.isoformat()),
+    ).fetchone()
+    if row is None:
+        return None
+    total = Decimal(0)
+    for r in conn.execute(
+        "SELECT balance FROM balance_snapshot WHERE currency = ? AND day = ?",
+        (currency.upper(), row["day"]),
+    ):
+        total += Decimal(r["balance"])
+    return (date.fromisoformat(row["day"]), total)
 
 
 # -------------------------------------------------------- category overrides

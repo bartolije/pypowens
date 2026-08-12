@@ -94,8 +94,8 @@ async def account_detail(
     if account.last_update:
         last_update = account.last_update
 
-    # Per-account balance history.
-    store.record_snapshot(conn, accounts_list.accounts, default_currency=base_currency)
+    # Per-account balance history (écrit au plus une fois par jour).
+    store.ensure_snapshot(conn, accounts_list.accounts, default_currency=base_currency)
     since = store.period_to_since(period)
     history = store.account_balance_history(
         conn, account_id=account_id, currency=currency, since=since,
@@ -143,7 +143,10 @@ async def account_detail(
                     "unit_value": inv.unit_value,
                     "valuation": valuation,
                     "diff": inv_diff,
-                    "diff_percent": inv.diff_percent,
+                    # Fraction côté API (0.1699 = +16,99 %) → pourcents à l'affichage.
+                    "diff_percent": (
+                        inv.diff_percent * 100 if inv.diff_percent is not None else None
+                    ),
                     "currency": inv.currency or currency,
                 }
             )

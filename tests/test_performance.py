@@ -109,6 +109,40 @@ def test_reconstruct_ignores_lines_whose_quantity_is_unknown():
     assert reconstruct_series(values, {1: Decimal(2)}) == []
 
 
+def test_reconstruct_carries_last_value_through_partial_days():
+    """Un jour férié sur UNE place ne doit pas faire chuter le total de moitié.
+
+    Deux ETF sur des calendriers différents : le 6, seul le n°1 publie. Sans
+    report de la dernière VL connue, le total du jour valait 220 au lieu de 270,
+    et le chaînage TWR enregistrait -18 % puis +18 % — qui, composés, ne se
+    compensent pas.
+    """
+    values = [
+        {"investment_id": 1, "day": date(2026, 7, 5), "unit_value": Decimal(100)},
+        {"investment_id": 2, "day": date(2026, 7, 5), "unit_value": Decimal(10)},
+        {"investment_id": 1, "day": date(2026, 7, 6), "unit_value": Decimal(110)},  # 2 muet
+        {"investment_id": 1, "day": date(2026, 7, 7), "unit_value": Decimal(105)},
+        {"investment_id": 2, "day": date(2026, 7, 7), "unit_value": Decimal(11)},
+    ]
+    points = reconstruct_series(values, {1: Decimal(2), 2: Decimal(5)})
+    assert [(p.day.day, p.value) for p in points] == [
+        (5, Decimal(250)),
+        (6, Decimal(270)),  # 2×110 + 5×10 (VL du 5 reportée), pas 220
+        (7, Decimal(265)),
+    ]
+
+
+def test_reconstruct_skips_days_before_a_line_first_value():
+    """Avant la première VL d'une ligne, le total serait partiel — donc faux."""
+    values = [
+        {"investment_id": 1, "day": date(2026, 7, 5), "unit_value": Decimal(100)},
+        {"investment_id": 1, "day": date(2026, 7, 6), "unit_value": Decimal(110)},
+        {"investment_id": 2, "day": date(2026, 7, 6), "unit_value": Decimal(10)},
+    ]
+    points = reconstruct_series(values, {1: Decimal(2), 2: Decimal(5)})
+    assert [(p.day.day, p.value) for p in points] == [(6, Decimal(270))]
+
+
 # ------------------------------------------------------------------------- TWR
 
 def _series(values: list[str], *, start: date = date(2026, 7, 1)) -> list[Point]:

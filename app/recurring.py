@@ -79,6 +79,10 @@ class RecurringItem:
     # Kept here rather than in a side dict because two series can share a merchant
     # key (same biller, different periodicity) and would collide as dict keys.
     spark: str = ""
+    # Presentation-only, same reason: état "nouveau / hausse" issu de sync_series,
+    # posé par le routeur (vide hors de la vue de référence).
+    flags: dict = field(default_factory=lambda: {"new": False, "increase_pct": None,
+                                                 "previous_amount": None})
 
     @property
     def repriced(self) -> bool:
@@ -502,8 +506,13 @@ async def recurring_page(
         items = detect_subscriptions(txns, internal_ids=internal, overrides=overrides)
 
     # Diff against the previously known state to surface what is new or got more
-    # expensive since the last visit.
-    changes = store.sync_series(conn, items)
+    # expensive since the last visit — mais UNIQUEMENT depuis la vue de référence :
+    # une fenêtre filtrée par dates (médianes partielles) ou la passe permissive
+    # ``?tout=1`` (séries non contractuelles) écrirait un état faussé, qui
+    # fabriquerait des hausses fantômes à la visite non filtrée suivante.
+    reference_view = not (d_from or d_to or tout)
+    changes = store.sync_series(conn, items) if reference_view else {}
+    no_flags = {"new": False, "increase_pct": None, "previous_amount": None}
     alerts = [
         {
             "item": it,
@@ -512,11 +521,17 @@ async def recurring_page(
             "previous_amount": changes[store.series_key(it)]["previous_amount"],
         }
         for it in items
-        if changes[store.series_key(it)]["new"]
-        or changes[store.series_key(it)]["increase_pct"]
+        if reference_view
+        and (
+            changes[store.series_key(it)]["new"]
+            or changes[store.series_key(it)]["increase_pct"]
+        )
     ]
-    flags = {it.key: changes[store.series_key(it)] for it in items}
     for it in items:
+        # Attachés à l'item : un dict indexé par ``it.key`` (le seul marchand)
+        # faisait porter le badge d'une série sur l'autre dès qu'un marchand en
+        # avait deux (deux contrats chez le même assureur).
+        it.flags = changes.get(store.series_key(it), no_flags)
         it.spark = sparkline([float(a) for _, a in it.history])
 
     active = [it for it in items if not it.stale]
@@ -559,7 +574,6 @@ async def recurring_page(
             "items": items,
             "groups": groups,
             "alerts": alerts,
-            "flags": flags,
             "total_monthly": total_monthly,
             "total_annual": total_monthly * 12,
             "stale_monthly": stale_monthly,

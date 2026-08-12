@@ -85,7 +85,9 @@ def _lines_of(investments: list[Investment]) -> list[Line]:
             unit_value=inv.unit_value,
             valuation=inv.valuation or Decimal(0),
             diff=inv.diff,
-            diff_percent=float(inv.diff_percent) if inv.diff_percent is not None else None,
+            # L'API renvoie une fraction (0.1699 = +16,99 %) ; les lignes prêtes à
+            # afficher portent des pourcents, comme partout ailleurs dans l'app.
+            diff_percent=float(inv.diff_percent * 100) if inv.diff_percent is not None else None,
             share=float(inv.portfolio_share) if inv.portfolio_share is not None else None,
             is_cash=perf.is_cash_line(code=inv.code, label=inv.label),
             invested=(
@@ -104,7 +106,11 @@ def _chart(points: list[perf.Point]) -> str:
     if len(points) < 2:
         return ""
     step = max(1, len(points) // 40)
-    kept = points[::step] + ([points[-1]] if len(points) % step else [])
+    kept = points[::step]
+    # Le dernier point est le seul qui compte (la valeur actuelle) : l'ancienne
+    # condition ``len(points) % step`` le perdait ou le dupliquait selon le reste.
+    if kept[-1] is not points[-1]:
+        kept.append(points[-1])
     return line_chart([(f"{p.day:%d/%m}", float(p.value)) for p in kept])
 
 
