@@ -1,0 +1,34 @@
+# Tout ce qui ne doit JAMAIS entrer dans une image : une image se pousse sur un
+# registre, se rejoue et se partage — un secret ou un relevé bancaire qui y
+# tombe n'en ressort plus.
+.env
+.env.*
+!.env.example
+.powens_state.json
+powens_state.json
+.powens_finance.db
+*.db-wal
+*.db-shm
+*.db-journal
+.backups/
+categories.local.json
+
+# Inutile au conteneur, et suffisamment lourd pour ralentir chaque envoi.
+.git/
+.venv/
+venv/
+tests/
+docs/
+examples/
+scripts/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+.coverage
+htmlcov/
+.gstack/
+.claude/
+.DS_Store

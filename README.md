@@ -232,9 +232,13 @@ transactions sans se soucier de leur provenance.
 | `.powens_finance.db` | SQLite : historique des soldes, catégories forcées, état des séries |
 | `categories.local.json` | règles de catégorisation propres à vos relevés (voir l'exemple) |
 
-L'app **n'a aucune authentification** : elle refuse de démarrer sur une interface
-autre que loopback sans `APP_ALLOW_REMOTE=1`. Voir `.env.example` pour les réglages
-(`APP_HISTORY_MONTHS`, `APP_BASE_CURRENCY`, `APP_DB_PATH`…).
+En local, l'app **n'a pas d'authentification**, et refuse de démarrer sur une
+interface autre que loopback. Pour la publier il faut donc lui en donner une —
+`APP_AUTH_USER` / `APP_AUTH_PASSWORD` — ou la placer derrière un proxy
+authentifiant (`APP_ALLOW_REMOTE=1`) ; la marche à suivre complète, volume
+persistant compris, est dans [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md). Voir
+`.env.example` pour les réglages (`APP_HISTORY_MONTHS`, `APP_BASE_CURRENCY`,
+`APP_DB_PATH`…).
 
 > La catégorisation native Powens et le produit *indicators* n'étant pas
 > alimentés sur toutes les apps, la catégorisation est faite localement

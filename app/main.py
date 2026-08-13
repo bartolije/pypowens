@@ -22,6 +22,8 @@ from pypowens import PowensAPIError, PowensAuthError, PowensClient, PowensRateLi
 from . import (
     accounts,
     analysis,
+    auth,
+    collector,
     connections,
     detail,
     enrich,
@@ -36,7 +38,7 @@ from . import (
     transactions,
     webauth,
 )
-from .config import Settings, apply_overrides, get_settings
+from .config import Settings, apply_overrides, auth_credentials, get_settings
 from .data import clear_cache, load_connections, warm_up
 from .deps import get_client
 from .deps import get_settings as settings_dep
@@ -83,10 +85,29 @@ async def lifespan(app: FastAPI):
             months=app.state.settings.history_months,
         )
     )
+    # Déployée, l'app est le seul processus à voir le volume : la collecte doit
+    # donc partir d'ici, sans quoi plus aucun solde ne serait archivé (cf.
+    # collector.scheduled). En local la variable n'est pas posée et rien ne
+    # change — launchd continue d'appeler `python -m app.collector`.
+    every = app.state.settings.collect_every_hours
+    collecting = (
+        asyncio.create_task(
+            collector.scheduled(
+                app.state.client,
+                app.state.store,
+                app.state.settings,
+                hours=every,
+            )
+        )
+        if every > 0
+        else None
+    )
     try:
         yield
     finally:
         warm.cancel()
+        if collecting is not None:
+            collecting.cancel()
         await app.state.client.aclose()
         app.state.store.close()
 
@@ -95,11 +116,14 @@ app = FastAPI(title="Powens Finance", lifespan=lifespan)
 
 # Hôtes loopback seulement ("testserver" est le TestClient). Un domaine hostile
 # résolvant vers 127.0.0.1 (DNS rebinding) devenait same-origin et pouvait LIRE
-# soldes et transactions — l'app n'ayant aucune authentification. Derrière un
-# proxy authentifiant (APP_ALLOW_REMOTE=1), le Host est celui du proxy : à lui
-# de filtrer.
+# soldes et transactions — l'app n'ayant aucune authentification. Publiée, elle
+# répond au contraire sur un domaine inconnu à l'avance : il n'y a plus de liste
+# à vérifier, et c'est l'authentification qui prend le relais du filtre.
 _LOCAL_HOSTS = ["127.0.0.1", "localhost", "::1", "testserver"]
-if not (os.environ.get("APP_ALLOW_REMOTE") or "").strip():
+_PUBLISHED = auth_credentials() is not None or (
+    os.environ.get("APP_ALLOW_REMOTE") or ""
+).strip().lower() in {"1", "true", "yes"}
+if not _PUBLISHED:
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=_LOCAL_HOSTS)
 
 
@@ -108,17 +132,20 @@ async def _reject_cross_site_posts(request: Request, call_next):
     """Refuse les POST issus d'une autre origine (CSRF sans cookie ni token).
 
     Les 5 POST de l'app (catégorie, import, suppression, rattachement, synchro)
-    n'ont aucune protection propre et l'app aucune authentification : n'importe
-    quelle page web ouverte dans le navigateur pouvait soumettre un formulaire
-    vers http://127.0.0.1:8000/… Les navigateurs modernes joignent toujours
-    ``Origin`` aux POST cross-site ; une requête sans Origin (curl, tests) est
-    locale par construction.
+    n'ont aucune protection propre. En local, n'importe quelle page ouverte dans
+    le navigateur pouvait soumettre un formulaire vers http://127.0.0.1:8000/… ;
+    publiée, l'app n'est pas mieux lotie, car le navigateur rejoue de lui-même
+    les identifiants Basic sur une requête partie d'un autre site — s'y fier
+    comme protection serait une erreur. Le contrôle vaut donc dans les deux cas,
+    et n'accepte qu'une origine : celle de la page elle-même. Les navigateurs
+    modernes joignent toujours ``Origin`` aux POST cross-site ; une requête sans
+    Origin (curl, tests) est locale par construction.
     """
-    if request.method == "POST" and not (os.environ.get("APP_ALLOW_REMOTE") or "").strip():
+    if request.method == "POST":
         origin = request.headers.get("origin") or request.headers.get("referer")
         if origin:
             host = urlsplit(origin).hostname
-            if host not in ("127.0.0.1", "localhost", "::1", "testserver"):
+            if host not in _LOCAL_HOSTS and host != request.url.hostname:
                 return PlainTextResponse(
                     "Requête cross-site refusée : cette application n'accepte que "
                     "les formulaires émis par ses propres pages.",
@@ -163,11 +190,29 @@ async def _health_banner(request: Request, call_next):
     return await call_next(request)
 
 
+# Déclaré en DERNIER, donc exécuté en PREMIER : Starlette empile les middlewares
+# à l'envers de leur ordre d'ajout. Un visiteur sans identifiants doit être
+# éconduit avant que le bandeau de santé n'aille interroger Powens et la base
+# pour lui.
+app.middleware("http")(auth.basic_auth)
+
+
 app.mount(
     "/static",
     StaticFiles(directory=str(Path(__file__).resolve().parent / "static")),
     name="static",
 )
+
+@app.get("/health", include_in_schema=False)
+async def health() -> Response:
+    """Sonde de l'hébergeur : dit que l'app est vivante, et rien d'autre.
+
+    Seule route hors authentification (cf. ``auth._EXEMPT_PATHS``) : le contrôle
+    de mise en ligne s'exécute sans identifiants et prendrait un 401 pour une
+    panne, refusant de basculer le trafic sur un déploiement pourtant sain.
+    """
+    return PlainTextResponse("ok")
+
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon() -> Response:

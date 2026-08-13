@@ -13,6 +13,26 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(_REPO_ROOT / ".env")
 
 
+def _data_dir() -> Path:
+    """Répertoire des fichiers qui doivent survivre à un redéploiement.
+
+    Chez un hébergeur conteneurisé, le système de fichiers est reconstruit à
+    chaque déploiement : seul un volume persiste. Deux fichiers en dépendent, et
+    les perdre ne se rattrape pas — la base porte un historique de soldes que
+    Powens ne conserve pas, et l'état porte le token : sans lui, ``bootstrap``
+    crée un NOUVEL utilisateur Powens, donc un compte vierge où plus aucune
+    banque n'est connectée.
+
+    Railway renseigne ``RAILWAY_VOLUME_MOUNT_PATH`` de lui-même dès qu'un volume
+    est attaché au service : il n'y a aucun chemin à saisir nulle part. En local
+    la variable n'existe pas et tout retombe à la racine du dépôt, inchangé.
+    """
+    mount = (
+        os.environ.get("APP_DATA_DIR") or os.environ.get("RAILWAY_VOLUME_MOUNT_PATH") or ""
+    ).strip()
+    return Path(mount) if mount else _REPO_ROOT
+
+
 @dataclass(frozen=True)
 class Settings:
     domain: str
@@ -37,40 +57,77 @@ class Settings:
     # IWDA.AS = iShares Core MSCI World, coté en EUR à Amsterdam.
     benchmark_ticker: str = "IWDA.AS"
     benchmark_label: str = "MSCI World (IWDA)"
+    # Intervalle de la collecte lancée par le processus web ; 0 la désactive.
+    # Local : rien à régler, launchd déclenche déjà `python -m app.collector`.
+    # Déployé : c'est le seul déclencheur possible, un volume ne se montant que
+    # sur un service (donc pas sur un « cron job » voisin).
+    collect_every_hours: float = 0.0
 
     @property
     def redirect_uri(self) -> str:
+        """Adresse de retour du Webview, à déclarer telle quelle dans la console.
+
+        ``host``/``port`` décrivent l'interface d'écoute, ce qui suffit en local
+        mais ne veut plus rien dire dans un conteneur : on y écoute ``0.0.0.0``
+        sur un port interne, quand la banque doit renvoyer l'utilisateur vers le
+        domaine public. Railway publie celui-ci dans ``RAILWAY_PUBLIC_DOMAIN`` ;
+        ``APP_PUBLIC_URL`` reste prioritaire, pour un domaine personnalisé ou
+        tout autre hébergeur.
+        """
+        explicit = (os.environ.get("APP_PUBLIC_URL") or "").strip().rstrip("/")
+        if explicit:
+            return f"{explicit}/callback"
+        railway = (os.environ.get("RAILWAY_PUBLIC_DOMAIN") or "").strip().rstrip("/")
+        if railway:
+            return f"https://{railway}/callback"
         return f"http://{self.host}:{self.port}/callback"
 
     @property
     def state_path(self) -> Path:
         """Persisted Powens id_user + token (overridable, notably for tests)."""
-        return Path(os.environ.get("APP_STATE_PATH") or _REPO_ROOT / ".powens_state.json")
+        return Path(os.environ.get("APP_STATE_PATH") or _data_dir() / ".powens_state.json")
 
     @property
     def db_path(self) -> Path:
         """Local SQLite store (balance history, overrides, series state)."""
-        return Path(os.environ.get("APP_DB_PATH") or _REPO_ROOT / ".powens_finance.db")
+        return Path(os.environ.get("APP_DB_PATH") or _data_dir() / ".powens_finance.db")
 
 
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "0:0:0:0:0:0:0:1"}
 
 
+def auth_credentials() -> tuple[str, str] | None:
+    """Identifiants attendus par l'authentification HTTP, ou ``None``.
+
+    Lus à chaque appel plutôt que figés dans ``Settings`` : ce sont des secrets,
+    ils n'ont donc rien à faire dans un objet journalisé ou affiché, ni dans les
+    réglages modifiables depuis l'interface.
+    """
+    user = (os.environ.get("APP_AUTH_USER") or "").strip()
+    password = os.environ.get("APP_AUTH_PASSWORD") or ""
+    return (user, password) if user and password else None
+
+
 def _check_host(host: str) -> str:
     """Refuse to serve bank data on a non-loopback interface without opting in.
 
-    The app has no authentication whatsoever: binding it to 0.0.0.0 exposes every
-    balance and transaction to the local network. ``APP_ALLOW_REMOTE=1`` overrides
-    this, for someone who knowingly puts an authenticating proxy in front.
+    Servir sur autre chose que la loopback expose soldes et transactions ; il y
+    faut donc une porte. Deux façons de la fournir : l'authentification intégrée
+    (``APP_AUTH_USER``/``APP_AUTH_PASSWORD``), ou ``APP_ALLOW_REMOTE=1`` pour qui
+    place sciemment un proxy authentifiant devant. Sans l'une des deux, mieux
+    vaut un démarrage qui échoue qu'une app bancaire ouverte à tous.
     """
     if host in _LOOPBACK_HOSTS:
+        return host
+    if auth_credentials() is not None:
         return host
     if (os.environ.get("APP_ALLOW_REMOTE") or "").strip().lower() in {"1", "true", "yes"}:
         return host
     raise RuntimeError(
         f"APP_HOST={host!r} would expose the app (and all your bank data) beyond this "
-        "machine, and it has no authentication. Use 127.0.0.1, or set APP_ALLOW_REMOTE=1 "
-        "if it sits behind an authenticating reverse proxy."
+        "machine. Set APP_AUTH_USER / APP_AUTH_PASSWORD to enable the built-in "
+        "authentication, use 127.0.0.1, or set APP_ALLOW_REMOTE=1 if it sits behind "
+        "an authenticating reverse proxy."
     )
 
 
@@ -86,13 +143,19 @@ def get_settings() -> Settings:
         client_secret=os.environ.get("POWENS_CLIENT_SECRET") or None,
         access_token=(os.environ.get("POWENS_ACCESS_TOKEN") or "").strip() or None,
         host=_check_host((os.environ.get("APP_HOST") or "127.0.0.1").strip()),
-        port=int(os.environ.get("APP_PORT", "8000")),
+        # ``PORT`` est imposé par la plupart des hébergeurs (Railway, Render,
+        # Fly…), qui choisissent eux-mêmes le port d'écoute : le lire évite d'y
+        # recopier une variable dont on ne décide pas la valeur.
+        port=int(os.environ.get("APP_PORT") or os.environ.get("PORT") or "8000"),
         history_months=int(os.environ.get("APP_HISTORY_MONTHS", "36")),
         base_currency=(os.environ.get("APP_BASE_CURRENCY") or "EUR").strip().upper(),
         openfigi_api_key=os.environ.get("OPENFIGI_API_KEY") or None,
         silent_after_days=max(1, int(os.environ.get("APP_SILENT_DAYS", "3"))),
         benchmark_ticker=(os.environ.get("APP_BENCHMARK_TICKER") or "IWDA.AS").strip(),
         benchmark_label=(os.environ.get("APP_BENCHMARK_LABEL") or "MSCI World (IWDA)").strip(),
+        collect_every_hours=max(
+            0.0, float(os.environ.get("APP_COLLECT_EVERY_HOURS") or "0")
+        ),
     )
 
 

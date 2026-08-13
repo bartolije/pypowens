@@ -6,6 +6,42 @@ All notable changes to this project. Format loosely based on
 
 ## [0.2.0] — unreleased
 
+### Déploiement du 13/08/2026 — l'app peut quitter le poste de travail
+
+Voir [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md). Rien ne change en local : toutes
+les nouveautés sont inertes tant que leur variable n'est pas posée.
+
+#### Added
+- **Persistance sur volume** : `.powens_finance.db` et `.powens_state.json`
+  suivent `APP_DATA_DIR`, sinon `RAILWAY_VOLUME_MOUNT_PATH` (injectée dès qu'un
+  volume est attaché), sinon la racine du dépôt. Sans cela un redéploiement
+  perdait l'historique des soldes *et* le token — ce dernier faisant créer un
+  nouvel utilisateur Powens, donc un compte sans aucune banque connectée.
+- **Authentification HTTP Basic** (`APP_AUTH_USER`/`APP_AUTH_PASSWORD`, module
+  `app/auth.py`) : comparaison à temps constant, et verrouillage progressif d'un
+  client après 10 échecs, Basic n'opposant rien à la force brute. `/health`,
+  sondé par l'hébergeur, y échappe.
+- **Collecte planifiée dans le processus web** (`APP_COLLECT_EVERY_HOURS`,
+  `collector.scheduled`) : un volume ne se montant que sur un service, un « cron
+  job » voisin n'aurait pas vu la base.
+- **Notification par webhook** (`APP_NOTIFY_URL`, `APP_NOTIFY_TOKEN`) : POST JSON
+  `{title, message}`, pour Home Assistant, Gotify ou ntfy. La notification macOS
+  ne prévenait personne sur un serveur — or une connexion tombée non vue coûte
+  autant de jours de soldes.
+- `Dockerfile`, `.dockerignore` et `railway.json` ; `PORT` est lu quand
+  `APP_PORT` est absent, comme l'imposent la plupart des hébergeurs.
+
+#### Fixed
+- **`redirect_uri` suit le domaine public** (`APP_PUBLIC_URL`, sinon
+  `RAILWAY_PUBLIC_DOMAIN`) : il était bâti sur `host:port`, soit `0.0.0.0` dans
+  un conteneur — une adresse de retour inutilisable pour la banque.
+- **Le contrôle CSRF ne dépend plus de `APP_ALLOW_REMOTE`** : il se désactivait
+  précisément là où il devenait nécessaire. Le navigateur rejouant tout seul les
+  identifiants Basic sur une requête cross-site, l'authentification ne l'a jamais
+  remplacé. L'origine est désormais comparée à celle de la page.
+- `python -m app` n'ouvre plus de navigateur quand il écoute au-delà de la
+  loopback.
+
 ### Audit du 12/08/2026 (résumé — le détail est dans les six commits d'implémentation)
 
 #### Library — breaking-ish

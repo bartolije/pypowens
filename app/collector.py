@@ -157,12 +157,36 @@ def _collect_benchmark(conn: sqlite3.Connection, settings: Settings) -> int:
     return store.save_benchmark_values(conn, ticker, values)
 
 
-async def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s"
-    )
-    settings = get_settings()
-    conn = store.connect(settings.db_path)
+async def _push_alerts(client: PowensClient, conn: sqlite3.Connection) -> None:
+    """Pousse les alertes de santé hors de l'app.
+
+    Elles ne vivent sinon que dans le bandeau : tant que l'onglet n'est pas
+    ouvert, personne ne les voit. Le collecteur, lui, passe plusieurs fois par
+    jour — c'est lui qui notifie.
+    """
+    try:
+        from .health import connection_alerts  # import tardif (module routes)
+        from .notify import notify
+
+        alerts = await connection_alerts(client, conn)
+        lines = [f"{a['title']} : {a['detail']}" for a in alerts[:3]]
+        pending = store.pending_subscription_alerts(conn)
+        if pending:
+            lines.append(f"{pending} alerte(s) d'abonnement à examiner")
+        if lines:
+            notify("Powens Finance", " · ".join(lines))
+    except Exception:  # noqa: BLE001 — la notification ne casse jamais la collecte
+        _log.warning("notification des alertes impossible", exc_info=True)
+
+
+async def run_once(
+    client: PowensClient, conn: sqlite3.Connection, settings: Settings
+) -> CollectReport:
+    """Une passe complète : copie de sûreté, indice, collecte, alertes.
+
+    Extrait de ``main`` pour que le processus web puisse la rejouer à intervalle
+    régulier (cf. ``scheduled``) avec sa propre connexion et son propre client.
+    """
     # Copie de sûreté AVANT d'écrire : si ce passage tourne mal, l'état de la
     # veille reste récupérable dans .backups/.
     try:
@@ -171,38 +195,70 @@ async def main() -> None:
             _log.info("copie de sûreté écrite : %s", written)
     except (sqlite3.Error, OSError):
         _log.exception("copie de sûreté impossible — la collecte continue sans")
-    client = await bootstrap_client(settings)
     benchmark_count = _collect_benchmark(conn, settings)
     if benchmark_count:
         _log.info("indice %s : %d clôture(s) archivée(s)", settings.benchmark_ticker,
                   benchmark_count)
     try:
-        try:
-            report = await collect(client, conn, settings=settings)
-        except PowensAuthError:
-            # Le token finit toujours par mourir. Sans ce renouvellement, le
-            # collecteur s'arrêtait en silence — et chaque jour non collecté est
-            # un solde perdu pour toujours.
-            if not await try_renew(client, settings):
-                raise
-            _log.info("token renouvelé, reprise de la collecte")
-            report = await collect(client, conn, settings=settings)
-        # Les alertes ne vivent que dans le bandeau de l'app : tant que
-        # l'onglet n'est pas ouvert, personne ne les voit. Le collecteur, lui,
-        # passe plusieurs fois par jour — c'est lui qui pousse la notification.
-        try:
-            from .health import connection_alerts  # import tardif (module routes)
-            from .notify import notify
+        report = await collect(client, conn, settings=settings)
+    except PowensAuthError:
+        # Le token finit toujours par mourir. Sans ce renouvellement, le
+        # collecteur s'arrêtait en silence — et chaque jour non collecté est
+        # un solde perdu pour toujours.
+        if not await try_renew(client, settings):
+            raise
+        _log.info("token renouvelé, reprise de la collecte")
+        report = await collect(client, conn, settings=settings)
+    await _push_alerts(client, conn)
+    return report
 
-            alerts = await connection_alerts(client, conn)
-            lines = [f"{a['title']} : {a['detail']}" for a in alerts[:3]]
-            pending = store.pending_subscription_alerts(conn)
-            if pending:
-                lines.append(f"{pending} alerte(s) d'abonnement à examiner")
-            if lines:
-                notify("Powens Finance", " · ".join(lines))
-        except Exception:  # noqa: BLE001 — la notification ne casse jamais la collecte
-            _log.warning("notification des alertes impossible", exc_info=True)
+
+# Laisser à l'app le temps de se réveiller avant la première passe, sans pour
+# autant attendre un intervalle entier : un redéploiement en fin de journée ne
+# doit pas coûter le solde du jour.
+_FIRST_RUN_DELAY = 300
+
+
+async def scheduled(
+    client: PowensClient,
+    conn: sqlite3.Connection,
+    settings: Settings,
+    *,
+    hours: float,
+) -> None:
+    """Collecte périodique, à l'intérieur du processus qui sert l'app.
+
+    Chez un hébergeur, un volume ne se monte que sur un seul service : un « cron
+    job » voisin ne verrait pas la base, et écrirait dans un système de fichiers
+    jeté à la fin de son exécution. La planification doit donc vivre ici, faute
+    de quoi une app déployée cesse purement et simplement d'archiver les soldes
+    — précisément ce qu'un poste de travail éteint ne permettait déjà plus.
+
+    Aucune erreur n'interrompt la boucle : une panne réseau ou une API en vrac
+    ne doivent pas coûter tous les jours suivants.
+    """
+    delay = min(_FIRST_RUN_DELAY, hours * 3600)
+    while True:
+        await asyncio.sleep(delay)
+        delay = hours * 3600
+        try:
+            report = await run_once(client, conn, settings)
+            _log.info("collecte planifiée — %s", report)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 — la boucle survit à tout le reste
+            _log.exception("collecte planifiée en échec — nouvelle tentative au tour suivant")
+
+
+async def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s"
+    )
+    settings = get_settings()
+    conn = store.connect(settings.db_path)
+    client = await bootstrap_client(settings)
+    try:
+        report = await run_once(client, conn, settings)
     finally:
         await client.aclose()
         conn.close()
@@ -213,4 +269,12 @@ if __name__ == "__main__":
     asyncio.run(main())
 
 
-__all__ = ["CollectReport", "INVESTMENT_TYPES", "SPENDING_ACCOUNT_TYPES", "collect", "main"]
+__all__ = [
+    "CollectReport",
+    "INVESTMENT_TYPES",
+    "SPENDING_ACCOUNT_TYPES",
+    "collect",
+    "main",
+    "run_once",
+    "scheduled",
+]
