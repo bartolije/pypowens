@@ -197,3 +197,33 @@ def test_planned_next_try_is_not_doubled(client, fake_client):
     del fake_client._connections[0]["next_try"]
     fake_client._connections[0]["last_update"] = "2026-07-01 06:00:00"
     _reset(fake_client)
+
+
+# ------------------------------------------------------------- alertes budget
+
+def test_overrun_budget_shows_in_the_banner(client, fake_client):
+    """Enveloppe 10 €, dépense 42 € ce mois-ci → alerte sur TOUTES les pages."""
+    fake_client._txns.append(
+        {
+            "id": 950,
+            "id_account": 1,
+            "date": "2026-06-03",  # mois courant gelé (juin 2026)
+            "value": "-42.00",
+            "type": "card",
+            "wording": "NETFLIX.COM",
+            "simplified_wording": "NETFLIX.COM",
+            "original_wording": "NETFLIX.COM",
+            "coming": False,
+        }
+    )
+    _reset(fake_client)
+    client.get("/comptes")  # chauffe le cache (condition d'affichage du bandeau)
+    client.post("/budgets", data={"categorie": "Streaming / Médias", "montant": "10"})
+
+    body = client.get("/import").text  # une page SANS rapport avec l'analyse
+    assert "Budget Streaming / Médias dépassé" in body
+    assert "/analyse#budgets" in body
+
+    client.post("/budgets", data={"categorie": "Streaming / Médias", "montant": ""})
+    fake_client._txns.pop()
+    _reset(fake_client)

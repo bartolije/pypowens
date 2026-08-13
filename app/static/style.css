@@ -532,13 +532,17 @@ input.search:focus { border-color: var(--text-muted); }
 .alert-error    { border-left-color: #d6484f; background: rgba(214, 72, 79, 0.07); }
 .alert-silent   { border-left-color: #e8a838; background: rgba(232, 168, 56, 0.07); }
 .alert-excluded { border-left-color: #e8a838; background: rgba(232, 168, 56, 0.07); }
+.alert-budget   { border-left-color: #e8a838; background: rgba(232, 168, 56, 0.07); }
 .alert-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
 .alert-error    .alert-dot { background: #d6484f; }
 .alert-silent   .alert-dot,
-.alert-excluded .alert-dot { background: #e8a838; }
+.alert-excluded .alert-dot,
+.alert-budget   .alert-dot { background: #e8a838; }
 .alert-detail { color: var(--text-secondary); }
 .alert-action { margin-left: auto; }
 form.alert-action { margin: 0; }
+
+.repartition-fill.fill-over { background: var(--red); }
 
 /* ── Notes de périmètre sous la courbe ──────────────────────────────────── */
 .perimeter-notes { margin-top: 10px; display: grid; gap: 2px; }

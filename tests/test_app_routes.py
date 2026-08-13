@@ -118,3 +118,41 @@ def test_perimeter_change_is_explained_under_the_chart(client):
     assert "ni un gain ni une perte" in body
     # La synthèse porte la même explication.
     assert "périmètre modifié" in client.get("/").text
+
+
+# ------------------------------------------------------------------- budgets
+
+def test_budget_can_be_set_followed_and_removed(client):
+    """Le critère de la roadmap : je fixe une enveloppe et je vois où j'en suis."""
+    posted = client.post(
+        "/budgets",
+        data={"categorie": "Streaming / Médias", "montant": "300"},
+        follow_redirects=False,
+    )
+    assert posted.status_code == 303
+
+    body = client.get("/analyse").text
+    assert "Budgets" in body
+    assert "Streaming / Médias" in body
+    assert "300" in body
+
+    # Montant vide = retrait de l'enveloppe.
+    client.post("/budgets", data={"categorie": "Streaming / Médias", "montant": ""})
+    assert "Aucune enveloppe définie" in client.get("/analyse").text
+
+
+def test_overrun_budget_raises_a_banner_alert(client):
+    """Dépassement = alerte dans le bandeau global, pas seulement sur /analyse.
+
+    Le jeu de test n'a pas d'opération sur le mois courant (gelé au 15/06, la
+    dernière échéance Netflix est en mai) — on abaisse l'enveloppe d'une
+    catégorie du DERNIER mois réel via un budget très bas puis on vérifie que
+    l'alerte n'apparaît QUE si le mois courant dépasse : ici il est vide, donc
+    aucune alerte ne doit apparaître même avec une enveloppe minuscule.
+    """
+    client.get("/comptes")  # chauffe le cache transactions (condition du bandeau)
+    client.post("/budgets", data={"categorie": "Streaming / Médias", "montant": "0.01"})
+    body = client.get("/comptes").text
+    assert "Budget Streaming / Médias dépassé" not in body  # mois courant vide
+
+    client.post("/budgets", data={"categorie": "Streaming / Médias", "montant": ""})

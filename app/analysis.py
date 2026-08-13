@@ -12,13 +12,13 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, Form, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from . import store
 from .data import load_internal_ids, load_spending_transactions
 from .deps import get_client, get_settings, get_store
-from .enrich import CONSUMPTION_TYPES, resolve_category_txn
+from .enrich import CONSUMPTION_TYPES, all_categories, resolve_category_txn
 from .helpers import bar_chart, donut_chart, month_key, month_label_fr
 from .recurring import detect_recurring
 from .web import templates
@@ -143,6 +143,28 @@ async def analysis(
         [("Récurrent", float(recurring_spend)), ("Ponctuel", float(ponctuel_spend))]
     )
 
+    # --- Budgets : suivi du mois COURANT --------------------------------------
+    # /analyse raisonne en mois complets ; une enveloppe se suit en temps réel
+    # (« où j'en suis le 20 »). Les dépenses du mois en cours sont donc
+    # calculées à part, catégories corrigées comprises.
+    budgets = store.budgets(conn)
+    current_key = f"{date.today().year:04d}-{date.today().month:02d}"
+    month_by_cat: dict[str, Decimal] = defaultdict(Decimal)
+    for t in all_spend:
+        if month_key(t.date) == current_key:
+            month_by_cat[resolve_category_txn(t, overrides)] += abs(t.value or Decimal(0))
+    budget_rows = [
+        {
+            "category": cat,
+            "budget": amount,
+            "spent": month_by_cat.get(cat, Decimal(0)),
+            "pct": min(200.0, float(month_by_cat.get(cat, Decimal(0)) / amount * 100)),
+            "over": month_by_cat.get(cat, Decimal(0)) > amount,
+            "remaining": amount - month_by_cat.get(cat, Decimal(0)),
+        }
+        for cat, amount in sorted(budgets.items())
+    ]
+
     # --- 5. Optional Powens indicators (null on this app) ---------------------
     try:
         indic = await client.get_indicators()
@@ -171,8 +193,27 @@ async def analysis(
             "recurring_monthly": recurring_monthly,
             "ponctuel_monthly": ponctuel_monthly,
             "committed_monthly": committed_monthly,
+            "budget_rows": budget_rows,
+            "budget_categories": all_categories(),
+            "current_month_label": month_label_fr(current_key),
             "recurring_count": len(recurring_items),
             "indicator_rows": indicator_rows,
         }
     )
     return templates.TemplateResponse(request, "analysis.html", ctx)
+
+
+@router.post("/budgets")
+async def set_budget(
+    categorie: str = Form(...),
+    montant: str = Form(default=""),
+    conn: sqlite3.Connection = Depends(get_store),  # noqa: B008
+) -> RedirectResponse:
+    """Pose ou retire l'enveloppe mensuelle d'une catégorie (vide/0 = retirer)."""
+    cleaned = montant.strip().replace(",", ".").replace(" ", "")
+    try:
+        amount = Decimal(cleaned) if cleaned else None
+    except ArithmeticError:
+        amount = None
+    store.set_budget(conn, categorie, amount)
+    return RedirectResponse("/analyse#budgets", status_code=303)

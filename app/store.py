@@ -41,6 +41,15 @@ CREATE TABLE IF NOT EXISTS category_override (
     updated      TEXT NOT NULL
 );
 
+-- Enveloppes mensuelles par catégorie de dépense. Le suivi (« où j'en suis le
+-- 20 du mois ») se calcule sur le mois COURANT, contrairement à /analyse qui
+-- raisonne en mois complets.
+CREATE TABLE IF NOT EXISTS budget (
+    category TEXT PRIMARY KEY,
+    monthly  TEXT NOT NULL,               -- Decimal en texte
+    updated  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS series_state (
     series_key    TEXT PRIMARY KEY,       -- merchant key + periodicity
     merchant      TEXT NOT NULL,
@@ -528,6 +537,30 @@ def clear_override(conn: sqlite3.Connection, merchant_key: str) -> None:
     conn.execute(
         "DELETE FROM category_override WHERE merchant_key = ?", (merchant_key.upper().strip(),)
     )
+    conn.commit()
+
+
+# ------------------------------------------------------------------- budgets
+
+
+def budgets(conn: sqlite3.Connection) -> dict[str, Decimal]:
+    """``{catégorie: enveloppe mensuelle}`` — vide si aucun budget défini."""
+    return {
+        row["category"]: Decimal(row["monthly"])
+        for row in conn.execute("SELECT category, monthly FROM budget")
+    }
+
+
+def set_budget(conn: sqlite3.Connection, category: str, monthly: Decimal | None) -> None:
+    """Pose (ou retire, si ``None``/≤0) l'enveloppe mensuelle d'une catégorie."""
+    category = category.strip()
+    if monthly is None or monthly <= 0:
+        conn.execute("DELETE FROM budget WHERE category = ?", (category,))
+    else:
+        conn.execute(
+            "INSERT OR REPLACE INTO budget (category, monthly, updated) VALUES (?, ?, ?)",
+            (category, str(monthly), date.today().isoformat()),
+        )
     conn.commit()
 
 

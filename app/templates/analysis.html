@@ -125,6 +125,59 @@
     </div>
   </div>
 
+
+  <div class="card mt-3" id="budgets">
+    <div class="card-header">
+      <h3 class="card-title">Budgets — {{ current_month_label }}</h3>
+      <span class="text-secondary small">enveloppes mensuelles, suivies sur le mois en cours</span>
+    </div>
+    <div class="card-body">
+      {% if budget_rows %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Catégorie</th><th class="num">Dépensé</th><th style="width: 30%;">Progression</th>
+                <th class="num">Enveloppe</th><th class="num">Reste</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for b in budget_rows %}
+            <tr>
+              <td>{{ b.category }} {% if b.over %}<span class="badge badge-red">dépassé</span>{% endif %}</td>
+              <td class="num"><span class="amount">{{ b.spent | money }}</span></td>
+              <td>
+                <div class="repartition">
+                  <div class="repartition-bar"><div class="repartition-fill {{ 'fill-over' if b.over }}" style="width: {{ [b.pct, 100] | min | round(1) }}%"></div></div>
+                  {{ '%.0f'|format(b.pct) }} %
+                </div>
+              </td>
+              <td class="num"><span class="amount">{{ b.budget | money }}</span></td>
+              <td class="num {{ 'text-red' if b.over else 'text-green' }}"><span class="amount">{{ b.remaining | money }}</span></td>
+              <td>
+                <form method="post" action="/budgets" style="display: flex; gap: 4px; margin: 0;">
+                  <input type="hidden" name="categorie" value="{{ b.category }}">
+                  <input type="text" name="montant" class="search" style="width: 90px;" value="{{ b.budget }}" title="Vider pour retirer l'enveloppe">
+                  <button type="submit" class="btn btn-sm">OK</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-secondary">Aucune enveloppe définie — fixez-en une ci-dessous
+        (ex : 300 €/mois de Restauration) et suivez-la ici au fil du mois.</p>
+      {% endif %}
+      <form method="post" action="/budgets" class="d-flex align-center gap-2 flex-wrap" style="margin-top: 12px;">
+        <select name="categorie" class="search">
+          {% for cat in budget_categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
+        </select>
+        <input type="text" name="montant" class="search" placeholder="€/mois" style="width: 110px;">
+        <button type="submit" class="btn btn-sm btn-primary">Ajouter / modifier</button>
+      </form>
+    </div>
+  </div>
+
   {% if indicator_rows %}
   <div class="card mt-3">
     <div class="card-header"><h3 class="card-title">Indicateurs Powens</h3></div>

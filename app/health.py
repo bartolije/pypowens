@@ -24,7 +24,10 @@ from typing import Any
 
 from pypowens import PowensClient
 
-from .data import load_all_accounts, load_connections
+from . import data, store
+from .data import load_all_accounts, load_connections, load_internal_ids, load_spending_transactions
+from .enrich import CONSUMPTION_TYPES, resolve_category_txn
+from .helpers import month_key
 from .recap import STATE_LABELS, USER_ACTION_STATES
 
 # Powens synchronise chaque connexion au moins une fois par jour : trois jours
@@ -155,4 +158,53 @@ async def connection_alerts(
                 "amount": account.balance or Decimal(0),
             }
         )
+
+    if conn is not None:
+        alerts.extend(await _budget_overruns(client, conn))
+    return alerts
+
+
+async def _budget_overruns(
+    client: PowensClient, conn: sqlite3.Connection
+) -> list[dict[str, Any]]:
+    """Enveloppes dépassées ce mois-ci — seulement si l'historique est déjà chaud.
+
+    Le bandeau tourne sur TOUTES les pages : déclencher le téléchargement complet
+    de l'historique depuis /import ou /connect serait payer le prix fort pour une
+    alerte d'appoint. Cache froid → pas d'alerte budget ; elle apparaît dès la
+    première visite d'une page de données (qui chauffe le cache de toute façon).
+    """
+    budgets = store.budgets(conn)
+    if not budgets or data._cache.get(data._TXN_KEY) is None:
+        return []
+    txns = await load_spending_transactions(client, conn=conn)
+    internal = await load_internal_ids(client, conn=conn)
+    overrides = store.all_overrides(conn)
+    current = f"{datetime.now().year:04d}-{datetime.now().month:02d}"
+    spent: dict[str, Decimal] = {}
+    for t in txns:
+        if (
+            t.value
+            and t.value < 0
+            and t.id not in internal
+            and t.type in CONSUMPTION_TYPES
+            and month_key(t.date) == current
+        ):
+            category = resolve_category_txn(t, overrides)
+            spent[category] = spent.get(category, Decimal(0)) + abs(t.value)
+    alerts: list[dict[str, Any]] = []
+    for category, envelope in sorted(budgets.items()):
+        used = spent.get(category, Decimal(0))
+        if used > envelope:
+            alerts.append(
+                {
+                    "kind": "budget",
+                    "title": f"Budget {category} dépassé",
+                    "detail": f"au-delà de l'enveloppe de {envelope} € ce mois-ci",
+                    "action_url": "/analyse#budgets",
+                    "sync_id": None,
+                    "action_label": "Voir",
+                    "amount": used - envelope,
+                }
+            )
     return alerts

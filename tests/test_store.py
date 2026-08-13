@@ -349,3 +349,18 @@ def test_temporary_absence_is_not_a_perimeter_change(conn):
     _snap(conn, d + timedelta(days=1), Acc(1))
     _snap(conn, d + timedelta(days=2), Acc(1), Acc(2, balance=Decimal("50")))
     assert store.perimeter_changes(conn) == []
+
+
+# ------------------------------------------------------------------- budgets
+
+def test_budget_roundtrip_and_removal(conn):
+    store.set_budget(conn, "Restauration", Decimal("300"))
+    store.set_budget(conn, "Carburant", Decimal("120.50"))
+    assert store.budgets(conn) == {
+        "Restauration": Decimal("300"), "Carburant": Decimal("120.50")
+    }
+    store.set_budget(conn, "Restauration", Decimal("350"))  # écrasement
+    assert store.budgets(conn)["Restauration"] == Decimal("350")
+    store.set_budget(conn, "Carburant", None)  # retrait
+    store.set_budget(conn, "Restauration", Decimal("0"))  # 0 = retrait aussi
+    assert store.budgets(conn) == {}
