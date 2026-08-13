@@ -2,8 +2,12 @@
    filtrer ou synchroniser ne recharge donc pas la page entière. #}
 <div id="connexions-liste">
 
+{# Texte NU : cette valeur part aussi dans des attributs title=, où le moindre
+   balisage casse l'attribut (« Synchronisé <span…>jamais</span> » refermait le
+   title au premier guillemet et laissait « ">✓ » à l'écran). La couleur est
+   décidée par l'appelant, qui seul sait si l'âge est une bonne nouvelle. #}
 {% macro age(days) -%}
-  {%- if days is none -%}<span class="text-muted">jamais</span>
+  {%- if days is none -%}jamais
   {%- elif days == 0 -%}aujourd'hui
   {%- elif days == 1 -%}hier
   {%- else -%}il y a {{ days }} j
@@ -13,20 +17,25 @@
 {% for card in cards %}
 {# Repliée par défaut, SAUF si la connexion est en peine : ce qu'on vient
    vérifier doit être visible sans un clic de plus. #}
-<details class="card mb-3 connection-card" {{ 'open' if not card.ok }}>
+<details class="card mb-3 connection-card" {{ 'open' if not card.ok or card.never_synced }}>
   <summary class="card-header" style="cursor: pointer;">
     <div class="d-flex align-center gap-2 flex-wrap">
       <span class="monogram" style="background: {{ card.color }}; color: {{ card.ink }};"
             aria-hidden="true">{{ card.initials }}</span>
       <strong>{{ card.name }}</strong>
-      {% if card.ok %}
-        <span class="sync-badge sync-ok" title="Synchronisé {{ age(card.age_days) }}">✓</span>
-      {% else %}
+      {% if not card.ok %}
         <span class="sync-badge sync-err">{{ card.state_label }}</span>
+      {% elif card.never_synced %}
+        {# Connexion établie mais jamais synchronisée : ni une erreur, ni un
+           état sain — il ne s'est simplement rien passé encore. #}
+        <span class="sync-badge sync-pending"
+              title="Connexion établie, première synchronisation en attente">jamais synchronisée</span>
+      {% else %}
+        <span class="sync-badge sync-ok" title="Synchronisé {{ age(card.age_days) }}">✓</span>
       {% endif %}
       <span class="text-secondary small">
         {{ card.accounts | length }} compte{{ 's' if card.accounts | length > 1 }}
-        · mis à jour {{ age(card.age_days) }}
+        {%- if not card.never_synced %} · mis à jour {{ age(card.age_days) }}{% endif %}
       </span>
     </div>
     <span class="d-flex align-center gap-2">
@@ -46,7 +55,7 @@
   <div class="card-body" style="padding-bottom: 8px;">
     <div class="text-secondary small">
       Dernière synchro :
-      <strong class="{{ 'text-red' if card.age_days and card.age_days > silent_after_days }}">{{ age(card.age_days) }}</strong>
+      <strong class="{% if card.never_synced %}text-orange{% elif card.age_days and card.age_days > silent_after_days %}text-red{% endif %}">{{ age(card.age_days) }}</strong>
       {% if card.last_update %}({{ card.last_update.strftime('%d/%m/%Y à %H:%M') }}){% endif %}
       {% if card.next_try %}
         · prochaine prévue le {{ card.next_try.strftime('%d/%m à %H:%M') }}

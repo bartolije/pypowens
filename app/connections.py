@@ -62,6 +62,7 @@ class ConnectionCard:
     last_update: datetime | None
     age_days: int | None
     next_try: datetime | None
+    never_synced: bool = False
     initials: str = "?"
     color: str = "#8a8a8a"
     ink: str = "#ffffff"
@@ -122,6 +123,7 @@ async def connections_page(
                 (now - connection.last_update).days if connection.last_update else None
             ),
             next_try=connection.next_try,
+            never_synced=connection.last_update is None,
         )
         card.initials, card.color, card.ink = monogram(connection.connector)
         for account in accounts:
@@ -151,8 +153,9 @@ async def connections_page(
         )
         cards.append(card)
 
-    # Les connexions en peine d'abord : c'est ce qu'on vient vérifier.
-    cards.sort(key=lambda c: (c.ok, -(c.age_days or 0)))
+    # Les connexions en peine d'abord — erreurs, puis jamais synchronisées,
+    # puis les plus anciennes : c'est ce qu'on vient vérifier.
+    cards.sort(key=lambda c: (c.ok, not c.never_synced, -(c.age_days or 0)))
     if statut == "erreur":
         cards = [c for c in cards if not c.ok]
     elif statut == "muette":

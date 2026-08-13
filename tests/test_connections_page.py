@@ -98,3 +98,52 @@ def test_missing_next_try_is_called_out(client, fake_client):
 
 def test_page_is_reachable_from_the_navigation(client):
     assert 'href="/connexions"' in client.get("/comptes").text
+
+
+# ------------------------------------- connexion jamais synchronisée
+
+def test_a_never_synced_connection_is_not_shown_as_healthy(client, fake_client):
+    """Une connexion tout juste établie n'est ni en erreur ni synchronisée :
+    un ✓ vert y était trompeur, et « jamais » n'est pas une bonne nouvelle."""
+    import app.data
+
+    fake_client._connections[0]["last_update"] = None
+    app.data.clear_cache()
+
+    body = client.get("/connexions").text
+    assert "jamais synchronisée" in body
+    assert "sync-pending" in body
+    assert "sync-ok" not in body
+    # La carte est dépliée : c'est ce qu'on vient regarder.
+    assert "<details class=\"card mb-3 connection-card\" open>" in body
+
+    fake_client._connections[0]["last_update"] = "2026-07-01 06:00:00"
+    app.data.clear_cache()
+
+
+def test_the_age_macro_never_injects_markup_into_attributes(client):
+    """« Synchronisé <span…>jamais</span> » dans un title= refermait l'attribut
+    au premier guillemet et laissait « ">✓ » à l'écran."""
+    body = client.get("/connexions").text
+    assert 'title="Synchronisé <span' not in body
+    assert '<span class="text-muted">jamais</span>"' not in body
+
+
+def test_a_never_synced_connection_is_auto_relaunched(client, fake_client):
+    """Sans last_update ET sans next_try, rien ne la synchroniserait jamais :
+    c'est le cas qui mérite le plus la relance, et il était exclu."""
+    import app.data
+    import app.main
+
+    fake_client._connections[0]["last_update"] = None
+    fake_client._connections[0].pop("next_try", None)
+    fake_client.synced_connections = []
+    app.main.app.state.auto_sync_at = None
+    app.data.clear_cache()
+
+    client.get("/comptes")
+    assert fake_client.synced_connections == [1]
+
+    fake_client._connections[0]["last_update"] = "2026-07-01 06:00:00"
+    fake_client.synced_connections = []
+    app.data.clear_cache()

@@ -57,8 +57,11 @@ async def auto_sync_stuck_connections(client: PowensClient) -> list[int]:
     for connection in await load_connections(client):
         if connection.id is None or connection.state or connection.error_message:
             continue
+        # last_update absent = JAMAIS synchronisée : c'est le cas qui mérite le
+        # plus une relance, or il était exclu — une connexion tout juste établie
+        # et sans next_try planifié serait restée vide indéfiniment.
         last_update = connection.last_update
-        if last_update is None or (now - last_update) < timedelta(
+        if last_update is not None and (now - last_update) < timedelta(
             hours=AUTO_SYNC_AFTER_HOURS
         ):
             continue
