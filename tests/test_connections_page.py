@@ -25,7 +25,7 @@ def test_page_lists_connections_with_their_accounts(client):
 def test_each_account_shows_its_last_operation_and_count(client):
     body = _text(client.get("/connexions").text)
     assert "Dernière opération" in body
-    assert "Opérations" in body
+    assert "Opé." in body
     # Le compte courant du jeu de test porte des opérations : le compteur suit.
     assert re.search(r"\d+ ", body)
 
@@ -36,7 +36,7 @@ def test_the_three_dates_are_distinguished(client):
     body = _text(client.get("/connexions").text)
     assert "Dernière synchro" in body
     assert "Dernière opération" in body
-    assert "Dernier solde archivé" in body
+    assert "Solde archivé" in body
     assert "trois questions différentes" in body.lower() or "Trois dates" in body
 
 
@@ -54,9 +54,10 @@ def test_a_broken_connection_is_shown_first_with_its_repair_path(client, fake_cl
 
 
 def test_a_healthy_connection_offers_a_plain_sync(client):
+    """Le bouton passe par HTMX : la liste se rafraîchit sans recharger la page."""
     body = client.get("/connexions").text
-    assert 'action="/synchroniser/1"' in body
-    assert "Synchronisé" in body
+    assert 'hx-post="/connexions/1/synchroniser' in body
+    assert 'hx-target="#connexions-liste"' in body
 
 
 def test_disabled_accounts_are_listed_and_flagged(client, fake_client):

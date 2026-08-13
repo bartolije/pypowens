@@ -563,6 +563,39 @@ th.sortable { cursor: pointer; }
   }
 }
 
+/* ── Monogrammes de banque ────────────────────────────────────────────────── */
+/* Powens ne sert aucun logo sur cette app (l'endpoint renvoie une liste vide),
+   mais l'objet connecteur porte sa couleur de marque et un slug : de quoi
+   fabriquer une pastille reconnaissable, sans CDN ni requête sortante. */
+.monogram {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 50%;
+  font-size: 0.7rem; font-weight: 800; letter-spacing: -0.02em;
+  text-shadow: 0 1px 1px rgba(0,0,0,0.2);
+  flex: 0 0 auto;
+}
+
+/* Cartes de connexion repliables (details/summary natif, zéro JS). */
+.connection-card > summary { list-style: none; }
+.connection-card > summary::-webkit-details-marker { display: none; }
+.connection-card > summary::before {
+  content: "▸"; color: var(--text-muted); margin-right: 8px; font-size: 0.8rem;
+}
+.connection-card[open] > summary::before { content: "▾"; }
+.connection-card > summary:hover { background: var(--bg-card-hover); }
+/* Le chevron, l'identité et les actions sont trois items flex d'un
+   space-between : sans cela, l'identité se retrouvait centrée au lieu de
+   suivre le chevron. */
+.connection-card > summary > div:first-of-type { flex: 1; }
+
+/* Indicateur HTMX : visible seulement pendant la requête. */
+.htmx-indicator { opacity: 0; transition: opacity 0.15s; }
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator { opacity: 1; }
+
+/* Réglages, détaché en bas de la barre latérale. */
+.sidebar-bottom { margin-top: auto; border-top: 1px solid var(--border); padding-top: 14px; }
+
 /* ── Bandeau santé des connexions ────────────────────────────────────────── */
 .alert-strip { border-bottom: 1px solid var(--border); }
 .alert-item {

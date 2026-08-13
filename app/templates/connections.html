@@ -1,127 +1,32 @@
 {% extends "base.html" %}
-{% block title %}Connexions · Powens Finance{% endblock %}
+{% block title %}Mes comptes bancaires · Powens Finance{% endblock %}
 
 {% block topbar_left %}
-  <span class="section-title">Connexions</span>
+  <span class="section-title">Mes comptes bancaires</span>
 {% endblock %}
-
-{% macro age(days, label) -%}
-  {%- if days is none -%}<span class="text-muted">jamais</span>
-  {%- elif days == 0 -%}<span class="text-green">aujourd'hui</span>
-  {%- elif days == 1 -%}hier
-  {%- else -%}il y a {{ days }} j
-  {%- endif -%}
-{%- endmacro %}
 
 {% block content %}
 
-<p class="text-secondary mb-3">
-  Ce que chaque banque remonte, depuis quand, et si notre historique local suit.
-  Une connexion muette est signalée au-delà de {{ silent_after_days }} jours ;
-  les opérations sont comptées sur {{ history_months }} mois.
-</p>
-
-{% for card in cards %}
-<div class="card mb-3">
-  <div class="card-header">
-    <div class="d-flex align-center gap-2 flex-wrap">
-      <h3 class="card-title" style="margin: 0;">{{ card.name }}</h3>
-      {% if card.ok %}
-        <span class="sync-badge sync-ok">Synchronisé</span>
-      {% else %}
-        <span class="sync-badge sync-err">{{ card.state_label }}</span>
-      {% endif %}
-      <span class="text-secondary small">
-        {{ card.accounts | length }} compte{{ 's' if card.accounts | length > 1 }}
-        · <span class="amount">{{ card.total | money(currency) }}</span>
-      </span>
-    </div>
-    <div class="d-flex align-center gap-2">
-      {% if card.needs_user %}
-        <a class="btn btn-sm btn-primary" href="/reconnecter/{{ card.id }}">Reprendre</a>
-      {% elif card.id %}
-        <form method="post" action="/synchroniser/{{ card.id }}" style="margin: 0;">
-          <button type="submit" class="btn btn-sm">Synchroniser</button>
-        </form>
-      {% endif %}
-    </div>
+<div class="d-flex align-center justify-between flex-wrap gap-2 mb-3">
+  <p class="text-secondary" style="margin: 0; max-width: 62ch;">
+    Ce que chaque banque remonte, depuis quand, et si notre historique local suit.
+    Une connexion muette est signalée au-delà de {{ silent_after_days }} jours ;
+    les opérations sont comptées sur {{ history_months }} mois.
+  </p>
+  <div class="d-flex align-center gap-2">
+    {# Le filtre passe par HTMX : seule la liste est recalculée. #}
+    <nav class="period-pills" aria-label="Filtrer par état">
+      {% for key, label in [('tous', 'Toutes'), ('erreur', 'En erreur'), ('muette', 'Muettes')] %}
+      <a href="/connexions?statut={{ key }}" class="{{ 'active' if statut == key }}"
+         hx-get="/connexions?statut={{ key }}" hx-target="#connexions-liste"
+         hx-swap="outerHTML" hx-push-url="true">{{ label }}</a>
+      {% endfor %}
+    </nav>
+    <a class="btn btn-primary" href="/connect">+ Ajouter une banque</a>
   </div>
-
-  <div class="card-body" style="padding-bottom: 8px;">
-    <div class="d-flex gap-2 flex-wrap text-secondary small">
-      <span>
-        Dernière synchro :
-        <strong class="{{ 'text-red' if card.age_days and card.age_days > silent_after_days }}">
-          {{ age(card.age_days) }}
-        </strong>
-        {% if card.last_update %}({{ card.last_update.strftime('%d/%m/%Y à %H:%M') }}){% endif %}
-      </span>
-      {% if card.next_try %}
-      <span>· Prochaine prévue : {{ card.next_try.strftime('%d/%m à %H:%M') }}</span>
-      {% else %}
-      <span class="text-muted">· aucune synchro planifiée</span>
-      {% endif %}
-    </div>
-  </div>
-
-  {% if card.accounts %}
-  <div class="table-wrap">
-    <table class="sortable">
-      <thead>
-        <tr>
-          <th>Compte</th>
-          <th>Type</th>
-          <th class="num">Solde</th>
-          <th>Dernière opération</th>
-          <th class="num">Opérations</th>
-          <th>Dernier solde archivé</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in card.accounts %}
-        <tr {% if row.disabled %}class="opacity-50"{% endif %}>
-          <td>
-            <a href="/patrimoine/{{ row.account.id }}">{{ aliases.get(row.account.id) or row.account.name or '—' }}</a>
-            {% if row.disabled %}
-            <span class="badge badge-red" title="Powens l'a désactivé : son solde ne compte plus dans le patrimoine">hors total</span>
-            {% endif %}
-            {% if row.account.iban %}
-            <div class="text-muted small">{{ row.account.iban | iban }}</div>
-            {% endif %}
-          </td>
-          <td class="text-secondary">{{ row.family }}</td>
-          <td class="num" data-sort="{{ row.account.balance or 0 }}">
-            <span class="amount">{{ row.account.balance | money(row.account.currency or currency) }}</span>
-          </td>
-          <td data-sort="{{ row.last_txn.isoformat() if row.last_txn else '' }}">
-            {% if row.last_txn %}
-              {{ row.last_txn.strftime('%d/%m/%Y') }}
-              <span class="text-muted small">({{ age((today - row.last_txn).days) }})</span>
-            {% else %}
-              <span class="text-muted">aucune sur {{ history_months }} mois</span>
-            {% endif %}
-          </td>
-          <td class="num" data-sort="{{ row.txn_count }}">{{ row.txn_count or '—' }}</td>
-          <td data-sort="{{ row.last_snapshot.isoformat() if row.last_snapshot else '' }}">
-            {% if row.last_snapshot %}
-              {{ age((today - row.last_snapshot).days) }}
-              {% if (today - row.last_snapshot).days > 1 %}
-              <span class="text-muted small" title="Le collecteur n'a pas archivé ce compte récemment">⚠</span>
-              {% endif %}
-            {% else %}
-              <span class="text-muted">jamais</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <div class="card-body"><p class="text-secondary">Aucun compte remonté par cette connexion.</p></div>
-  {% endif %}
 </div>
-{% endfor %}
+
+{% include "_connections_list.html" %}
 
 {% if orphans %}
 <div class="card mb-3">
@@ -137,12 +42,13 @@
 </div>
 {% endif %}
 
-{% if imported %}
+{# ── Relevés importés : une source de données comme une autre, donc ici ── #}
 <div class="card mb-3">
   <div class="card-header">
     <h3 class="card-title">Relevés importés</h3>
-    <a class="btn btn-sm" href="/import">Gérer</a>
+    <span class="text-secondary small">pour les comptes qu'aucun connecteur ne remonte</span>
   </div>
+  {% if imported %}
   <div class="table-wrap">
     <table>
       <thead>
@@ -165,8 +71,16 @@
       </tbody>
     </table>
   </div>
+  {% else %}
+  <div class="card-body text-secondary">
+    Aucun relevé importé. Un connecteur absent ou en panne laisse un compte
+    entier hors de l'analyse — un export CSV de la banque comble le trou.
+  </div>
+  {% endif %}
+  <div class="card-footer">
+    <a class="btn btn-sm" href="/import">Importer un relevé…</a>
+  </div>
 </div>
-{% endif %}
 
 <div class="card">
   <div class="card-body text-secondary small">
@@ -174,12 +88,11 @@
     La <em>synchro</em> dit quand Powens a interrogé la banque. La <em>dernière
     opération</em> dit quand le compte a bougé — une banque parfaitement
     synchronisée peut n'avoir aucun mouvement depuis des semaines, c'est normal.
-    Le <em>dernier solde archivé</em> dit ce que notre courbe connaît : s'il
-    prend du retard alors que la synchro est fraîche, c'est le collecteur local
-    qui ne tourne plus.</p>
+    Le <em>solde archivé</em> dit ce que notre courbe connaît : s'il prend du
+    retard alors que la synchro est fraîche, c'est le collecteur local qui ne
+    tourne plus.</p>
     <p>Un compte marqué <strong>hors total</strong> a été désactivé côté Powens :
-    son solde ne compte plus dans le patrimoine tant qu'il n'est pas réintégré
-    (bouton du bandeau d'alerte).</p>
+    son solde ne compte plus dans le patrimoine tant qu'il n'est pas réintégré.</p>
   </div>
 </div>
 

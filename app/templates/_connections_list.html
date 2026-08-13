@@ -1,0 +1,114 @@
+{# Fragment : la liste des connexions. Rendu seul quand HTMX le demande —
+   filtrer ou synchroniser ne recharge donc pas la page entière. #}
+<div id="connexions-liste">
+
+{% macro age(days) -%}
+  {%- if days is none -%}<span class="text-muted">jamais</span>
+  {%- elif days == 0 -%}aujourd'hui
+  {%- elif days == 1 -%}hier
+  {%- else -%}il y a {{ days }} j
+  {%- endif -%}
+{%- endmacro %}
+
+{% for card in cards %}
+{# Repliée par défaut, SAUF si la connexion est en peine : ce qu'on vient
+   vérifier doit être visible sans un clic de plus. #}
+<details class="card mb-3 connection-card" {{ 'open' if not card.ok }}>
+  <summary class="card-header" style="cursor: pointer;">
+    <div class="d-flex align-center gap-2 flex-wrap">
+      <span class="monogram" style="background: {{ card.color }}; color: {{ card.ink }};"
+            aria-hidden="true">{{ card.initials }}</span>
+      <strong>{{ card.name }}</strong>
+      {% if card.ok %}
+        <span class="sync-badge sync-ok" title="Synchronisé {{ age(card.age_days) }}">✓</span>
+      {% else %}
+        <span class="sync-badge sync-err">{{ card.state_label }}</span>
+      {% endif %}
+      <span class="text-secondary small">
+        {{ card.accounts | length }} compte{{ 's' if card.accounts | length > 1 }}
+        · mis à jour {{ age(card.age_days) }}
+      </span>
+    </div>
+    <span class="d-flex align-center gap-2">
+      <span class="amount">{{ card.total | money(currency) }}</span>
+      {% if card.needs_user %}
+        <a class="btn btn-sm btn-primary" href="/reconnecter/{{ card.id }}">Reprendre</a>
+      {% elif card.id %}
+        <button class="btn btn-sm"
+                hx-post="/connexions/{{ card.id }}/synchroniser?statut={{ statut }}"
+                hx-target="#connexions-liste" hx-swap="outerHTML"
+                hx-indicator="#sync-{{ card.id }}">Synchroniser</button>
+        <span id="sync-{{ card.id }}" class="htmx-indicator text-secondary small">…</span>
+      {% endif %}
+    </span>
+  </summary>
+
+  <div class="card-body" style="padding-bottom: 8px;">
+    <div class="text-secondary small">
+      Dernière synchro :
+      <strong class="{{ 'text-red' if card.age_days and card.age_days > silent_after_days }}">{{ age(card.age_days) }}</strong>
+      {% if card.last_update %}({{ card.last_update.strftime('%d/%m/%Y à %H:%M') }}){% endif %}
+      {% if card.next_try %}
+        · prochaine prévue le {{ card.next_try.strftime('%d/%m à %H:%M') }}
+      {% else %}
+        · <span class="text-muted">aucune synchro planifiée</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if card.accounts %}
+  <div class="table-wrap">
+    <table class="sortable">
+      <thead>
+        <tr>
+          <th>Compte</th><th>Type</th><th class="num">Solde</th>
+          <th>Dernière opération</th><th class="num">Opé.</th><th>Solde archivé</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in card.accounts %}
+        <tr {% if row.disabled %}class="opacity-50"{% endif %}>
+          <td>
+            <a href="/patrimoine/{{ row.account.id }}">{{ aliases.get(row.account.id) or row.account.name or '—' }}</a>
+            {% if row.disabled %}
+              <span class="badge badge-red">hors total</span>
+              <button class="btn btn-sm"
+                      hx-post="/connexions/comptes/{{ row.account.id }}/reactiver?statut={{ statut }}"
+                      hx-target="#connexions-liste" hx-swap="outerHTML"
+                      title="Le remettre dans le patrimoine">Réintégrer</button>
+            {% endif %}
+            {% if row.account.iban %}<div class="text-muted small">{{ row.account.iban | iban }}</div>{% endif %}
+          </td>
+          <td class="text-secondary">{{ row.family }}</td>
+          <td class="num" data-sort="{{ row.account.balance or 0 }}">
+            <span class="amount">{{ row.account.balance | money(row.account.currency or currency) }}</span>
+          </td>
+          <td data-sort="{{ row.last_txn.isoformat() if row.last_txn else '' }}">
+            {% if row.last_txn %}
+              {{ row.last_txn.strftime('%d/%m/%y') }}
+              <span class="text-muted small">({{ age((today - row.last_txn).days) }})</span>
+            {% else %}<span class="text-muted">aucune sur {{ history_months }} mois</span>{% endif %}
+          </td>
+          <td class="num" data-sort="{{ row.txn_count }}">{{ row.txn_count or '—' }}</td>
+          <td data-sort="{{ row.last_snapshot.isoformat() if row.last_snapshot else '' }}">
+            {% if row.last_snapshot %}
+              {{ age((today - row.last_snapshot).days) }}
+              {% if (today - row.last_snapshot).days > 1 %}<span class="text-muted small" title="Le collecteur n'a pas archivé ce compte récemment">⚠</span>{% endif %}
+            {% else %}<span class="text-muted">jamais</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body"><p class="text-secondary">Aucun compte remonté par cette connexion.</p></div>
+  {% endif %}
+</details>
+{% else %}
+<div class="card mb-3"><div class="card-body text-secondary">
+  Aucune connexion dans ce filtre — tout va bien.
+</div></div>
+{% endfor %}
+
+</div>

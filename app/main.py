@@ -29,11 +29,12 @@ from . import (
     investments,
     recap,
     recurring,
+    settings_page,
     store,
     synthese,
     transactions,
 )
-from .config import Settings, get_settings
+from .config import Settings, apply_overrides, get_settings
 from .data import clear_cache
 from .deps import get_client
 from .deps import get_settings as settings_dep
@@ -56,6 +57,10 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.settings = settings
     app.state.store = store.connect(settings.db_path)
+    # Les réglages de l'interface l'emportent sur le .env : on ne peut les lire
+    # qu'ICI, la base venant tout juste d'être ouverte (son chemin, lui, reste
+    # forcément un réglage d'environnement).
+    app.state.settings = apply_overrides(settings, store.settings_overrides(app.state.store))
     # Les fusions de marchands vivent dans enrich (module pur) : les hydrater
     # depuis le store au démarrage, puis à chaque édition (route /marchands).
     enrich.set_merchant_aliases(store.merchant_aliases(app.state.store))
@@ -162,6 +167,7 @@ app.include_router(analysis.router)
 app.include_router(transactions.router)
 app.include_router(investments.router)
 app.include_router(imports.router)
+app.include_router(settings_page.router)
 
 
 # --------------------------------------------------------------- error handling

@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Réglages · Powens Finance{% endblock %}
+
+{% block topbar_left %}
+  <span class="section-title">Réglages</span>
+{% endblock %}
+
+{% block content %}
+
+{% if request.query_params.get('enregistre') %}
+<div class="card mb-3" style="border-left: 3px solid var(--green);">
+  <div class="card-body">Réglages enregistrés.</div>
+</div>
+{% endif %}
+
+<div class="card mb-3">
+  <div class="card-header">
+    <h3 class="card-title">Paramètres</h3>
+    <span class="text-secondary small">un champ vidé revient à la valeur du fichier .env</span>
+  </div>
+  <form method="post" action="/reglages">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Réglage</th><th style="width: 240px;">Valeur</th><th>Par défaut (.env)</th></tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td>
+              <label for="s-{{ row.key }}">{{ row.label }}</label>
+              <div class="text-muted small">{{ row.key }}</div>
+            </td>
+            <td>
+              <input type="text" id="s-{{ row.key }}" name="{{ row.key }}"
+                     value="{{ row.value }}" class="search" style="width: 100%;">
+            </td>
+            <td class="text-secondary">
+              {{ row.default }}
+              {% if row.custom %}<span class="badge badge-muted">personnalisé</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="card-footer d-flex align-center justify-between">
+      <span class="text-secondary small">
+        Devise, fenêtre et indice s'appliquent immédiatement — le cache est vidé à l'enregistrement.
+      </span>
+      <button type="submit" class="btn btn-primary">Enregistrer</button>
+    </div>
+  </form>
+</div>
+
+{# ── Décisions mémorisées : tout ce que l'utilisateur a corrigé à la main ── #}
+{% macro remembered(titre, entries, quoi, vide, colonnes) %}
+<div class="card mb-3">
+  <div class="card-header">
+    <h3 class="card-title">{{ titre }}</h3>
+    <span class="text-secondary small">{{ entries | length }}</span>
+  </div>
+  {% if entries %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>{{ colonnes[0] }}</th><th>{{ colonnes[1] }}</th><th></th></tr></thead>
+      <tbody>
+        {% for key, value in entries %}
+        <tr>
+          <td>{{ key }}</td>
+          <td class="text-secondary">
+            {% if quoi == 'budget' %}<span class="amount">{{ value | money }}</span> /mois
+            {% else %}{{ value }}{% endif %}
+          </td>
+          <td class="num">
+            <form method="post" action="/reglages/oublier" style="margin: 0;">
+              <input type="hidden" name="quoi" value="{{ quoi }}">
+              <input type="hidden" name="label" value="{{ key }}">
+              <button type="submit" class="btn btn-sm" title="Revenir au comportement automatique">Oublier</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body text-secondary">{{ vide }}</div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{{ remembered("Budgets", budgets, "budget",
+   "Aucune enveloppe — elles se posent depuis la page Analyse.",
+   ["Catégorie", "Enveloppe"]) }}
+
+{{ remembered("Catégories forcées", overrides, "categorie",
+   "Aucune correction — elles se posent depuis le détail d'un libellé.",
+   ["Marchand", "Catégorie"]) }}
+
+{{ remembered("Comptes renommés", aliases, "renommage",
+   "Aucun renommage — il se pose depuis la page d'un compte.",
+   ["Compte (id Powens)", "Nom choisi"]) }}
+
+{{ remembered("Marchands fusionnés", merges, "fusion",
+   "Aucune fusion — elle se pose depuis le détail d'un libellé.",
+   ["Libellé source", "Regroupé sous"]) }}
+
+<div class="card">
+  <div class="card-body text-secondary small">
+    <p class="mb-2"><strong>Ce qui n'est pas réglable ici</strong>, et pourquoi :
+    les identifiants Powens sont des secrets, l'hôte, le port et le chemin de la
+    base sont nécessaires <em>avant</em> que celle-ci ne soit ouverte. Ils
+    restent dans <code>.env</code>.</p>
+    <p>Base locale : <code>{{ db_path }}</code> — elle contient l'historique des
+    soldes et des valorisations, que Powens ne sait pas reconstituer. Une copie
+    est faite chaque jour dans <code>.backups/</code>.</p>
+  </div>
+</div>
+
+{% endblock %}

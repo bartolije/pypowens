@@ -106,3 +106,30 @@ def test_qs_macro_omits_empty_values(client):
     assert "type=&" not in body
     assert "institution=&" not in body
     assert "?&" not in body
+
+
+# ------------------------------------------- architecture de la navigation
+
+def test_sidebar_keeps_only_the_consultation_pages(client):
+    """Administration (connexions, import, réglages) hors du bloc quotidien."""
+    body = client.get("/comptes").text
+    sidebar = body[body.index('class="sidebar-nav"'):body.index("</nav>")]
+    for page in ("/", "/patrimoine", "/comptes", "/analyse", "/abonnements", "/performance"):
+        assert f'href="{page}"' in sidebar, page
+    for admin in ("/connexions", "/import", "/recurrences"):
+        assert f'href="{admin}"' not in sidebar, admin
+
+
+def test_bank_accounts_live_in_the_top_right_corner(client):
+    body = client.get("/comptes").text
+    topbar = body[body.index('class="topbar-right"'):body.index("</header>")]
+    assert 'href="/connexions"' in topbar
+    assert "Mes comptes bancaires" in topbar
+
+
+def test_recurrences_stays_reachable_from_subscriptions(client):
+    assert 'href="/recurrences"' in client.get("/abonnements").text
+
+
+def test_import_stays_reachable_from_connections(client):
+    assert 'href="/import"' in client.get("/connexions").text

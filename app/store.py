@@ -42,6 +42,17 @@ CREATE TABLE IF NOT EXISTS category_override (
     updated      TEXT NOT NULL
 );
 
+-- Réglages modifiables depuis l'interface. L'environnement (.env) fournit les
+-- valeurs par DÉFAUT ; ce que l'utilisateur change ici les remplace, sans
+-- édition de fichier ni redémarrage. Les secrets (identifiants Powens) et le
+-- bootstrap (hôte, port, chemin de la base) restent hors de portée : ils sont
+-- nécessaires AVANT que cette base ne soit ouverte.
+CREATE TABLE IF NOT EXISTS setting (
+    key     TEXT PRIMARY KEY,
+    value   TEXT NOT NULL,
+    updated TEXT NOT NULL
+);
+
 -- Identité STABLE d'un compte, insensible au renumérotage de Powens. Quand une
 -- connexion tombe, Powens supprime ses comptes et les recrée sous de nouveaux
 -- ids : l'historique se scindait en deux, la courbe sautait du montant du
@@ -284,6 +295,26 @@ def backup(
     for old in copies[:-keep]:
         old.unlink(missing_ok=True)
     return target
+
+
+# ------------------------------------------------------------------ réglages
+
+
+def settings_overrides(conn: sqlite3.Connection) -> dict[str, str]:
+    """Réglages posés depuis l'interface, qui l'emportent sur l'environnement."""
+    return {row["key"]: row["value"] for row in conn.execute("SELECT key, value FROM setting")}
+
+
+def set_setting(conn: sqlite3.Connection, key: str, value: str | None) -> None:
+    """Pose un réglage, ou le retire (valeur vide) pour revenir au défaut .env."""
+    if value is None or not str(value).strip():
+        conn.execute("DELETE FROM setting WHERE key = ?", (key,))
+    else:
+        conn.execute(
+            "INSERT OR REPLACE INTO setting (key, value, updated) VALUES (?, ?, ?)",
+            (key, str(value).strip(), date.today().isoformat()),
+        )
+    conn.commit()
 
 
 # --------------------------------------------------- identité stable des comptes

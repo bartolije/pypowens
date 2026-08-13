@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -94,3 +94,49 @@ def get_settings() -> Settings:
         benchmark_ticker=(os.environ.get("APP_BENCHMARK_TICKER") or "IWDA.AS").strip(),
         benchmark_label=(os.environ.get("APP_BENCHMARK_LABEL") or "MSCI World (IWDA)").strip(),
     )
+
+
+# Réglages modifiables depuis l'interface : (clé, libellé, type). Tout ce qui
+# n'est PAS ici reste piloté par l'environnement — soit parce que c'est un
+# secret, soit parce qu'il est nécessaire avant l'ouverture de la base.
+OVERRIDABLE: dict[str, tuple[str, type]] = {
+    "base_currency": ("Devise de référence", str),
+    "history_months": ("Fenêtre d'historique (mois)", int),
+    "silent_after_days": ("Connexion muette au-delà de (jours)", int),
+    "benchmark_ticker": ("Indice de comparaison (ticker Yahoo)", str),
+    "benchmark_label": ("Nom affiché de l'indice", str),
+}
+
+
+def apply_overrides(settings: Settings, overrides: dict[str, str]) -> Settings:
+    """Applique les réglages de la base par-dessus ceux de l'environnement.
+
+    Une valeur illisible est ignorée plutôt que fatale : un réglage mal saisi
+    ne doit pas empêcher l'application de démarrer.
+    """
+    texts: dict[str, str] = {}
+    numbers: dict[str, int] = {}
+    for key, (_, kind) in OVERRIDABLE.items():
+        raw = (overrides.get(key) or "").strip()
+        if not raw:
+            continue
+        if kind is int:
+            try:
+                numbers[key] = int(raw)
+            except ValueError:
+                continue  # saisie illisible : le défaut reste en place
+        else:
+            texts[key] = raw
+
+    if "base_currency" in texts:
+        texts["base_currency"] = texts["base_currency"].upper()
+    # Bornes de bon sens : une fenêtre de 9 999 mois téléchargerait tout
+    # l'historique Powens, un seuil de 0 jour crierait au loup en permanence.
+    if "history_months" in numbers:
+        numbers["history_months"] = max(1, min(120, numbers["history_months"]))
+    if "silent_after_days" in numbers:
+        numbers["silent_after_days"] = max(1, numbers["silent_after_days"])
+
+    if not texts and not numbers:
+        return settings
+    return replace(settings, **texts, **numbers)  # type: ignore[arg-type]
