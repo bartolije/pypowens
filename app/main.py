@@ -33,9 +33,10 @@ from . import (
     store,
     synthese,
     transactions,
+    webauth,
 )
 from .config import Settings, apply_overrides, get_settings
-from .data import clear_cache
+from .data import clear_cache, load_connections
 from .deps import get_client
 from .deps import get_settings as settings_dep
 from .health import auto_sync_stuck_connections, connection_alerts
@@ -345,12 +346,59 @@ async def reconnect(
     client: PowensClient = Depends(get_client),
     settings: Settings = Depends(settings_dep),
 ) -> Response:
-    """Send the user back through the Webview to repair one connection.
+    """Renvoie l'utilisateur terminer l'authentification d'une connexion.
 
-    A connection left in ``webauthRequired`` is waiting on the *user* to complete the
-    bank's own authentication; no amount of ``update_connection()`` clears it, so the
-    "Synchroniser" button on such a connection can only ever look broken.
+    Deux chemins, et les confondre mène à une impasse :
+
+    * connecteur en **webauth** (Sumeria/Lydia et la plupart des néobanques) :
+      il n'y a pas de formulaire d'identifiants, l'authentification se fait sur
+      le site de la banque. Le Webview Powens n'y mène pas — il rebondit sur la
+      page d'accueil de l'établissement, sans rien à faire. L'URL d'autorisation
+      est rangée par Powens dans ``error_message`` ; elle expire (deux heures),
+      d'où la régénération ci-dessous quand elle est périmée ;
+    * tous les autres : le Webview, comme pour une première connexion.
     """
+    connection = next(
+        (c for c in await load_connections(client) if c.id == connection_id), None
+    )
+    if connection is not None and webauth.needs_webauth(connection):
+        url = webauth.authorize_url(connection)
+        if url is None or webauth.is_expired(connection):
+            # Périmée ou absente : demander à Powens d'en produire une neuve,
+            # puis relire la connexion (le PUT ne renvoie pas l'URL lui-même).
+            try:
+                await client.update_connection(connection_id)
+            except PowensAPIError:
+                logging.getLogger(__name__).warning(
+                    "régénération de l'URL d'autorisation refusée (connexion %s)",
+                    connection_id,
+                )
+            clear_cache()
+            connection = next(
+                (c for c in await load_connections(client) if c.id == connection_id),
+                None,
+            )
+            url = webauth.authorize_url(connection) if connection else None
+        if url is not None:
+            # Redirection vers la BANQUE : l'URL porte un jeton d'état, elle
+            # n'est jamais affichée, seulement suivie.
+            return RedirectResponse(url)
+        return _error_page(
+            request,
+            status_code=502,
+            title="Authentification bancaire indisponible",
+            detail=(
+                "Powens n'a pas fourni de lien d'authentification pour cette "
+                "banque. Le lien est valable deux heures ; celui-ci a expiré et "
+                "sa régénération a échoué."
+            ),
+            hints=[
+                "Réessayer dans quelques minutes.",
+                "Si l'échec persiste, supprimer puis recréer la connexion "
+                "depuis « + Ajouter une banque ».",
+            ],
+        )
+
     refused = await _redirect_uri_check(request, client, settings)
     if refused is not None:
         return refused
