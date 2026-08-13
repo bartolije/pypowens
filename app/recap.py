@@ -7,8 +7,8 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, Form, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from pypowens import Account, PowensClient
 
@@ -355,3 +355,22 @@ async def recap(
             "connection_names": connection_names,
         },
     )
+
+
+@router.post("/patrimoine/perimetre/acquitter")
+async def acknowledge_perimeter_note(
+    jour: str = Form(...),
+    resume: str = Form(default=""),
+    conn: sqlite3.Connection = Depends(get_store),  # noqa: B008
+) -> RedirectResponse:
+    """Masque une note de changement de périmètre déjà comprise.
+
+    La courbe garde son saut — il est réel — mais cesse de le commenter. La
+    note se réaffiche depuis les Réglages.
+    """
+    try:
+        day = date.fromisoformat(jour)
+    except ValueError:
+        return RedirectResponse("/patrimoine", status_code=303)
+    store.acknowledge_perimeter(conn, day, resume[:120])
+    return RedirectResponse("/patrimoine", status_code=303)

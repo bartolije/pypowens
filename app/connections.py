@@ -70,10 +70,21 @@ class ConnectionCard:
     total: Decimal = Decimal(0)
 
 
+# Powens refuse une synchro forcée quand la connexion vient d'en subir une (ou
+# qu'une est déjà en cours). C'est une limite normale du service, pas une panne
+# — mais un bouton qui ne fait rien sans rien dire est pire qu'un bouton absent.
+SYNC_REFUSED = (
+    "Powens refuse une synchronisation forcée pour l'instant : la connexion "
+    "vient d'être rafraîchie, ou une synchro est déjà en cours. "
+    "La prochaine automatique est indiquée ci-dessous."
+)
+
+
 @router.get("/connexions", response_class=HTMLResponse)
 async def connections_page(
     request: Request,
     statut: str = "tous",
+    message: str = "",
     client: PowensClient = Depends(get_client),  # noqa: B008
     settings: Settings = Depends(get_settings),  # noqa: B008
     conn: sqlite3.Connection = Depends(get_store),  # noqa: B008
@@ -98,7 +109,7 @@ async def connections_page(
         txn_count[txn.id_account] = txn_count.get(txn.id_account, 0) + 1
 
     last_snapshot = store.last_snapshot_days(conn)
-    now = datetime.now()
+    today = date.today()
 
     cards: list[ConnectionCard] = []
     for connection in connections:
@@ -119,8 +130,14 @@ async def connections_page(
             ok=not state and not connection.error_message,
             needs_user=state in USER_ACTION_STATES,
             last_update=connection.last_update,
+            # Jours CALENDAIRES, pas des tranches de 24 h : une synchro d'hier
+            # 20 h vue à 15 h aujourd'hui fait 18 h d'écart — donc `.days == 0`
+            # sur un timedelta, et un « aujourd'hui » faux à l'écran. L'humain
+            # compte les jours au changement de date, pas au bout de 24 h.
             age_days=(
-                (now - connection.last_update).days if connection.last_update else None
+                (today - connection.last_update.date()).days
+                if connection.last_update
+                else None
             ),
             next_try=connection.next_try,
             never_synced=connection.last_update is None,
@@ -183,6 +200,7 @@ async def connections_page(
             "request": request,
             "active": "connexions",
             "statut": statut,
+            "message": message,
             "cards": cards,
             "orphans": orphans,
             "imported": imported,
@@ -190,7 +208,7 @@ async def connections_page(
             "currency": settings.base_currency,
             "history_months": settings.history_months,
             "silent_after_days": settings.silent_after_days,
-            "today": date.today(),
+            "today": today,
         },
     )
 
@@ -205,13 +223,23 @@ async def sync_from_page(
     conn: sqlite3.Connection = Depends(get_store),  # noqa: B008
 ) -> Response:
     """Relance une connexion et rend la liste à jour, sans quitter la page."""
+    message = ""
     try:
         await client.update_connection(connection_id)
-    except PowensAPIError:
-        _log.warning("synchronisation refusée pour la connexion %s", connection_id)
+    except PowensAPIError as exc:
+        _log.warning(
+            "synchronisation refusée pour la connexion %s (HTTP %s)",
+            connection_id,
+            exc.status_code,
+        )
+        message = (
+            SYNC_REFUSED
+            if exc.status_code == 409
+            else f"Synchronisation refusée par Powens (HTTP {exc.status_code})."
+        )
     clear_cache()
     return await connections_page(
-        request, statut=statut, client=client, settings=settings, conn=conn
+        request, statut=statut, message=message, client=client, settings=settings, conn=conn
     )
 
 
@@ -225,11 +253,15 @@ async def reactivate_from_page(
     conn: sqlite3.Connection = Depends(get_store),  # noqa: B008
 ) -> Response:
     """Réintègre un compte que Powens a recréé désactivé."""
+    message = ""
     try:
         await client.update_account(account_id, disabled=False)
-    except PowensAPIError:
-        _log.warning("réintégration refusée pour le compte %s", account_id)
+    except PowensAPIError as exc:
+        _log.warning(
+            "réintégration refusée pour le compte %s (HTTP %s)", account_id, exc.status_code
+        )
+        message = f"Powens a refusé de réintégrer ce compte (HTTP {exc.status_code})."
     clear_cache()
     return await connections_page(
-        request, statut=statut, client=client, settings=settings, conn=conn
+        request, statut=statut, message=message, client=client, settings=settings, conn=conn
     )

@@ -2,6 +2,14 @@
    filtrer ou synchroniser ne recharge donc pas la page entière. #}
 <div id="connexions-liste">
 
+{% if message %}
+{# Une action qui échoue doit le dire. Powens refuse régulièrement une synchro
+   forcée (HTTP 409) ; sans ce bandeau, le bouton semblait ne rien faire. #}
+<div class="card mb-3" style="border-left: 3px solid var(--orange);">
+  <div class="card-body">{{ message }}</div>
+</div>
+{% endif %}
+
 {# Texte NU : cette valeur part aussi dans des attributs title=, où le moindre
    balisage casse l'attribut (« Synchronisé <span…>jamais</span> » refermait le
    title au premier guillemet et laissait « ">✓ » à l'écran). La couleur est
@@ -30,12 +38,20 @@
            état sain — il ne s'est simplement rien passé encore. #}
         <span class="sync-badge sync-pending"
               title="Connexion établie, première synchronisation en attente">jamais synchronisée</span>
+      {% elif card.age_days is not none and card.age_days > silent_after_days %}
+        {# Sans erreur déclarée mais sans nouvelle depuis des jours : un ✓ vert
+           y affirmait « tout va bien » alors que c'est exactement l'état qu'on
+           vient chercher ici. #}
+        <span class="sync-badge sync-pending"
+              title="Aucune synchronisation réussie depuis {{ card.age_days }} jours">muette depuis {{ card.age_days }} j</span>
       {% else %}
-        <span class="sync-badge sync-ok" title="Synchronisé {{ age(card.age_days) }}">✓</span>
+        {# Un état, pas une action : le ✓ seul se confondait avec le bouton
+           « Synchroniser » posé sur la même ligne. #}
+        <span class="sync-badge sync-ok">✓ à jour</span>
       {% endif %}
       <span class="text-secondary small">
         {{ card.accounts | length }} compte{{ 's' if card.accounts | length > 1 }}
-        {%- if not card.never_synced %} · mis à jour {{ age(card.age_days) }}{% endif %}
+        {%- if not card.never_synced %} · synchronisé {{ age(card.age_days) }}{% endif %}
       </span>
     </div>
     <span class="d-flex align-center gap-2">
@@ -43,10 +59,12 @@
       {% if card.needs_user %}
         <a class="btn btn-sm btn-primary" href="/reconnecter/{{ card.id }}">Reprendre</a>
       {% elif card.id %}
+        {# Verbe + flèche : lisible comme une action, jamais comme un état. #}
         <button class="btn btn-sm"
                 hx-post="/connexions/{{ card.id }}/synchroniser?statut={{ statut }}"
                 hx-target="#connexions-liste" hx-swap="outerHTML"
-                hx-indicator="#sync-{{ card.id }}">Synchroniser</button>
+                hx-indicator="#sync-{{ card.id }}"
+                title="Demander à Powens d'interroger la banque maintenant">&#8635; Synchroniser maintenant</button>
         <span id="sync-{{ card.id }}" class="htmx-indicator text-secondary small">…</span>
       {% endif %}
     </span>

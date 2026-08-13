@@ -342,6 +342,29 @@ def test_perimeter_changes_flags_durable_entries_and_exits(conn):
     assert left["delta"] == Decimal("-100")
 
 
+def test_an_acknowledged_perimeter_change_stops_being_reported(conn):
+    """Un changement de périmètre est un fait permanent : la courbe portera
+    toujours ce saut. Une fois compris, répéter l'explication est du bruit —
+    sans pour autant justifier de trafiquer l'historique pour lisser la courbe.
+    """
+    d = date(2026, 8, 1)
+    _snap(conn, d, Acc(1, name="Courant"))
+    _snap(conn, d + timedelta(days=1), Acc(1, name="Courant"),
+          Acc(2, name="Livret", balance=Decimal("50")))
+
+    assert len(store.perimeter_changes(conn)) == 1
+    store.acknowledge_perimeter(conn, d + timedelta(days=1), "Livret")
+    assert store.perimeter_changes(conn) == []
+
+    # Le solde archivé, lui, n'a pas bougé d'un centime : la courbe est intacte.
+    assert [v for _, v in store.net_worth_history(conn)] == [
+        Decimal("100"), Decimal("150")
+    ]
+
+    store.forget_perimeter_ack(conn, (d + timedelta(days=1)).isoformat())
+    assert len(store.perimeter_changes(conn)) == 1
+
+
 def test_temporary_absence_is_not_a_perimeter_change(conn):
     """Une absence comblée ne doit PAS être signalée comme changement."""
     d = date(2026, 8, 1)

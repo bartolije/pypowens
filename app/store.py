@@ -42,6 +42,16 @@ CREATE TABLE IF NOT EXISTS category_override (
     updated      TEXT NOT NULL
 );
 
+-- Notes de périmètre acquittées. Un changement de périmètre est un fait
+-- permanent : la courbe portera toujours ce saut. Une fois qu'on l'a compris,
+-- répéter l'explication à chaque affichage devient du bruit — sans pour autant
+-- justifier de trafiquer l'historique pour lisser la courbe.
+CREATE TABLE IF NOT EXISTS perimeter_ack (
+    day     TEXT PRIMARY KEY,
+    label   TEXT,
+    updated TEXT NOT NULL
+);
+
 -- Réglages modifiables depuis l'interface. L'environnement (.env) fournit les
 -- valeurs par DÉFAUT ; ce que l'utilisateur change ici les remplace, sans
 -- édition de fichier ni redémarrage. Les secrets (identifiants Powens) et le
@@ -601,6 +611,28 @@ def net_worth_history(
     return _downsample(points, limit)
 
 
+def acknowledged_perimeter_days(conn: sqlite3.Connection) -> dict[str, str]:
+    """Jours dont le changement de périmètre a été acquitté."""
+    return {
+        row["day"]: (row["label"] or "")
+        for row in conn.execute("SELECT day, label FROM perimeter_ack")
+    }
+
+
+def acknowledge_perimeter(conn: sqlite3.Connection, day: date, label: str = "") -> None:
+    conn.execute(
+        "INSERT OR REPLACE INTO perimeter_ack (day, label, updated) VALUES (?, ?, ?)",
+        (day.isoformat(), label, date.today().isoformat()),
+    )
+    conn.commit()
+
+
+def forget_perimeter_ack(conn: sqlite3.Connection, day: str) -> None:
+    """Réaffiche une note acquittée (depuis les Réglages)."""
+    conn.execute("DELETE FROM perimeter_ack WHERE day = ?", (day,))
+    conn.commit()
+
+
 def perimeter_changes(
     conn: sqlite3.Connection, *, currency: str = "EUR"
 ) -> list[dict[str, Any]]:
@@ -619,6 +651,7 @@ def perimeter_changes(
     days, per_account, names = _per_account_series(conn, currency)
     if len(days) < 2:
         return []
+    acknowledged = acknowledged_perimeter_days(conn)
     global_first, global_last = days[0], days[-1]
     changes: dict[str, dict[str, Any]] = {}
 
@@ -640,7 +673,7 @@ def perimeter_changes(
             entry = _entry(following)
             entry["left"].append(names[account_id])
             entry["delta"] -= series[last]
-    return [changes[d] for d in sorted(changes)]
+    return [changes[d] for d in sorted(changes) if d not in acknowledged]
 
 
 def account_balance_history(

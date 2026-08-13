@@ -40,12 +40,21 @@
           {% if perimeter_changes %}
           <div class="perimeter-notes">
             {% for ch in perimeter_changes %}
-            <div class="small text-secondary">
-              &#9888; {{ ch.day.strftime('%d/%m/%Y') }} — périmètre modifié ({{ ch.delta | money(net_currency) }}) :
-              {% if ch.entered %}entrée de {{ ch.entered | join(', ') }}{% endif %}
-              {%- if ch.entered and ch.left %} · {% endif -%}
-              {% if ch.left %}sortie de {{ ch.left | join(', ') }}{% endif %}
-              — ce saut n'est ni un gain ni une perte
+            <div class="small text-secondary d-flex align-center gap-2">
+              <span style="flex: 1;">
+                &#9888; {{ ch.day.strftime('%d/%m/%Y') }} — périmètre modifié ({{ ch.delta | money(net_currency) }}) :
+                {% if ch.entered %}entrée de {{ ch.entered | join(', ') }}{% endif %}
+                {%- if ch.entered and ch.left %} · {% endif -%}
+                {% if ch.left %}sortie de {{ ch.left | join(', ') }}{% endif %}
+                — ce saut n'est ni un gain ni une perte
+              </span>
+              {# La courbe gardera ce saut ; une fois compris, l'expliquer à
+                 chaque affichage devient du bruit. Réversible dans Réglages. #}
+              <form method="post" action="/patrimoine/perimetre/acquitter" style="margin: 0;">
+                <input type="hidden" name="jour" value="{{ ch.day.isoformat() }}">
+                <input type="hidden" name="resume" value="{{ (ch.entered + ch.left) | join(', ') }}">
+                <button type="submit" class="btn btn-sm" title="Ne plus afficher cette note">J'ai vu</button>
+              </form>
             </div>
             {% endfor %}
           </div>

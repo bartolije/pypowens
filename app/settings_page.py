@@ -59,6 +59,7 @@ async def settings_page(
             "overrides": sorted(store.all_overrides(conn).items()),
             "aliases": sorted(store.account_aliases(conn).items()),
             "merges": sorted(store.merchant_aliases(conn).items()),
+            "perimeter_acks": sorted(store.acknowledged_perimeter_days(conn).items()),
             "categories": enrich.all_categories(),
             "db_path": request.app.state.settings.db_path,
         },
@@ -103,5 +104,7 @@ async def forget_override(
         enrich.set_merchant_aliases(store.merchant_aliases(conn))
     elif quoi == "budget":
         store.set_budget(conn, label, None)
+    elif quoi == "perimetre":
+        store.forget_perimeter_ack(conn, label)
     clear_cache()
     return RedirectResponse("/reglages", status_code=303)

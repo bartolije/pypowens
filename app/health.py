@@ -130,11 +130,16 @@ async def connection_alerts(
         except (TypeError, ValueError):
             continue
         if age > timedelta(days=silent_after):
+            # Le SEUIL reste en durée (pas d'alerte déclenchée par le seul
+            # passage de minuit), mais le nombre AFFICHÉ compte les jours
+            # calendaires — sinon le bandeau et la page « Mes comptes »
+            # annoncent deux âges différents pour la même connexion.
+            calendar_days = (now.date() - last_update.date()).days
             alerts.append(
                 {
                     "kind": "silent",
                     "title": name,
-                    "detail": f"muette depuis {age.days} jours (état pourtant sain)",
+                    "detail": f"muette depuis {calendar_days} jours (état pourtant sain)",
                     "action_url": None,
                     "sync_id": connection.id,
                     "action_label": "Synchroniser",

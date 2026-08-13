@@ -147,3 +147,78 @@ def test_a_never_synced_connection_is_auto_relaunched(client, fake_client):
     fake_client._connections[0]["last_update"] = "2026-07-01 06:00:00"
     fake_client.synced_connections = []
     app.data.clear_cache()
+
+
+# ------------------------------------- âge en jours calendaires
+
+def test_age_counts_calendar_days_not_24h_slices(client, fake_client):
+    """Une synchro d'hier 20 h, lue aujourd'hui à 15 h, fait 18 h d'écart : un
+    timedelta.days valait 0 et la page annonçait « aujourd'hui » un 13 août
+    pour une synchro du 12. L'humain compte au changement de date."""
+    import app.data
+
+    # FROZEN_TODAY = 2026-06-15 ; la veille à 20 h 34.
+    fake_client._connections[0]["last_update"] = "2026-06-14 20:34:00"
+    app.data.clear_cache()
+
+    body = _text(client.get("/connexions").text)
+    assert "synchronisé hier" in body
+    assert "aujourd'hui" not in body
+
+    fake_client._connections[0]["last_update"] = "2026-07-01 06:00:00"
+    app.data.clear_cache()
+
+
+def test_a_silent_connection_is_not_shown_with_a_green_check(client, fake_client):
+    """Sans erreur déclarée mais sans nouvelle depuis des jours, un ✓ vert
+    affirmait « tout va bien » — c'est pourtant l'état qu'on vient chercher."""
+    import app.data
+
+    fake_client._connections[0]["last_update"] = "2026-06-01 06:00:00"  # 14 j
+    app.data.clear_cache()
+
+    body = client.get("/connexions").text
+    assert "muette depuis 14 j" in body
+    assert "sync-ok" not in body
+
+    fake_client._connections[0]["last_update"] = "2026-07-01 06:00:00"
+    app.data.clear_cache()
+
+
+def test_the_badge_is_a_state_and_the_button_is_an_action(client):
+    """Un « ✓ » nu à côté d'un bouton « Synchroniser » se lisait comme deux
+    étiquettes, ou deux boutons : les deux doivent se distinguer au premier
+    coup d'œil."""
+    body = _text(client.get("/connexions").text)
+    assert "✓ à jour" in body
+    assert "Synchroniser maintenant" in body
+
+
+# ------------------------------------- refus de synchronisation
+
+def test_a_refused_sync_says_so_instead_of_doing_nothing(client, fake_client):
+    """Powens répond 409 « Can't force synchronization » quand la connexion
+    vient d'être rafraîchie. Le bouton semblait alors ne rien faire."""
+    from pypowens import PowensAPIError
+
+    async def refuse(connection_id, user_id="me"):
+        raise PowensAPIError(
+            409, code="conflict", message="Can't force synchronization of connection 1"
+        )
+
+    original = fake_client.update_connection
+    fake_client.update_connection = refuse
+    try:
+        body = _text(
+            client.post("/connexions/1/synchroniser", headers={"HX-Request": "true"}).text
+        )
+        assert "refuse une synchronisation forcée" in body
+    finally:
+        fake_client.update_connection = original
+
+
+def test_a_successful_sync_shows_no_alarm(client, fake_client):
+    body = _text(
+        client.post("/connexions/1/synchroniser", headers={"HX-Request": "true"}).text
+    )
+    assert "refuse une synchronisation" not in body
