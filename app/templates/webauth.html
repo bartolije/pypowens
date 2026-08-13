@@ -35,6 +35,29 @@
           Powens et la connexion apparaît synchronisée — rechargez alors
           « Mes comptes bancaires ».
         </p>
+        <details class="mb-3">
+          <summary class="text-secondary small" style="cursor: pointer;">
+            Rien ne se passe après le scan ?
+          </summary>
+          <div class="text-secondary small mt-2" style="line-height: 1.6;">
+            <p class="mb-2">La chaîne complète est&nbsp;: le QR ouvre la page de la
+            banque dans le navigateur du téléphone, et cette page ne fait qu'une
+            chose — appeler un <strong>lien profond</strong>
+            (<code>com.lydia-app://openauth…</code>) qui doit ouvrir
+            l'application. Si l'écran reste blanc, c'est que ce lien n'aboutit
+            pas&nbsp;:</p>
+            <ul style="margin: 0 0 8px 18px;">
+              <li>l'application de la banque n'est pas installée sur ce téléphone&nbsp;;</li>
+              <li>ou sa version ne reconnaît plus ce schéma — fréquent après un
+              changement de marque, quand le connecteur Powens n'a pas suivi.</li>
+            </ul>
+            <p>Dans le second cas, rien ne peut être corrigé depuis cette
+            application&nbsp;: le lien profond est fourni par la banque, relayé
+            tel quel par Powens. Reste à réessayer après une mise à jour de
+            l'application bancaire, ou à suivre ce compte par
+            <a href="/import">import de relevé</a> en attendant.</p>
+          </div>
+        </details>
         <a class="btn" href="{{ url }}" rel="noopener">Tenter quand même dans ce navigateur</a>
       </div>
     </div>
