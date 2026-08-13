@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ account_name }} · Powens Finance{% endblock %}
+{% from "_macros.html" import period_pills, qs %}
 
 {% block topbar_left %}
   <a href="/patrimoine" class="btn btn-sm" style="margin-right: 8px;">← Patrimoine</a>
@@ -34,12 +35,12 @@
 
   {# ── Tabs ───────────────────────────────────────────────────────── #}
   <div class="tabs">
-    <a class="tab-link {{ 'active' if tab == 'apercu' }}" href="/patrimoine/{{ account.id }}?period={{ period }}&tab=apercu">Aperçu</a>
+    <a class="tab-link {{ 'active' if tab == 'apercu' }}" href="/patrimoine/{{ account.id }}{{ qs({'period': period, 'tab': 'apercu'}) }}">Aperçu</a>
     {% if is_invest %}
-    <a class="tab-link {{ 'active' if tab == 'positions' }}" href="/patrimoine/{{ account.id }}?period={{ period }}&tab=positions">Positions</a>
+    <a class="tab-link {{ 'active' if tab == 'positions' }}" href="/patrimoine/{{ account.id }}{{ qs({'period': period, 'tab': 'positions'}) }}">Positions</a>
     {% endif %}
-    <a class="tab-link {{ 'active' if tab == 'transactions' }}" href="/patrimoine/{{ account.id }}?period={{ period }}&tab=transactions">Transactions</a>
-    <a class="tab-link {{ 'active' if tab == 'analyse' }}" href="/patrimoine/{{ account.id }}?period={{ period }}&tab=analyse">Analyse</a>
+    <a class="tab-link {{ 'active' if tab == 'transactions' }}" href="/patrimoine/{{ account.id }}{{ qs({'period': period, 'tab': 'transactions'}) }}">Transactions</a>
+    <a class="tab-link {{ 'active' if tab == 'analyse' }}" href="/patrimoine/{{ account.id }}{{ qs({'period': period, 'tab': 'analyse'}) }}">Analyse</a>
   </div>
 
   {# ── Aperçu tab: Big balance + chart ────────────────────────────── #}
@@ -64,16 +65,7 @@
           </div>
         </div>
 
-        <nav class="period-pills">
-          <a href="/patrimoine/{{ account.id }}?period=1j&tab={{ tab }}" class="{{ 'active' if period == '1j' }}">1J</a>
-          <a href="/patrimoine/{{ account.id }}?period=7j&tab={{ tab }}" class="{{ 'active' if period == '7j' }}">7J</a>
-          <a href="/patrimoine/{{ account.id }}?period=1m&tab={{ tab }}" class="{{ 'active' if period == '1m' }}">1M</a>
-          <a href="/patrimoine/{{ account.id }}?period=3m&tab={{ tab }}" class="{{ 'active' if period == '3m' }}">3M</a>
-          <a href="/patrimoine/{{ account.id }}?period=6m&tab={{ tab }}" class="{{ 'active' if period == '6m' }}">6M</a>
-          <a href="/patrimoine/{{ account.id }}?period=ytd&tab={{ tab }}" class="{{ 'active' if period == 'ytd' }}">YTD</a>
-          <a href="/patrimoine/{{ account.id }}?period=1a&tab={{ tab }}" class="{{ 'active' if period == '1a' }}">1A</a>
-          <a href="/patrimoine/{{ account.id }}?period=tout&tab={{ tab }}" class="{{ 'active' if period == 'tout' }}">TOUT</a>
-        </nav>
+        {{ period_pills('/patrimoine/' ~ account.id, period, {'tab': tab}) }}
       </div>
 
       {# ── Balance history chart ──────────────────────────────────── #}

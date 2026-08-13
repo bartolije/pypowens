@@ -1,0 +1,28 @@
+{# Macros partagées — le sélecteur de période existait en trois exemplaires
+   (synthèse, patrimoine, détail) et les query strings se construisaient à la
+   main, avec des variantes divergentes. Une seule source ici. #}
+
+{% macro qs(params) -%}
+{#- Query string à partir d'un dict : valeurs vides/None écartées, valeurs
+    encodées. Retourne "" (pas "?") quand il n'y a rien à passer. -#}
+{%- set pairs = [] -%}
+{%- for key, value in params.items() -%}
+{%- if value is not none and value != "" -%}
+{%- set _ = pairs.append(key ~ "=" ~ (value | string | urlencode)) -%}
+{%- endif -%}
+{%- endfor -%}
+{{- ("?" ~ pairs | join("&")) if pairs else "" -}}
+{%- endmacro %}
+
+{% macro period_pills(base_url, current, extra={}) -%}
+{#- Pilules de période. ``extra`` porte les paramètres à préserver (filtres,
+    onglet…). ``aria-current`` annonce la période active au lecteur d'écran. -#}
+<nav class="period-pills" aria-label="Période">
+  {% for key, label in [('1j','1J'), ('7j','7J'), ('1m','1M'), ('3m','3M'),
+                        ('6m','6M'), ('ytd','YTD'), ('1a','1A'), ('tout','TOUT')] %}
+  <a href="{{ base_url }}{{ qs(dict(extra, period=key)) }}"
+     class="{{ 'active' if current == key }}"
+     {% if current == key %}aria-current="true"{% endif %}>{{ label }}</a>
+  {% endfor %}
+</nav>
+{%- endmacro %}

@@ -1,21 +1,20 @@
 {% extends "base.html" %}
 {% block title %}Patrimoine · Powens Finance{% endblock %}
+{% from "_macros.html" import period_pills, qs %}
+
+{# Filtres actifs, en UN dict : ils doivent survivre à tout changement de
+   période, d'onglet ou de groupement. Sept constructions manuelles de query
+   string cohabitaient ici, avec des variantes divergentes. #}
+{% set filters = {
+     'view': 'passifs' if view == 'passifs' else none,
+     'type': type_filter,
+     'institution': institution,
+     'group': '1' if group == '1' else none,
+   } %}
 
 {% block topbar_left %}
-  {# Build base query string that preserves active filters across period changes #}
-  {% set base_params = [] %}
-  {% if view == 'passifs' %}{% set _ = base_params.append('view=passifs') %}{% endif %}
-  {% if type_filter %}{% set _ = base_params.append('type=' ~ (type_filter | urlencode)) %}{% endif %}
-  {% if institution %}{% set _ = base_params.append('institution=' ~ (institution | urlencode)) %}{% endif %}
-  {% if group == "1" %}{% set _ = base_params.append('group=1') %}{% endif %}
-  {% set base_qs = base_params | join('&') %}
-
   <span class="section-title">Patrimoine</span>
-  <nav class="period-pills" style="margin-left: 24px;">
-    {% for p in ['1j','7j','1m','3m','6m','ytd','1a','tout'] %}
-    <a href="/patrimoine?period={{ p }}{{ '&' ~ base_qs if base_qs }}" class="{{ 'active' if period == p }}">{{ p | upper }}</a>
-    {% endfor %}
-  </nav>
+  <span style="margin-left: 24px;">{{ period_pills('/patrimoine', period, filters) }}</span>
 {% endblock %}
 
 {% block content %}
@@ -80,21 +79,15 @@
   <div class="card">
     <div class="card-body" style="padding-bottom: 0;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-        {% set filter_params = [] %}
-        {% if type_filter %}{% set _ = filter_params.append('type=' ~ (type_filter | urlencode)) %}{% endif %}
-        {% if institution %}{% set _ = filter_params.append('institution=' ~ (institution | urlencode)) %}{% endif %}
-        {% if group == "1" %}{% set _ = filter_params.append('group=1') %}{% endif %}
-        {% set filter_qs = filter_params | join('&') %}
         <div class="tabs" style="margin-bottom: 0;">
-          <a class="tab-link {{ 'active' if view != 'passifs' }}" href="/patrimoine?period={{ period }}{{ '&' ~ filter_qs if filter_qs }}">Actifs</a>
-          <a class="tab-link {{ 'active' if view == 'passifs' }}" href="/patrimoine?view=passifs&period={{ period }}{{ '&' ~ filter_qs if filter_qs }}">Passifs</a>
+          <a class="tab-link {{ 'active' if view != 'passifs' }}"
+             href="/patrimoine{{ qs(dict(filters, view=none, period=period)) }}">Actifs</a>
+          <a class="tab-link {{ 'active' if view == 'passifs' }}"
+             href="/patrimoine{{ qs(dict(filters, view='passifs', period=period)) }}">Passifs</a>
         </div>
         <div class="d-flex align-center gap-2">
-          {% set group_qs_parts = [] %}{% if view == 'passifs' %}{% set _ = group_qs_parts.append('view=passifs') %}{% endif %}
-          {% if type_filter %}{% set _ = group_qs_parts.append('type=' ~ (type_filter | urlencode)) %}{% endif %}
-          {% if institution %}{% set _ = group_qs_parts.append('institution=' ~ (institution | urlencode)) %}{% endif %}
-          {% set group_qs = group_qs_parts | join('&') %}
-          <a href="/patrimoine?period={{ period }}{{ '&' ~ group_qs if group_qs }}&group={{ '0' if group == '1' else '1' }}" class="toggle-switch">
+          <a href="/patrimoine{{ qs(dict(filters, period=period, group='0' if group == '1' else '1')) }}"
+             class="toggle-switch" role="switch" aria-checked="{{ 'true' if group == '1' else 'false' }}">
             <span class="toggle-track {{ 'on' if group == '1' }}"><span class="toggle-knob"></span></span>
             Grouper par type
           </a>
@@ -106,34 +99,22 @@
       <div class="d-flex align-center gap-2 flex-wrap" style="margin-bottom: 12px;">
         {% for fam_name in family_names %}
           {% if type_filter == fam_name %}
-            {# Active: clicking clears the filter #}
-            {% set clear_params = [] %}{% if view == 'passifs' %}{% set _ = clear_params.append('view=passifs') %}{% endif %}
-            {% if institution %}{% set _ = clear_params.append('institution=' ~ (institution | urlencode)) %}{% endif %}
-            {% if group == "1" %}{% set _ = clear_params.append('group=1') %}{% endif %}
-            {% set clear_qs = clear_params | join('&') %}
-            <a href="/patrimoine?period={{ period }}{{ '&' ~ clear_qs if clear_qs }}" class="filter-pill active">&#10005; {{ fam_name }}</a>
+            {# Actif : cliquer retire le filtre. #}
+            <a href="/patrimoine{{ qs(dict(filters, period=period, type=none)) }}"
+               class="filter-pill active" aria-pressed="true">&#10005; {{ fam_name }}</a>
           {% else %}
-            {% set pill_params = [] %}{% if view == 'passifs' %}{% set _ = pill_params.append('view=passifs') %}{% endif %}
-            {% if institution %}{% set _ = pill_params.append('institution=' ~ (institution | urlencode)) %}{% endif %}
-            {% if group == "1" %}{% set _ = pill_params.append('group=1') %}{% endif %}
-            {% set pill_qs = pill_params | join('&') %}
-            <a href="/patrimoine?period={{ period }}&type={{ fam_name | urlencode }}{{ '&' ~ pill_qs if pill_qs }}" class="filter-pill">+ {{ fam_name }}</a>
+            <a href="/patrimoine{{ qs(dict(filters, period=period, type=fam_name)) }}"
+               class="filter-pill" aria-pressed="false">+ {{ fam_name }}</a>
           {% endif %}
         {% endfor %}
         <span style="width: 1px; height: 20px; background: var(--border); margin: 0 4px;"></span>
         {% for conn_name in connection_names %}
           {% if institution == conn_name %}
-            {% set clear_params = [] %}{% if view == 'passifs' %}{% set _ = clear_params.append('view=passifs') %}{% endif %}
-            {% if type_filter %}{% set _ = clear_params.append('type=' ~ (type_filter | urlencode)) %}{% endif %}
-            {% if group == "1" %}{% set _ = clear_params.append('group=1') %}{% endif %}
-            {% set clear_qs = clear_params | join('&') %}
-            <a href="/patrimoine?period={{ period }}{{ '&' ~ clear_qs if clear_qs }}" class="filter-pill active">&#10005; {{ conn_name }}</a>
+            <a href="/patrimoine{{ qs(dict(filters, period=period, institution=none)) }}"
+               class="filter-pill active" aria-pressed="true">&#10005; {{ conn_name }}</a>
           {% else %}
-            {% set pill_params = [] %}{% if view == 'passifs' %}{% set _ = pill_params.append('view=passifs') %}{% endif %}
-            {% if type_filter %}{% set _ = pill_params.append('type=' ~ (type_filter | urlencode)) %}{% endif %}
-            {% if group == "1" %}{% set _ = pill_params.append('group=1') %}{% endif %}
-            {% set pill_qs = pill_params | join('&') %}
-            <a href="/patrimoine?period={{ period }}&institution={{ conn_name | urlencode }}{{ '&' ~ pill_qs if pill_qs }}" class="filter-pill">+ {{ conn_name }}</a>
+            <a href="/patrimoine{{ qs(dict(filters, period=period, institution=conn_name)) }}"
+               class="filter-pill" aria-pressed="false">+ {{ conn_name }}</a>
           {% endif %}
         {% endfor %}
       </div>

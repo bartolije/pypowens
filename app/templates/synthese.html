@@ -1,18 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Synthèse · Powens Finance{% endblock %}
 
+{% from "_macros.html" import period_pills %}
+
 {% block topbar_left %}
   <span class="section-title">Patrimoine brut</span>
-  <nav class="period-pills" style="margin-left: 24px;">
-    <a href="/?period=1j" class="{{ 'active' if period == '1j' }}">1J</a>
-    <a href="/?period=7j" class="{{ 'active' if period == '7j' }}">7J</a>
-    <a href="/?period=1m" class="{{ 'active' if period == '1m' }}">1M</a>
-    <a href="/?period=3m" class="{{ 'active' if period == '3m' }}">3M</a>
-    <a href="/?period=6m" class="{{ 'active' if period == '6m' }}">6M</a>
-    <a href="/?period=ytd" class="{{ 'active' if period == 'ytd' }}">YTD</a>
-    <a href="/?period=1a" class="{{ 'active' if period == '1a' }}">1A</a>
-    <a href="/?period=tout" class="{{ 'active' if period == 'tout' }}">TOUT</a>
-  </nav>
+  <span style="margin-left: 24px;">{{ period_pills('/', period) }}</span>
 {% endblock %}
 
 {% block content %}

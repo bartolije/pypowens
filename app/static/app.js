@@ -38,7 +38,10 @@ function initMask() {
   const root = document.documentElement;
   const sync = () => {
     const hidden = root.classList.contains("hide-amounts");
-    if (btn) btn.title = hidden ? "Afficher les montants" : "Masquer les montants";
+    if (btn) {
+      btn.title = hidden ? "Afficher les montants" : "Masquer les montants";
+      btn.setAttribute("aria-pressed", hidden ? "true" : "false");
+    }
     setTooltips(hidden);
   };
   sync();
@@ -73,7 +76,12 @@ function initSortable() {
     Array.from(head.cells).forEach((th, i) => {
       if (th.classList.contains("no-sort")) return;
       th.classList.add("sortable");
-      th.addEventListener("click", () => {
+      // Un en-tête triable est un contrôle : il doit être atteignable au
+      // clavier et annoncer son état de tri (aria-sort).
+      th.tabIndex = 0;
+      th.setAttribute("role", "columnheader");
+      th.setAttribute("aria-sort", "none");
+      const sort = () => {
         const body = table.tBodies[0];
         const rows = Array.from(body.rows);
         const dir = th.dataset.dir === "asc" ? "desc" : "asc";
@@ -90,11 +98,41 @@ function initSortable() {
           return 0;
         });
         rows.forEach((r) => body.appendChild(r));
+        Array.from(head.cells).forEach((c) => c.setAttribute("aria-sort", "none"));
+        th.setAttribute("aria-sort", dir === "asc" ? "ascending" : "descending");
         const arr = document.createElement("span");
         arr.className = "arr";
+        arr.setAttribute("aria-hidden", "true");
         arr.textContent = dir === "asc" ? " ▲" : " ▼";
         th.appendChild(arr);
+      };
+      th.addEventListener("click", sort);
+      th.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          sort();
+        }
       });
+    });
+  });
+}
+
+// --- Lignes cliquables : clavier + rôle ------------------------------------
+// `onclick` sur un <tr> n'est atteignable qu'à la souris. Chaque ligne
+// cliquable devient un lien focusable, activable par Entrée.
+function initClickableRows() {
+  document.querySelectorAll("tr.clickable").forEach((tr) => {
+    tr.tabIndex = 0;
+    tr.setAttribute("role", "link");
+    const target = tr.querySelector("a[href]");
+    if (target && !tr.getAttribute("aria-label")) {
+      tr.setAttribute("aria-label", target.textContent.trim());
+    }
+    tr.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        tr.click();
+      }
     });
   });
 }
@@ -106,8 +144,21 @@ function initSearch() {
     if (!table) return;
     input.addEventListener("input", () => {
       const q = input.value.toLowerCase();
-      Array.from(table.tBodies[0].rows).forEach((tr) => {
+      const rows = Array.from(table.tBodies[0].rows);
+      rows.forEach((tr) => {
+        if (tr.classList.contains("row-total")) return;  // traité juste après
         tr.style.display = tr.textContent.toLowerCase().includes(q) ? "" : "none";
+      });
+      // Une ligne de groupe (jour, famille) dont toutes les opérations sont
+      // filtrées laissait une date orpheline : la masquer avec son groupe.
+      rows.forEach((tr, i) => {
+        if (!tr.classList.contains("row-total")) return;
+        let visible = false;
+        for (let j = i + 1; j < rows.length; j++) {
+          if (rows[j].classList.contains("row-total")) break;
+          if (rows[j].style.display !== "none") { visible = true; break; }
+        }
+        tr.style.display = visible ? "" : "none";
       });
     });
   });
@@ -119,15 +170,14 @@ function initChartTips() {
   tip.className = "chart-tip";
   document.body.appendChild(tip);
 
-  // Move <title> text into data-tip so the browser never shows the native
-  // tooltip — and re-use it for our custom one.
-  document.querySelectorAll(".chart [data-tip], .donut [data-tip]").forEach(() => {});
+  // Copier le texte des <title> dans data-tip pour l'infobulle maison — SANS
+  // les supprimer : un <title> est le nom accessible de la forme SVG, et le
+  // retirer rendait les graphiques muets aux lecteurs d'écran. L'infobulle
+  // native est neutralisée par `pointer-events: none` en CSS sur les <title>,
+  // qui n'affecte pas l'arbre d'accessibilité.
   document.querySelectorAll(".chart title, .donut title").forEach((t) => {
     const parent = t.parentElement;
-    if (parent && !parent.dataset.tip) {
-      parent.dataset.tip = t.textContent;
-      t.remove();
-    }
+    if (parent && !parent.dataset.tip) parent.dataset.tip = t.textContent;
   });
 
   function show(e) {
@@ -159,3 +209,4 @@ initChartTips();   // must run before initMask so <title> text is captured befor
 initMask();
 initSortable();
 initSearch();
+initClickableRows();
