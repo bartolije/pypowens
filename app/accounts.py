@@ -21,10 +21,11 @@ from pypowens import Account, PowensClient, Transaction
 
 from . import store
 from .config import Settings
-from .data import load_accounts, load_internal_ids, load_transactions
+from .data import load_accounts, load_connections, load_internal_ids, load_transactions
 from .deps import get_client, get_settings, get_store
-from .enrich import all_categories, merchant_key, resolve_category_txn
+from .enrich import all_categories, merchant_key, resolve_category_txn, split_wording
 from .helpers import month_key, month_label_fr
+from .wealth import category_emoji, monogram
 from .web import templates
 
 router = APIRouter()
@@ -45,6 +46,15 @@ class Row:
     category: str
     amount: Decimal
     internal: bool
+    # Présentation : le libellé coupé en (essentiel, références), le
+    # pictogramme du type de dépense, et la pastille de la banque d'origine.
+    # Calculés côté serveur pour que le template reste déclaratif.
+    label: str = ""
+    detail: str = ""
+    emoji: str = "•"
+    bank_initials: str = ""
+    bank_color: str = "#8a8a8a"
+    bank_ink: str = "#ffffff"
 
 
 @dataclass
@@ -134,8 +144,22 @@ async def accounts_page(
     txns = await load_transactions(client, months=settings.history_months, conn=conn)
     internal = await load_internal_ids(client, months=settings.history_months, conn=conn)
     current_ids = {a.id for a in current}
-    account_names = {a.id: (a.name or f"#{a.id}") for a in accounts_list.accounts}
+    aliases = store.account_aliases(conn)
+    account_names = {
+        a.id: ((aliases.get(a.id) if a.id is not None else None) or a.name or f"#{a.id}")
+        for a in accounts_list.accounts
+    }
     overrides = store.all_overrides(conn)
+
+    # Pastille de la banque d'origine, par compte : sur un historique qui mélange
+    # six établissements, retrouver « d'où sort cette ligne » demandait de lire
+    # un nom tronqué en fin de tableau.
+    connections = await load_connections(client)
+    account_bank: dict[int | None, tuple[str, str, str]] = {}
+    for connection in connections:
+        badge = monogram(connection.connector)
+        for account in connection.accounts:
+            account_bank[account.id] = badge
 
     # Default to the current month, but fall back to the last month that actually
     # has operations: on the 1st, or right after a sync that lags, the current month
@@ -150,17 +174,30 @@ async def accounts_page(
         if month not in present and present:
             month = max(present)
 
-    month_rows = [
-        Row(
-            txn=t,
-            account=account_names.get(t.id_account, "—"),
-            category=resolve_category_txn(t, overrides),
-            amount=t.value or Decimal(0),
-            internal=t.id in internal,
+    month_rows = []
+    for t in txns:
+        if t.id_account not in current_ids or not t.value or month_key(t.date) != month:
+            continue
+        category = resolve_category_txn(t, overrides)
+        label, detail = split_wording(
+            t.simplified_wording or t.wording or t.original_wording or ""
         )
-        for t in txns
-        if t.id_account in current_ids and t.value and month_key(t.date) == month
-    ]
+        initials, color, ink = account_bank.get(t.id_account, ("", "#8a8a8a", "#ffffff"))
+        month_rows.append(
+            Row(
+                txn=t,
+                account=account_names.get(t.id_account, "—"),
+                category=category,
+                amount=t.value or Decimal(0),
+                internal=t.id in internal,
+                label=label or "—",
+                detail=detail,
+                emoji=category_emoji(category),
+                bank_initials=initials,
+                bank_color=color,
+                bank_ink=ink,
+            )
+        )
 
     # Totals and the category breakdown describe the whole month, never the filtered
     # view: they are the reference the table is read against, so hiding credits or

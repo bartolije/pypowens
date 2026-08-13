@@ -380,9 +380,26 @@ async def reconnect(
             )
             url = webauth.authorize_url(connection) if connection else None
         if url is not None:
-            # Redirection vers la BANQUE : l'URL porte un jeton d'état, elle
-            # n'est jamais affichée, seulement suivie.
-            return RedirectResponse(url)
+            # Depuis un téléphone, on suit le lien : c'est là que la banque sert
+            # sa page de consentement. Depuis un ordinateur, certaines banques
+            # (Sumeria/Lydia) renvoient sur leur site vitrine sans un mot — d'où
+            # une page intermédiaire qui propose le QR à scanner, plutôt qu'un
+            # cul-de-sac.
+            if webauth.is_mobile(request.headers.get("user-agent")):
+                return RedirectResponse(url)
+            connector = connection.connector if connection else None
+            return templates.TemplateResponse(
+                request,
+                "webauth.html",
+                {
+                    "request": request,
+                    "active": "connexions",
+                    "bank": (connector.name if connector else "votre banque"),
+                    "url": url,
+                    "qr": webauth.qr_svg(url),
+                    "expire": (connection.raw.get("expire") if connection else None),
+                },
+            )
         return _error_page(
             request,
             status_code=502,

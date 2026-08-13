@@ -46,6 +46,7 @@ app = [
     "python-dotenv>=1.0",
     "python-multipart>=0.0.9",  # HTML form posts (category overrides)
     "yfinance>=0.2.40",         # enrichissement secteur/pays (app/classify.py)
+    "segno>=1.6",               # QR du parcours bancaire mobile (pur Python, SVG)
 ]
 
 [project.urls]

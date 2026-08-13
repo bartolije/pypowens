@@ -61,3 +61,34 @@ def needs_webauth(connection: Any) -> bool:
     """La connexion attend-elle une authentification sur le site de la banque ?"""
     raw = getattr(connection, "raw", None) or {}
     return (raw.get("state") or "") == "webauthRequired"
+
+
+# Un parcours d'authentification bancaire peut être réservé au mobile. Sumeria/
+# Lydia, par exemple, répond 302 vers son site vitrine à un navigateur de bureau
+# et sert la page de consentement à un téléphone : suivre le lien depuis un
+# ordinateur mène à un cul-de-sac, sans le moindre message.
+_MOBILE_UA = re.compile(r"iPhone|iPad|Android|Mobile", re.IGNORECASE)
+
+
+def is_mobile(user_agent: str | None) -> bool:
+    return bool(user_agent and _MOBILE_UA.search(user_agent))
+
+
+def qr_svg(url: str, *, scale: int = 5) -> str:
+    """QR code du lien d'autorisation, en SVG inline.
+
+    Le seul moyen commode de passer un lien de 200 caractères d'un écran
+    d'ordinateur à un téléphone. Rendu localement (segno est pur Python) :
+    aucune requête vers un service de génération, alors que ce lien porte un
+    jeton d'authentification bancaire.
+    """
+    import io
+
+    import segno  # noqa: PLC0415 — dépendance de l'app, pas de la lib
+
+    buffer = io.BytesIO()  # segno écrit des octets, même en SVG
+    segno.make(url, error="m").save(
+        buffer, kind="svg", scale=scale, dark="#111111", light="#ffffff",
+        border=2, xmldecl=False, svgns=True,
+    )
+    return buffer.getvalue().decode("utf-8")

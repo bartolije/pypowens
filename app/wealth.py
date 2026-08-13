@@ -103,3 +103,76 @@ def build_invest_rows(
     invest_cost = invest_valuation - invest_diff
     invest_diff_pct = float(invest_diff / invest_cost * 100) if invest_cost else 0.0
     return rows, invest_diff, invest_diff_pct
+
+
+# ---------------------------------------------------------------- monogrammes
+
+
+def readable_ink(hex_color: str) -> str:
+    """Noir ou blanc, selon ce qui se lit sur ce fond.
+
+    Un connecteur peut annoncer une couleur de marque très claire (l'un des
+    connecteurs réels est blanc) : du texte blanc dessus serait invisible.
+    """
+    try:
+        r, g, b = (int(hex_color[i : i + 2], 16) / 255 for i in (0, 2, 4))
+    except ValueError:
+        return "#ffffff"
+    # Luminance perçue (ITU-R BT.601), suffisante pour un choix binaire.
+    return "#111111" if (0.299 * r + 0.587 * g + 0.114 * b) > 0.6 else "#ffffff"
+
+
+def monogram(connector: Any) -> tuple[str, str, str]:
+    """(initiales, fond, encre) d'une banque — l'équivalent d'un logo, en local.
+
+    ``GET /connectors/{id}/logos`` renvoie une liste vide sur cette app, mais
+    l'objet connecteur porte sa **couleur de marque** et un **slug** : de quoi
+    fabriquer une pastille reconnaissable, sans dépendre d'un CDN d'images ni
+    faire fuiter la moindre requête vers l'extérieur.
+    """
+    raw = getattr(connector, "raw", None) or {}
+    color = str(raw.get("color") or "").strip().lstrip("#")
+    if len(color) != 6:
+        color = "8a8a8a"
+    slug = str(raw.get("slug") or "").strip()
+    name = str(getattr(connector, "name", "") or "")
+    initials = (slug or "".join(w[0] for w in name.split()[:2]) or "?")[:3].upper()
+    return initials, f"#{color}", readable_ink(color)
+
+
+# ------------------------------------------------------- pictogrammes de type
+
+# Un pictogramme par type de dépense : sur un relevé de cinquante lignes, l'œil
+# repère une forme bien plus vite qu'il ne lit une étiquette.
+CATEGORY_EMOJI: dict[str, str] = {
+    "Alimentation": "🛒",
+    "Restauration": "🍽️",
+    "Carburant": "⛽",
+    "Transport": "🚆",
+    "Auto": "🚗",
+    "Moto": "🏍️",
+    "Logement / charges": "🏠",
+    "Énergie / Eau": "⚡",
+    "Télécom / Internet": "📶",
+    "Streaming / Médias": "🎬",
+    "Logiciel / Cloud": "💻",
+    "Assurance / Mutuelle": "🛡️",
+    "Santé": "⚕️",
+    "Sport / Loisirs": "🏃",
+    "Voyage / Vacances": "✈️",
+    "Shopping / Équipement": "🛍️",
+    "Éducation / Enfance": "🎓",
+    "Impôts & taxes": "🏛️",
+    "Frais bancaires": "🏦",
+    "Retrait espèces": "💵",
+    "Épargne / Investissement": "📈",
+    "Dons / Associations": "🤝",
+    "Animaux": "🐾",
+    "Virement interne": "🔄",
+    "Salaire / Revenus": "💰",
+    "Autre": "•",
+}
+
+
+def category_emoji(category: str) -> str:
+    return CATEGORY_EMOJI.get(category, "•")

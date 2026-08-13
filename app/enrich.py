@@ -113,6 +113,31 @@ def merchant_key(txn: Txn, *, max_tokens: int = 3) -> str:
     return _MERCHANT_ALIASES.get(key, key)
 
 
+@lru_cache(maxsize=16384)
+def split_wording(text: str) -> tuple[str, str]:
+    """Coupe un libellé en (essentiel, références).
+
+    Un prélèvement porte souvent tout le dossier client :
+    « EDF CLIENTS PARTICULIERS BARTOLI JEREMIE Numero de client : 602965391
+    2226218A9PE8OSDT RUM MM9760296539120001 ». Seul le début identifie
+    l'émetteur ; le reste est une référence de mandat, utile à conserver mais
+    pas à afficher en grand. La coupe réutilise exactement le nettoyage qui
+    sert déjà au regroupement par marchand — donc ce qui s'affiche en gros est
+    ce sur quoi l'app raisonne.
+    """
+    raw = (text or "").strip()
+    essential = clean_wording(raw)
+    if not essential:
+        return raw, ""
+    # Retrouver le reste dans le libellé d'origine, à la casse près.
+    upper_raw, upper_essential = raw.upper(), essential.upper()
+    index = upper_raw.find(upper_essential[: min(len(upper_essential), 24)])
+    if index < 0:
+        return essential, ""
+    rest = raw[index + len(essential) :].strip(" -.:;,")
+    return essential, rest
+
+
 # ----------------------------------------------------------------- categories
 
 # Only well-known, generic brands live here (this file is versioned in a public

@@ -124,13 +124,28 @@
           {% for r in d.rows %}
           <tr>
             <td>
-              <a href="/transactions?label={{ merchant_key(r.txn) | urlencode }}">
-                {{ r.txn.simplified_wording or r.txn.wording or '—' }}
-              </a>
+              {# Le libellé utile en clair, la référence de mandat en dessous :
+                 c'est la même coupe que celle du regroupement par marchand. #}
+              <a href="/transactions?label={{ merchant_key(r.txn) | urlencode }}">{{ r.label }}</a>
               {% if r.internal %}<span class="badge badge-muted" style="margin-left: 6px;" title="Virement entre vos comptes">interne</span>{% endif %}
+              {% if r.detail %}
+              <div class="txn-detail" title="{{ r.detail }}">{{ r.detail }}</div>
+              {% endif %}
             </td>
-            <td><span class="badge badge-muted">{{ r.category }}</span></td>
-            <td class="text-secondary" style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ r.account }}</td>
+            <td>
+              <span class="badge badge-muted">
+                <span aria-hidden="true">{{ r.emoji }}</span> {{ r.category }}
+              </span>
+            </td>
+            <td class="text-secondary" style="max-width: 220px;">
+              <span class="d-flex align-center gap-2">
+                {% if r.bank_initials %}
+                <span class="monogram monogram-sm" aria-hidden="true"
+                      style="background: {{ r.bank_color }}; color: {{ r.bank_ink }};">{{ r.bank_initials }}</span>
+                {% endif %}
+                <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ r.account }}</span>
+              </span>
+            </td>
             <td class="num {{ 'text-green' if r.amount > 0 }}">
               <span class="amount">{{ r.amount | money(currency) }}</span>
             </td>

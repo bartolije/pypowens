@@ -23,7 +23,6 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import HTMLResponse
@@ -35,7 +34,7 @@ from .config import Settings
 from .data import clear_cache, load_all_accounts, load_connections, load_transactions
 from .deps import get_client, get_settings, get_store
 from .recap import STATE_LABELS, USER_ACTION_STATES
-from .wealth import family_of
+from .wealth import family_of, monogram
 from .web import templates
 
 router = APIRouter()
@@ -50,38 +49,6 @@ class AccountRow:
     last_txn: date | None
     txn_count: int
     last_snapshot: date | None
-
-
-def _readable_ink(hex_color: str) -> str:
-    """Noir ou blanc, selon ce qui se lit sur ce fond.
-
-    Un connecteur peut annoncer une couleur de marque très claire (l'un des
-    tiens est blanc) : du texte blanc dessus serait invisible.
-    """
-    try:
-        r, g, b = (int(hex_color[i : i + 2], 16) / 255 for i in (0, 2, 4))
-    except ValueError:
-        return "#ffffff"
-    # Luminance perçue (ITU-R BT.601), suffisante pour un choix binaire.
-    return "#111111" if (0.299 * r + 0.587 * g + 0.114 * b) > 0.6 else "#ffffff"
-
-
-def _monogram(connector: Any) -> tuple[str, str, str]:
-    """(initiales, fond, encre) d'une banque — l'équivalent d'un logo, en local.
-
-    ``GET /connectors/{id}/logos`` renvoie une liste vide sur cette app, mais
-    l'objet connecteur porte la **couleur de marque** et un **slug** : de quoi
-    fabriquer une pastille reconnaissable, sans dépendre d'un CDN d'images ni
-    faire fuiter la moindre requête vers l'extérieur.
-    """
-    raw = getattr(connector, "raw", None) or {}
-    color = str(raw.get("color") or "").strip().lstrip("#")
-    if len(color) != 6:
-        color = "8a8a8a"
-    slug = str(raw.get("slug") or "").strip()
-    name = str(getattr(connector, "name", "") or "")
-    initials = (slug or "".join(w[0] for w in name.split()[:2]) or "?")[:3].upper()
-    return initials, f"#{color}", _readable_ink(color)
 
 
 @dataclass
@@ -156,7 +123,7 @@ async def connections_page(
             ),
             next_try=connection.next_try,
         )
-        card.initials, card.color, card.ink = _monogram(connection.connector)
+        card.initials, card.color, card.ink = monogram(connection.connector)
         for account in accounts:
             if account.id_connection != connection.id:
                 continue

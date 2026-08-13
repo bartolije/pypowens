@@ -56,8 +56,9 @@ def test_needs_webauth_only_for_that_state():
 
 # ------------------------------------------------------------------- route
 
-def test_reconnect_sends_to_the_bank_not_to_the_webview(client, fake_client):
-    """Le test de non-régression du bug Sumeria."""
+def test_reconnect_never_sends_a_webauth_connector_to_the_webview(client, fake_client):
+    """Le test de non-régression du bug Sumeria : le Webview Powens ne mène
+    nulle part pour ces connecteurs, quel que soit l'appareil."""
     import app.data
 
     fake_client._connections[0].update(
@@ -66,9 +67,10 @@ def test_reconnect_sends_to_the_bank_not_to_the_webview(client, fake_client):
     app.data.clear_cache()
 
     response = client.get("/reconnecter/1", follow_redirects=False)
-    assert response.status_code == 307
-    assert response.headers["location"].startswith("https://lydia-app.com/")
-    assert "webview.powens.com" not in response.headers["location"]
+    assert "webview.powens.com" not in response.text
+    assert "webview.powens.com" not in response.headers.get("location", "")
+    # Le lien de la banque est proposé (ici via la page QR, cf. tests plus bas).
+    assert "lydia-app.com" in response.text
 
     fake_client._connections[0].update({"state": None, "error_message": None})
     fake_client._connections[0].pop("expire", None)
@@ -84,7 +86,11 @@ def test_an_expired_link_is_regenerated_before_redirecting(client, fake_client):
     fake_client.synced_connections = []
     app.data.clear_cache()
 
-    client.get("/reconnecter/1", follow_redirects=False)
+    client.get(
+        "/reconnecter/1",
+        headers={"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X)"},
+        follow_redirects=False,
+    )
     # Powens a été sollicité pour produire un lien neuf.
     assert fake_client.synced_connections == [1]
 
@@ -105,4 +111,67 @@ def test_a_classic_connector_still_goes_through_the_webview(client, fake_client)
     assert "webview.powens.com" in response.headers["location"]
 
     fake_client._connections[0]["state"] = None
+    app.data.clear_cache()
+
+
+# ------------------------------------------------- parcours réservé au mobile
+
+def test_mobile_detection():
+    assert webauth.is_mobile("Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X)") is True
+    assert webauth.is_mobile("Mozilla/5.0 (Linux; Android 14) Mobile Safari") is True
+    assert webauth.is_mobile("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126") is False
+    assert webauth.is_mobile(None) is False
+
+
+def test_qr_is_generated_locally_as_inline_svg():
+    """Ce lien porte un jeton bancaire : aucun service tiers ne doit le voir."""
+    svg = webauth.qr_svg("https://lydia-app.com/openauth?state=secret")
+    assert svg.lstrip().startswith("<svg")
+    assert "http://www.w3.org/2000/svg" in svg
+    # Pas d'appel réseau : le SVG contient les modules, pas une <image src>.
+    assert "<image" not in svg
+
+
+def test_desktop_gets_the_qr_page_instead_of_a_dead_end(client, fake_client):
+    """Sumeria répond 302 vers son site vitrine à un navigateur de bureau."""
+    import app.data
+
+    fake_client._connections[0].update(
+        {"state": "webauthRequired", "error_message": REAL, "expire": "2099-01-01 00:00:00"}
+    )
+    app.data.clear_cache()
+
+    response = client.get(
+        "/reconnecter/1",
+        headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert "<svg" in response.text                    # le QR à scanner
+    assert "sur votre téléphone" in response.text
+    assert "lydia-app.com" in response.text           # le lien reste proposé
+
+    fake_client._connections[0].update({"state": None, "error_message": None})
+    fake_client._connections[0].pop("expire", None)
+    app.data.clear_cache()
+
+
+def test_a_phone_is_sent_straight_to_the_bank(client, fake_client):
+    import app.data
+
+    fake_client._connections[0].update(
+        {"state": "webauthRequired", "error_message": REAL, "expire": "2099-01-01 00:00:00"}
+    )
+    app.data.clear_cache()
+
+    response = client.get(
+        "/reconnecter/1",
+        headers={"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X)"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 307
+    assert response.headers["location"].startswith("https://lydia-app.com/")
+
+    fake_client._connections[0].update({"state": None, "error_message": None})
+    fake_client._connections[0].pop("expire", None)
     app.data.clear_cache()

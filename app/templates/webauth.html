@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Authentification {{ bank }} · Powens Finance{% endblock %}
+
+{% block topbar_left %}
+  <a href="/connexions" class="btn btn-sm" style="margin-right: 8px;">← Mes comptes bancaires</a>
+  <span class="section-title">Authentification {{ bank }}</span>
+{% endblock %}
+
+{% block content %}
+
+<div class="card" style="max-width: 760px;">
+  <div class="card-header"><h3 class="card-title">Terminer sur votre téléphone</h3></div>
+  <div class="card-body">
+    <p class="mb-3">
+      <strong>{{ bank }}</strong> ne propose son écran d'autorisation qu'aux
+      appareils mobiles : ouvert sur un ordinateur, le lien renvoie sur le site
+      vitrine de la banque, sans rien à valider. Scannez ce code avec le
+      téléphone où l'application {{ bank }} est installée.
+    </p>
+
+    <div class="d-flex gap-3 flex-wrap align-center">
+      <div class="qr-frame">{{ qr | safe }}</div>
+      <div style="flex: 1; min-width: 260px;">
+        <p class="text-secondary small mb-2">
+          {% if expire %}
+          Ce lien expire le <strong>{{ expire }}</strong> (deux heures après sa
+          création). Passé ce délai, revenez ici : un lien neuf est demandé
+          automatiquement.
+          {% else %}
+          Ce lien est à usage unique et de courte durée.
+          {% endif %}
+        </p>
+        <p class="text-secondary small mb-3">
+          Après validation dans l'application, la banque redonne la main à
+          Powens et la connexion apparaît synchronisée — rechargez alors
+          « Mes comptes bancaires ».
+        </p>
+        <a class="btn" href="{{ url }}" rel="noopener">Tenter quand même dans ce navigateur</a>
+      </div>
+    </div>
+  </div>
+  <div class="card-footer text-secondary small">
+    Le code est généré sur cette machine — ce lien porte un jeton
+    d'authentification bancaire, il ne transite par aucun service tiers.
+  </div>
+</div>
+
+{% endblock %}

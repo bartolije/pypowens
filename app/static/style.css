@@ -575,6 +575,26 @@ th.sortable { cursor: pointer; }
   flex: 0 0 auto;
 }
 
+/* Cadre du QR : fond clair obligatoire, un QR sombre sur sombre ne se scanne pas. */
+.qr-frame {
+  background: #ffffff; padding: 10px; border-radius: var(--radius-sm);
+  line-height: 0; flex: 0 0 auto;
+}
+.qr-frame svg { width: 190px; height: 190px; }
+
+/* Pastille réduite, pour les lignes de tableau. */
+.monogram-sm { width: 22px; height: 22px; font-size: 0.58rem; }
+
+/* Références de mandat sous le libellé : présentes pour qui les cherche,
+   discrètes pour qui parcourt la liste. */
+.txn-detail {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-style: italic;
+  max-width: 46ch;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
 /* Cartes de connexion repliables (details/summary natif, zéro JS). */
 .connection-card > summary { list-style: none; }
 .connection-card > summary::-webkit-details-marker { display: none; }
