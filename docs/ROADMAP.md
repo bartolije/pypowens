@@ -50,24 +50,23 @@ critère clair n'est pas prêt à être attaqué.
   `request_id` Powens exposé sur les exceptions (payload JSON ou en-tête).
   Version unifiée dans `_version.py`.
 
-## P2 — Produit
+## P2 — Produit — ✅ TERMINÉ le 13/08
 
-- [ ] **Budgets par catégorie** (le plus ancien manque déclaré) : enveloppe
-  mensuelle par catégorie, barre de progression sur /analyse, alerte de
-  dépassement dans le bandeau santé. Stockage : table `budget(categorie,
-  montant)` + UI d'édition sur /analyse. *Done : je fixe 300 €/mois de
-  restauration et je vois où j'en suis le 20 du mois.* (~1 j)
-- [ ] **Comparaison à un indice** (étape 14 du DEVLOG) : série d'un ETF de
-  référence via yfinance (déjà présent) superposée au TWR sur /performance.
-  *Done : courbe « vous vs MSCI World » sur la même fenêtre.* (~1 j)
-- [ ] **Recherche globale** (libellé/montant/date sur tout l'historique,
-  serveur) + **fusion de merchant_keys** (deux clés = même marchand) +
-  **renommage de comptes**. *(~1 j)*
-- [ ] **Pagination de l'onglet Transactions** du détail de compte (24 mois
-  rendus d'un bloc aujourd'hui). *(~2 h)*
-- [ ] **Notifications hors-page** : le bandeau ne vit que dans l'app —
-  brancher les alertes (santé + hausses d'abonnements) sur une notification
-  macOS via le collecteur launchd. *(~½ j)*
+- [x] ~~Budgets par catégorie~~ : carte sur /analyse (suivi du mois COURANT,
+  barre rouge en dépassement, édition par ligne) + alerte de dépassement dans
+  le bandeau global (seulement cache chaud — /import ne paie pas l'historique).
+- [x] ~~Comparaison à un indice~~ : le collecteur archive les clôtures
+  quotidiennes (APP_BENCHMARK_TICKER, défaut IWDA.AS, 5 ans au 1er passage) ;
+  /performance superpose l'indice en pointillés, rebasé sur la valeur de
+  départ — « si la même somme était sur l'indice ». Zéro réseau au rendu.
+- [x] ~~Recherche globale~~ (/recherche + champ topbar : libellé ET montant
+  exact), ~~fusion de marchands~~ (drill-down, appliquée à la sortie de
+  merchant_key, sans chaîne), ~~renommage de comptes~~ (local, appliqué à la
+  lecture, suit le compte partout).
+- [x] ~~Pagination de l'onglet Transactions~~ (100/page).
+- [x] ~~Notifications macOS~~ : le collecteur pousse (osascript, best effort,
+  APP_NOTIFY=0 pour couper) — santé des connexions + alertes d'abonnements
+  non acquittées.
 
 ## P3 — Qualité, accessibilité, dette
 
