@@ -126,6 +126,11 @@ def parse_amount(raw: str) -> Decimal | None:
         value = Decimal(cleaned)
     except InvalidOperation:
         return None
+    # « NaN », « Infinity » et « sNaN » sont des Decimal valides pour Python :
+    # une cellule contenant ce mot passerait, et un seul non-fini rendrait NaN
+    # toute somme de soldes en aval, silencieusement. (Trouvé par hypothesis.)
+    if not value.is_finite():
+        return None
     return -value if negative else value
 
 

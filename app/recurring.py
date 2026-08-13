@@ -21,10 +21,13 @@ from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from pypowens import PowensClient
+
 from . import store
+from .config import Settings
 from .data import MAX_WINDOW_MONTHS, load_internal_ids, load_spending_transactions
 from .deps import get_client, get_settings, get_store
 from .enrich import (
@@ -82,8 +85,9 @@ class RecurringItem:
     spark: str = ""
     # Presentation-only, same reason: état "nouveau / hausse" issu de sync_series,
     # posé par le routeur (vide hors de la vue de référence).
-    flags: dict = field(default_factory=lambda: {"new": False, "increase_pct": None,
-                                                 "previous_amount": None})
+    flags: dict[str, Any] = field(
+        default_factory=lambda: {"new": False, "increase_pct": None, "previous_amount": None}
+    )
 
     @property
     def repriced(self) -> bool:
@@ -161,7 +165,7 @@ def _classify(interval_days: float) -> tuple[str, float]:
     return "Irrégulier", 0.0
 
 
-def _cluster_by_amount(txns: list, tol: float = _AMOUNT_TOL) -> list[list]:
+def _cluster_by_amount(txns: list[Any], tol: float = _AMOUNT_TOL) -> list[list[Any]]:
     """Split a merchant group into amount-homogeneous clusters.
 
     Sort by |amount| and greedily start a new cluster whenever an amount jumps
@@ -170,8 +174,8 @@ def _cluster_by_amount(txns: list, tol: float = _AMOUNT_TOL) -> list[list]:
     plan) into different series.
     """
     ordered = sorted(txns, key=lambda t: abs(float(t.value)))
-    clusters: list[list] = []
-    current: list = []
+    clusters: list[list[Any]] = []
+    current: list[Any] = []
     # ``ordered`` étant trié, les montants du cluster courant le sont aussi par
     # construction : la médiane se lit au milieu de la liste en O(1). L'ancien
     # ``statistics.median([...])`` recréait et retriait la liste à chaque
@@ -195,7 +199,7 @@ def _cluster_by_amount(txns: list, tol: float = _AMOUNT_TOL) -> list[list]:
 
 
 def _analyze(
-    cluster: list,
+    cluster: list[Any],
     *,
     key: str,
     today: date,
@@ -286,7 +290,7 @@ def _analyze(
 
 
 def detect_recurring(
-    transactions: list,
+    transactions: list[Any],
     *,
     today: date | None = None,
     internal_ids: set[int] | None = None,
@@ -308,7 +312,7 @@ def detect_recurring(
     today = today or date.today()
     excluded = internal_ids or set()
 
-    kept: list = []
+    kept: list[Any] = []
     for t in transactions:
         if t.id is not None and t.id in excluded:
             continue
@@ -324,7 +328,7 @@ def detect_recurring(
             continue
         kept.append(t)
 
-    groups: dict[str, list] = defaultdict(list)
+    groups: dict[str, list[Any]] = defaultdict(list)
     for t in kept:
         groups[merchant_key(t)].append(t)
 
@@ -400,7 +404,7 @@ def is_subscription(item: RecurringItem, *, merchant_charges: int | None = None)
 
 
 def detect_subscriptions(
-    transactions: list,
+    transactions: list[Any],
     *,
     today: date | None = None,
     internal_ids: set[int] | None = None,
@@ -489,15 +493,15 @@ async def acknowledge_alerts(
 
 
 @router.get("/abonnements", response_class=HTMLResponse)
-async def recurring_page(
+async def recurring_page(  # noqa: PLR0913 — signature dictée par FastAPI
     request: Request,
-    client=Depends(get_client),  # noqa: B008
-    settings=Depends(get_settings),  # noqa: B008
+    client: PowensClient = Depends(get_client),  # noqa: B008
+    settings: Settings = Depends(get_settings),  # noqa: B008
     conn: sqlite3.Connection = Depends(get_store),  # noqa: B008
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
     tout: int = Query(default=0, description="1 = show every repeating series, not just contracts"),
-):
+) -> Response:
     d_from = _parse_date(date_from)
     d_to = _parse_date(date_to)
     # Window covering the requested range (default: configured history).

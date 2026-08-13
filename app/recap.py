@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
@@ -300,6 +301,13 @@ async def recap(
                     connection.last_update.strftime("%d/%m/%Y %H:%M")
                     if connection.last_update
                     else "—"
+                ),
+                # Âge de la dernière synchro : « 01/08 17:59 » ne dit pas au
+                # lecteur que ça fait douze jours.
+                "age_days": (
+                    (date.today() - connection.last_update.date()).days
+                    if connection.last_update
+                    else None
                 ),
                 "ok": not message,
                 "needs_user": (connection.state or "") in USER_ACTION_STATES,

@@ -41,4 +41,4 @@ jobs:
       # Le seuil empêche la couverture de dériver en silence : les 5 modules à
       # zéro test de l'audit du 12/08 passaient une CI verte.
       - name: Tests (with coverage floor)
-        run: uv run pytest -q --cov=app --cov=src/pypowens --cov-fail-under=84
+        run: uv run pytest -q --cov=app --cov=src/pypowens --cov-fail-under=89

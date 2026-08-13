@@ -37,6 +37,7 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "time-machine>=2.14",  # horloge figée : les fixtures ne dépendent plus du jour de la CI
+    "hypothesis>=6.100",   # tests de propriété sur les parsers de relevés
 ]
 app = [
     "fastapi>=0.115",
@@ -79,6 +80,32 @@ strict = true
 # annotation-coverage flags relaxed (see override below) — real type errors in
 # function bodies are caught without demanding annotations everywhere yet.
 files = ["src/pypowens", "app"]
+
+# Les modules d'arithmétique financière et de persistance sont tenus au niveau
+# strict : c'est là qu'une erreur de type produit un CHIFFRE FAUX, pas une
+# exception. Les routers restent au profil allégé ci-dessous (leurs signatures
+# sont dictées par FastAPI/Jinja).
+[[tool.mypy.overrides]]
+module = [
+    "app.performance",
+    "app.store",
+    "app.importer",
+    "app.enrich",
+    "app.notify",
+    "app.wealth",
+    "app.helpers",
+    "app.classify",
+    "app.config",
+    "app.state",
+    "app.data",
+    "app.collector",
+    "app.health",
+    "app.recurring",
+    "app.frequency",
+]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_any_generics = true
 
 [[tool.mypy.overrides]]
 module = "app.*"

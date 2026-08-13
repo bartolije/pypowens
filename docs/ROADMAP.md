@@ -68,32 +68,44 @@ critère clair n'est pas prêt à être attaqué.
   APP_NOTIFY=0 pour couper) — santé des connexions + alertes d'abonnements
   non acquittées.
 
-## P3 — Qualité, accessibilité, dette
+## P3 — Qualité, accessibilité, dette — ✅ TERMINÉ le 13/08
 
-- [ ] **Accessibilité** : les tooltips maison suppriment les `<title>` SVG
-  (muets au lecteur d'écran), pas de `:focus-visible`, lignes cliquables non
-  focusables, `--text-muted` sous le contraste AA. *Done : navigation clavier
-  complète + axe-core sans erreur bloquante.* (~1 j)
-- [ ] **Macros Jinja** : le sélecteur de période existe en 3 exemplaires
-  (synthese, recap, detail) ; les query strings se construisent à la main dans
-  recap.html. *Done : une macro `period_pills()`, une `qs()`.* (~2 h)
-- [ ] **Hypothesis sur les parsers** (`parse_amount`, `parse_date`,
-  `parse_statement`) — invariants simples, gisement de cas tordus. *(~2 h)*
-- [ ] **mypy strict sur app/** (le profil allégé actuel laisse passer les
-  signatures non annotées) — module par module, commencer par store/
-  performance. *(~1 j au fil de l'eau)*
-- [ ] **Couverture 88 → 92 %** : collector.py (65 %), helpers graphiques
-  (65 %), recap.py (76 %). Relever le plancher CI à chaque palier. *(au fil
-  de l'eau)*
-- [ ] **Seuil « muette » configurable** (`APP_SILENT_DAYS`, défaut 3) et
-  affichage de l'âge de synchro par connexion sur /patrimoine. *(~1 h)*
+- [x] ~~Accessibilité~~ : les `<title>` SVG ne sont plus supprimés (les
+  graphiques étaient muets aux lecteurs d'écran) ; tri au clavier avec
+  `aria-sort` ; lignes cliquables focusables (`role=link`, Entrée) ;
+  `:focus-visible` partout ; skip-link + `<main>` ; `aria-pressed` sur le
+  masquage ; icônes décoratives en `aria-hidden` ; `--text-muted` passé à
+  4,5:1 (seuil AA), vérifié par un test qui calcule le ratio ;
+  `prefers-reduced-motion`. Bonus : la recherche masque les en-têtes de
+  groupe devenus orphelins.
+- [x] ~~Macros Jinja~~ (`_macros.html`) : `period_pills()` et `qs()` — trois
+  sélecteurs de période dupliqués et SEPT constructions manuelles de query
+  string dans recap.html, aux variantes déjà divergentes, remplacés.
+- [x] ~~Hypothesis sur les parsers~~ : 14 propriétés (jamais lever, signe
+  préservé, dernier séparateur = décimale, dates impossibles rejetées,
+  empreintes stables, aucune ligne perdue). **A trouvé un vrai bug** : une
+  cellule « INFINITY » produisait `Decimal('Infinity')`, qui aurait
+  empoisonné toute somme de soldes — corrigé.
+- [x] ~~mypy strict sur app/~~ : 15 modules de logique (performance, store,
+  importer, enrich, data, collector, health, recurring, frequency, helpers,
+  classify, config, state, notify, wealth) au niveau strict ; les routers
+  gardent le profil allégé, leurs signatures étant dictées par FastAPI.
+- [x] ~~Couverture 88 → 90 %~~ (plancher CI relevé à 89) : collector 47→64 %,
+  helpers 66→80 %, avec des tests qui visent les chemins d'échec du
+  collecteur — le seul composant qui tourne sans personne devant l'écran.
+- [x] ~~Seuil « muette » configurable~~ (`APP_SILENT_DAYS`, défaut 3) et âge
+  de la dernière synchro affiché par connexion sur /patrimoine (« il y a
+  12 j » — une date seule ne dit pas au lecteur que c'est vieux).
 
-## Ordre d'attaque recommandé
+## Tout le plan est traité
 
-1. P0.2 (marqueurs de périmètre) — court, et c'est la suite logique du bandeau.
-2. P0.4 (datetimes lib) — 2 h, élimine une classe de crash latente.
-3. P1.1 + P1.2 (transactionsclusters, pockets/loans) — nourrit directement
-   Passifs et valide le détecteur.
-4. P2.1 (budgets) — la fonctionnalité la plus visible au quotidien.
-5. Le reste au fil de l'eau, en gardant la discipline : chaque correctif
-   arrive avec son test de non-régression, un commit, un push.
+P0, P1, P2 et P3 sont livrés (13/08). Restent, hors périmètre initial :
+
+- **Reportés faute de données** : `transactionsclusters`, `pockets`, `loans`,
+  `documents` — vides ou 404 sur cette app Powens. Re-sonder à l'occasion
+  avec `client._request("GET", "users/me/pockets")`.
+- **Écartés par décision** : suppression d'utilisateurs (RGPD) et publication
+  PyPI — sans objet pour une app perso locale.
+
+La discipline reste la même pour la suite : chaque correctif arrive avec son
+test de non-régression, un commit, un push.

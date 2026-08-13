@@ -11,8 +11,9 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import HTMLResponse
 
 from pypowens import PowensClient
@@ -71,7 +72,7 @@ def _parse_date(value: str | None) -> date | None:
 
 
 def group_by_label(
-    transactions: list,
+    transactions: list[Any],
     *,
     internal_ids: set[int] | None = None,
     kind: str = "debit",
@@ -82,7 +83,7 @@ def group_by_label(
 ) -> list[LabelGroup]:
     """Group transactions by normalized label, computing count/total/stats."""
     internal_ids = internal_ids or set()
-    buckets: dict[str, list] = {}
+    buckets: dict[str, list[Any]] = {}
     for t in transactions:
         if t.value is None or t.date is None or t.id in internal_ids:
             continue
@@ -134,7 +135,7 @@ async def recurrences(
     min_count: int = Query(default=2, ge=1),
     kind: str = Query(default="debit"),
     scope: str = Query(default="spending"),
-):
+) -> Response:
     """Recurring lines grouped by label over a date range, ranked by count/amount."""
     d_from = _parse_date(date_from)
     d_to = _parse_date(date_to)

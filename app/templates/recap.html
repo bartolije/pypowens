@@ -311,7 +311,7 @@
           <tr>
             <td>{{ c.name }}</td>
             <td class="num">{{ c.nb_accounts }}</td>
-            <td class="text-secondary">{{ c.last_update }}</td>
+            <td class="text-secondary">{{ c.last_update }}{% if c.age_days %}<span class="text-muted small"> · il y a {{ c.age_days }} j</span>{% endif %}</td>
             <td>
               {% if c.ok %}<span class="sync-badge sync-ok">● Synchronisé</span>
               {% else %}<span class="sync-badge sync-err">● À reconnecter</span>

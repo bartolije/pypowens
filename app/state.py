@@ -15,6 +15,7 @@ import logging
 import os
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from pypowens import PowensAPIError, PowensClient
 
@@ -32,7 +33,7 @@ class StateFileError(RuntimeError):
     """
 
 
-def _load_state(path: Path) -> dict:
+def _load_state(path: Path) -> dict[str, Any]:
     try:
         raw = path.read_text()
     except FileNotFoundError:
@@ -51,7 +52,7 @@ def _load_state(path: Path) -> dict:
     return data
 
 
-def _save_state(path: Path, data: dict) -> None:
+def _save_state(path: Path, data: dict[str, Any]) -> None:
     # Écriture atomique : ``write_text`` tronque puis écrit, donc un crash au
     # milieu laisserait un JSON tronqué que le prochain démarrage prendrait pour
     # un état corrompu. ``mkstemp`` crée par ailleurs le fichier en 0600 dès le

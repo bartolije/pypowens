@@ -116,3 +116,69 @@ def test_benchmark_overlay_rebases_on_the_series_start():
     assert overlay == [1000.0, 1040.0]  # rebasé sur 1000, +4 % comme l'indice
     # Sans clôture archivée : pas d'overlay, pas d'erreur.
     assert _benchmark_overlay(kept, []) == []
+
+
+# --------------------------------------------------- helpers de présentation
+
+def test_format_money_and_currency_symbols():
+    from app.helpers import currency_symbol, format_money
+
+    assert currency_symbol("EUR") == "€"
+    assert currency_symbol("USD") == "$"
+    assert currency_symbol("CHF") == "CHF"      # code inconnu : rendu tel quel
+    assert currency_symbol("€") == "€"          # déjà un symbole
+    # Espaces fine (U+202F) pour les milliers, insécable (U+00A0) avant le
+    # symbole : le montant ne doit jamais casser en fin de ligne.
+    assert format_money(1234.5, "€") == "1\u202f234,50\u00a0€"
+    assert format_money(-1234.5, "€") == "-1\u202f234,50\u00a0€"
+    assert format_money(1234.5, "€", 0) == "1\u202f234\u00a0€"
+    assert format_money(None, "€") == "—"
+
+
+def test_mask_iban_keeps_only_what_identifies_the_account():
+    from app.helpers import mask_iban
+
+    assert mask_iban("FR7630006000011234567890189") == "FR76 •••• 0189"
+    assert mask_iban(None) == "—"
+    assert mask_iban("court") == "court"  # trop court pour être masqué
+
+
+def test_month_labels_are_french_and_stable():
+    from datetime import date
+
+    from app.helpers import month_key, month_label_fr
+
+    assert month_key(date(2026, 3, 15)) == "2026-03"
+    assert month_key(None) == "?"  # sentinelle : jamais confondue avec un mois
+    assert month_label_fr("2026-03") == "mars 26"
+    assert month_label_fr("") == ""
+
+
+def test_donut_and_treemap_handle_degenerate_inputs():
+    from app.helpers import donut_chart, treemap
+
+    # Aucune donnée : pas de SVG bancal, une chaîne vide ou un message.
+    assert donut_chart([]) == "" or "muted" in donut_chart([])
+    assert treemap([]) == "" or "muted" in treemap([])
+    # Une seule part : le donut est un anneau complet, sans division par zéro.
+    svg = donut_chart([("Tout", 100.0)])
+    assert "<svg" in svg
+    # Valeurs nulles : ignorées plutôt que rendues en secteurs de largeur zéro.
+    svg = treemap([("A", 100.0), ("B", 0.0)])
+    assert "<svg" in svg
+
+
+def test_sparkline_needs_two_points():
+    from app.helpers import sparkline
+
+    assert sparkline([]) == ""
+    assert sparkline([1.0]) == ""
+    assert "<svg" in sparkline([1.0, 2.0, 1.5])
+
+
+def test_bar_chart_renders_labels_and_survives_zero_range():
+    from app.helpers import bar_chart
+
+    svg = bar_chart([("janv. 26", 100.0), ("févr. 26", 100.0)])  # amplitude nulle
+    assert "<svg" in svg
+    assert "janv. 26" in svg

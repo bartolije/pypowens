@@ -13,6 +13,7 @@ import sqlite3
 import time
 from dataclasses import replace
 from datetime import date, timedelta
+from typing import Any
 
 from pypowens import (
     Account,
@@ -55,7 +56,13 @@ def _lock(key: str) -> asyncio.Lock:
     return lock
 
 
-def _get(key: str, ttl: float):
+def _get(key: str, ttl: float) -> Any:
+    """Entrée de cache encore fraîche, ou ``None``.
+
+    Retourne ``Any`` volontairement : chaque appelant connaît le type qu'il a
+    rangé sous sa clé, et l'annoter en ``object`` obligerait à un cast à
+    chaque lecture pour zéro sécurité gagnée.
+    """
     hit = _cache.get(key)
     if hit and (time.monotonic() - hit[0]) < ttl:
         return hit[1]

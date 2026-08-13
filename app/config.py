@@ -31,6 +31,8 @@ class Settings:
     # OpenFIGI API key for investment classification (sector/country enrichment).
     # Optional: without it, classification is skipped silently.
     openfigi_api_key: str | None = None
+    # Jours sans synchro au-delà desquels une connexion saine est dite « muette ».
+    silent_after_days: int = 3
     # Indice de référence de la page performance (ticker Yahoo Finance).
     # IWDA.AS = iShares Core MSCI World, coté en EUR à Amsterdam.
     benchmark_ticker: str = "IWDA.AS"
@@ -88,6 +90,7 @@ def get_settings() -> Settings:
         history_months=int(os.environ.get("APP_HISTORY_MONTHS", "36")),
         base_currency=(os.environ.get("APP_BASE_CURRENCY") or "EUR").strip().upper(),
         openfigi_api_key=os.environ.get("OPENFIGI_API_KEY") or None,
+        silent_after_days=max(1, int(os.environ.get("APP_SILENT_DAYS", "3"))),
         benchmark_ticker=(os.environ.get("APP_BENCHMARK_TICKER") or "IWDA.AS").strip(),
         benchmark_label=(os.environ.get("APP_BENCHMARK_LABEL") or "MSCI World (IWDA)").strip(),
     )

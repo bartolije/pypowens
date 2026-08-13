@@ -25,6 +25,7 @@ from typing import Any
 from pypowens import PowensClient
 
 from . import data, store
+from .config import get_settings
 from .data import load_all_accounts, load_connections, load_internal_ids, load_spending_transactions
 from .enrich import CONSUMPTION_TYPES, resolve_category_txn
 from .helpers import month_key
@@ -32,6 +33,7 @@ from .recap import STATE_LABELS, USER_ACTION_STATES
 
 # Powens synchronise chaque connexion au moins une fois par jour : trois jours
 # de silence couvrent un week-end difficile sans crier au loup pour rien.
+# Réglable par APP_SILENT_DAYS (voir Settings.silent_after_days).
 SILENT_AFTER_DAYS = 3
 
 # Au-delà de 24 h sans synchro ET sans prochaine synchro planifiée (next_try),
@@ -86,6 +88,10 @@ async def connection_alerts(
     alerts: list[dict[str, Any]] = []
     connections = await load_connections(client)
     now = datetime.now()
+    try:
+        silent_after = get_settings().silent_after_days
+    except RuntimeError:  # configuration incomplète : garder le défaut
+        silent_after = SILENT_AFTER_DAYS
 
     for connection in connections:
         name = (
@@ -120,7 +126,7 @@ async def connection_alerts(
             age = now - last_update.replace(tzinfo=None)
         except (TypeError, ValueError):
             continue
-        if age > timedelta(days=SILENT_AFTER_DAYS):
+        if age > timedelta(days=silent_after):
             alerts.append(
                 {
                     "kind": "silent",
