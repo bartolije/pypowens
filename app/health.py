@@ -16,6 +16,7 @@ bandeau global :
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -29,6 +30,45 @@ from .recap import STATE_LABELS, USER_ACTION_STATES
 # Powens synchronise chaque connexion au moins une fois par jour : trois jours
 # de silence couvrent un week-end difficile sans crier au loup pour rien.
 SILENT_AFTER_DAYS = 3
+
+# Au-delà de 24 h sans synchro ET sans prochaine synchro planifiée (next_try),
+# une connexion est BLOQUÉE : Powens ne repassera jamais de lui-même.
+AUTO_SYNC_AFTER_HOURS = 24
+
+_log = logging.getLogger(__name__)
+
+
+async def auto_sync_stuck_connections(client: PowensClient) -> list[int]:
+    """Relance les connexions bloquées — l'équivalent automatique du bouton
+    « Synchroniser », déclenché à l'ouverture de l'app.
+
+    C'est l'état exact où Trade Republic est restée figée deux semaines : état
+    sain, ``next_try`` absent — rien ne la resynchroniserait jamais. Ne touche
+    JAMAIS une connexion en erreur : relancer un ``webauthRequired`` en boucle
+    peut déclencher des validations fortes chez la banque.
+    """
+    now = datetime.now()
+    launched: list[int] = []
+    for connection in await load_connections(client):
+        if connection.id is None or connection.state or connection.error_message:
+            continue
+        last_update = connection.last_update
+        if last_update is None or (now - last_update) < timedelta(
+            hours=AUTO_SYNC_AFTER_HOURS
+        ):
+            continue
+        next_try = connection.next_try
+        if next_try is not None and next_try > now:
+            continue  # Powens a déjà prévu de repasser : ne pas doubler.
+        try:
+            await client.update_connection(connection.id)
+            launched.append(connection.id)
+            _log.info("connexion %s bloquée : synchronisation relancée", connection.id)
+        except Exception:  # noqa: BLE001 — best-effort, ne bloque jamais une page
+            _log.warning(
+                "relance de la connexion %s impossible", connection.id, exc_info=True
+            )
+    return launched
 
 
 async def connection_alerts(

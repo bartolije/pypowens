@@ -300,3 +300,20 @@ async def test_update_account_reenables_a_disabled_account():
     # Sans ?all, un compte désactivé est inadressable : PUT répond 404.
     assert "all" in captured["params"]
     assert account.id == 28
+
+
+def test_datetimes_are_always_naive_and_comparable():
+    """Le même champ arrivait naïf OU avec fuseau selon le connecteur : tout
+    tri/comparaison levait TypeError chez le consommateur, aléatoirement."""
+    from pypowens.models import _parse_datetime
+
+    forms = [
+        _parse_datetime("2026-01-01 10:00:00"),          # naïf (forme Powens)
+        _parse_datetime("2026-01-01T11:00:00Z"),         # ISO aware UTC
+        _parse_datetime("2026-01-01 12:00:00 +0200"),    # aware avec espace
+        _parse_datetime("2026-01-01T13:00:00+02:00"),    # ISO aware
+    ]
+    assert all(dt is not None and dt.tzinfo is None for dt in forms)
+    assert sorted(forms) == forms  # comparables entre eux, plus de TypeError
+    # L'heure murale est préservée telle quelle (pas de conversion sournoise).
+    assert forms[2].hour == 12

@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 import os
 import secrets
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -34,7 +35,7 @@ from .config import Settings, get_settings
 from .data import clear_cache
 from .deps import get_client
 from .deps import get_settings as settings_dep
-from .health import connection_alerts
+from .health import auto_sync_stuck_connections, connection_alerts
 from .state import bootstrap_client, persist_token, try_renew
 from .web import templates
 
@@ -122,6 +123,16 @@ async def _health_banner(request: Request, call_next):
         if client is not None:
             try:
                 request.state.health_alerts = await connection_alerts(client, conn)
+                # Au plus une fois par tranche de 6 h : relancer les connexions
+                # BLOQUÉES (saines, >24 h sans synchro, aucun next_try planifié).
+                # Ouvrir l'app le matin suffit alors à réveiller une Trade
+                # Republic figée, sans jamais toucher une connexion en erreur.
+                last = getattr(request.app.state, "auto_sync_at", None)
+                now = time.monotonic()
+                if last is None or (now - last) > 6 * 3600:
+                    request.app.state.auto_sync_at = now
+                    if await auto_sync_stuck_connections(client):
+                        clear_cache()
             except Exception:  # noqa: BLE001 — bandeau best-effort, jamais bloquant
                 logging.getLogger(__name__).debug(
                     "bandeau de santé indisponible", exc_info=True

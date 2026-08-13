@@ -83,6 +83,11 @@ async def synthese(
         unit=symbol,
         color="#e8a838",
     )
+    perimeter = [
+        c
+        for c in store.perimeter_changes(conn, currency=base_currency)
+        if since is None or c["day"] >= since
+    ]
 
     # Investment lines for "Ma performance" cards.
     investments = await load_investments(client)
@@ -103,6 +108,7 @@ async def synthese(
             "net_diff_pct": net_diff_pct,
             "diff_since": diff_since,
             "net_chart": net_chart,
+            "perimeter_changes": perimeter,
             "history_points": len(history),
             "allocation": allocation,
             "invest_rows": invest_rows,

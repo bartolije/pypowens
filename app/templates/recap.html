@@ -46,6 +46,20 @@
           </div>
           {% endif %}
           {{ net_chart | safe }}
+          {% if perimeter_changes %}
+          <div class="perimeter-notes">
+            {% for ch in perimeter_changes %}
+            <div class="small text-secondary">
+              &#9888; {{ ch.day.strftime('%d/%m/%Y') }} — périmètre modifié ({{ ch.delta | money(net_currency) }}) :
+              {% if ch.entered %}entrée de {{ ch.entered | join(', ') }}{% endif %}
+              {%- if ch.entered and ch.left %} · {% endif -%}
+              {% if ch.left %}sortie de {{ ch.left | join(', ') }}{% endif %}
+              — ce saut n'est ni un gain ni une perte
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+
         </div>
       </div>
     </div>

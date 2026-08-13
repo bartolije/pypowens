@@ -213,6 +213,13 @@ async def recap(
         unit=symbol,
         color="#e8a838",
     )
+    # Changements durables de périmètre dans la fenêtre : chacun déplace la
+    # courbe d'un montant qui n'a été ni gagné ni perdu — à dire sous le graphe.
+    perimeter = [
+        c
+        for c in store.perimeter_changes(conn, currency=base_currency)
+        if since is None or c["day"] >= since
+    ]
 
     # Security lines behind the investment accounts (best effort — see loader).
     investments = await load_investments(client)
@@ -314,6 +321,7 @@ async def recap(
             "net_diff_pct": net_diff_pct,
             "diff_since": diff_since,
             "net_chart": net_chart,
+            "perimeter_changes": perimeter,
             "n_accounts": len(accounts),
             "families": display_families,
             "flat_accounts": flat_accounts,

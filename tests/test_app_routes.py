@@ -88,3 +88,33 @@ def test_subscription_detected(client):
     body = _text(client.get("/abonnements").text)
     assert "Netflix" in body
     assert "Mensuel" in body
+
+
+def test_perimeter_change_is_explained_under_the_chart(client):
+    """Un compte qui entre déplace la courbe : la page doit dire que ce saut
+    n'est ni un gain ni une perte (cas vécu : prêt fantôme, +257 k€)."""
+    from datetime import date, timedelta
+    from decimal import Decimal
+
+    import app.data
+    import app.main
+    from app import store
+    from tests.test_store import Acc
+
+    conn = app.main.app.state.store
+    d = date.today() - timedelta(days=5)
+    store.record_snapshot(conn, [Acc(1, name="Courant", balance=Decimal("100"))], day=d)
+    store.record_snapshot(
+        conn,
+        [Acc(1, name="Courant", balance=Decimal("100")),
+         Acc(99, name="NOUVELLE BANQUE", balance=Decimal("5000"))],
+        day=d + timedelta(days=1),
+    )
+    app.data.clear_cache()
+
+    body = client.get("/patrimoine").text
+    assert "périmètre modifié" in body
+    assert "NOUVELLE BANQUE" in body
+    assert "ni un gain ni une perte" in body
+    # La synthèse porte la même explication.
+    assert "périmètre modifié" in client.get("/").text

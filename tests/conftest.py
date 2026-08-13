@@ -271,6 +271,7 @@ class FakeClient:
         return [InvestmentValue.from_api(r) for r in raw]
 
     async def update_connection(self, connection_id: int, *args, **kwargs):
+        self.synced_connections = [*getattr(self, "synced_connections", []), connection_id]
         return None
 
     async def get_temporary_code(self, *args, **kwargs) -> dict:
@@ -341,6 +342,9 @@ def client(monkeypatch, fake_client, tmp_path):
         return fake_client
 
     monkeypatch.setattr(app.main, "bootstrap_client", _bootstrap)
+    # Le throttle 6 h de la synchro d'ouverture vit sur l'app singleton : sans
+    # remise à zéro, seul le premier test de la session la verrait se déclencher.
+    app.main.app.state.auto_sync_at = None
     app.data.clear_cache()
     with TestClient(app.main.app) as test_client:
         yield test_client

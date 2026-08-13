@@ -143,3 +143,57 @@ def test_reactivating_the_account_clears_the_alert(client, fake_client):
 
     fake_client._disabled_accounts.clear()
     _reset(fake_client)
+
+
+# ---------------------------------------------------------- synchro d'ouverture
+
+def test_stuck_connection_is_auto_synced_on_page_load(client, fake_client):
+    """Saine, >24 h sans synchro, aucun next_try : Powens ne repassera jamais
+    seul (le cas Trade Republic, figée deux semaines). Ouvrir l'app relance."""
+    fake_client._connections[0]["last_update"] = "2026-06-10 06:00:00"  # 5 j avant
+    _reset(fake_client)
+    import app.main
+    app.main.app.state.auto_sync_at = None
+
+    client.get("/comptes")
+    assert getattr(fake_client, "synced_connections", []) == [1]
+
+    # Throttle : le rechargement suivant ne redéclenche pas.
+    client.get("/comptes")
+    assert fake_client.synced_connections == [1]
+
+    fake_client._connections[0]["last_update"] = "2026-07-01 06:00:00"
+    fake_client.synced_connections = []
+    _reset(fake_client)
+
+
+def test_connection_in_error_is_never_auto_synced(client, fake_client):
+    """Relancer un webauthRequired en boucle peut déclencher des SCA : jamais."""
+    fake_client._connections[0]["last_update"] = "2026-06-01 06:00:00"
+    fake_client._connections[0]["state"] = "webauthRequired"
+    _reset(fake_client)
+    import app.main
+    app.main.app.state.auto_sync_at = None
+
+    client.get("/comptes")
+    assert getattr(fake_client, "synced_connections", []) == []
+
+    fake_client._connections[0]["state"] = None
+    fake_client._connections[0]["last_update"] = "2026-07-01 06:00:00"
+    _reset(fake_client)
+
+
+def test_planned_next_try_is_not_doubled(client, fake_client):
+    """Si Powens a déjà planifié une synchro (next_try futur), ne pas doubler."""
+    fake_client._connections[0]["last_update"] = "2026-06-10 06:00:00"
+    fake_client._connections[0]["next_try"] = "2026-06-15 23:00:00"  # ce soir
+    _reset(fake_client)
+    import app.main
+    app.main.app.state.auto_sync_at = None
+
+    client.get("/comptes")
+    assert getattr(fake_client, "synced_connections", []) == []
+
+    del fake_client._connections[0]["next_try"]
+    fake_client._connections[0]["last_update"] = "2026-07-01 06:00:00"
+    _reset(fake_client)

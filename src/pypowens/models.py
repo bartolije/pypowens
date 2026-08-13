@@ -34,10 +34,19 @@ def _parse_datetime(value: Any) -> datetime | None:
     if not value or not isinstance(value, str):
         return None
     try:
-        # Powens uses "YYYY-MM-DD HH:MM:SS" and ISO 8601 variants.
-        return datetime.fromisoformat(value.replace(" ", "T"))
+        # Powens uses "YYYY-MM-DD HH:MM:SS" and ISO 8601 variants. Only the
+        # FIRST space separates date from time — a trailing " +0200" must keep
+        # its own space or the offset would glue onto the seconds.
+        parsed = datetime.fromisoformat(value.replace(" ", "T", 1))
     except ValueError:
         return None
+    # Always return NAIVE wall-clock datetimes. Powens mixes naive strings and
+    # offset-carrying ones for the same field depending on the connector; a
+    # naive/aware mix makes every sorted()/comparison raise TypeError at the
+    # consumer, non-deterministically. Both observed forms carry the same wall
+    # clock (the API's local time), so stripping the offset keeps values
+    # mutually consistent — which a conversion to UTC would break.
+    return parsed.replace(tzinfo=None)
 
 
 def _parse_date(value: Any) -> date | None:

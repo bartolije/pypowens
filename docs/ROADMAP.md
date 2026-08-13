@@ -14,29 +14,22 @@ critère clair n'est pas prêt à être attaqué.
 
 - [x] ~~Bandeau global de santé des connexions~~ (livré le 13/08, `b34e822`) :
   erreur / muette / comptes désactivés hors total, sur toutes les pages.
-- [ ] **Marqueurs de changement de périmètre sur la courbe.** Le saut de
-  +257 k€ du 02/08 restera à jamais dans l'historique : quand le NOMBRE de
-  comptes archivés change d'un jour à l'autre, poser un marqueur visuel sur la
-  courbe (« périmètre modifié : -1 compte ») au lieu de laisser croire à une
-  performance. *Done : un point annoté sur `/patrimoine` aux dates où le
-  périmètre a bougé ; tooltip nomme les comptes entrés/sortis.* (effort : ~½ j)
-- [ ] **Réintégration rétroactive après réparation.** Quand la connexion CCF
-  sera réparée, le prêt re-rentrera : la courbe re-sautera de -257 k€. Offrir
-  une correction : recopier le dernier solde connu d'un compte désactivé dans
-  les snapshots des jours d'absence (marqués `estimated`). *Done : après
-  réparation, la courbe est plate sur l'épisode, pas en dents de scie ; les
-  jours estimés sont distinguables en base.* (effort : 1 j, à concevoir avec
-  soin — écrit dans balance_snapshot)
-- [ ] **Synchro d'ouverture.** Pas de webhooks possibles (app loopback, pas
-  d'URL publique) : au premier chargement du jour, déclencher
-  `update_connection` sur les connexions dont `last_update` > 24 h, en tâche
-  de fond non bloquante. *Done : ouvrir l'app le matin suffit à rafraîchir
-  Trade Republic sans clic.* (effort : ½ j — attention aux états webauth, ne
-  jamais déclencher de SCA en boucle)
-- [ ] **Normaliser les datetimes de la lib** (§3.7 de l'audit, reporté) : le
-  même champ peut être naïf ou aware selon le connecteur → tout `sorted()`/
-  comparaison peut lever `TypeError` chez un consommateur. *Done :
-  `_parse_datetime` renvoie de l'aware UTC systématiquement + test.* (~2 h)
+- [x] ~~Marqueurs de changement de périmètre~~ (13/08) : notes datées sous la
+  courbe de `/` et `/patrimoine` — « périmètre modifié (+X €) : entrée/sortie
+  de … — ce saut n'est ni un gain ni une perte ». Seuls les changements
+  DURABLES sont signalés (les absences temporaires sont comblées, cf. suivant).
+- [x] ~~Réintégration rétroactive~~ (13/08, en LECTURE plutôt qu'en écriture :
+  plus sûr) : `net_worth_history` comble les trous d'un compte ENTRE deux
+  apparitions avec son dernier solde connu — l'épisode du prêt fantôme devient
+  plat rétroactivement dès que le compte réapparaît, sans toucher à la base.
+- [x] ~~Synchro d'ouverture~~ (13/08) : au plus une fois par 6 h, les
+  connexions BLOQUÉES (saines, >24 h sans synchro, aucun `next_try` planifié
+  côté Powens) sont relancées au chargement d'une page. Jamais les connexions
+  en erreur (risque de SCA en boucle), jamais celles que Powens va repasser.
+- [x] ~~Normaliser les datetimes de la lib~~ (13/08) : `_parse_datetime`
+  renvoie systématiquement du NAÏF à heure murale préservée (les deux formes
+  Powens portent la même heure locale ; une conversion UTC aurait mélangé les
+  référentiels). Plus de `TypeError` sur tri/comparaison.
 
 ## P1 — Lib : compléter la surface avant toute publication PyPI
 
@@ -47,6 +40,9 @@ critère clair n'est pas prêt à être attaqué.
   **`GET /users/{id}/loans`** (échéancier, taux, capital restant dû — pour un
   vrai onglet Passifs). *Done : méthodes + modèles + tests ; /patrimoine/{id}
   d'un crédit affiche taux et capital restant.* (~½ j)
+- [x] ~~`PUT /users/{id}/accounts/{aid}`~~ (13/08, `update_account`) — avec le
+  piège `?all` sans lequel un compte désactivé est inadressable (404) ; bouton
+  « Réintégrer » branché sur le bandeau de santé.
 - [ ] **`DELETE /users/{id}` et `GET /users`** — manque RGPD : la lib crée des
   utilisateurs mais ne peut ni les lister ni les supprimer (orphelins des
   §3.1/3.40 de l'audit). *Done : méthodes + doc « nettoyer les orphelins ».* (~2 h)

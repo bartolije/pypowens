@@ -331,6 +331,24 @@ def _downsample(
     return [points[round(i * step)] for i in range(limit)]
 
 
+def _per_account_series(
+    conn: sqlite3.Connection, currency: str
+) -> tuple[list[str], dict[int, dict[str, Decimal]], dict[int, str]]:
+    """(jours archivés triés, {compte: {jour: solde}}, {compte: dernier nom})."""
+    per_account: dict[int, dict[str, Decimal]] = {}
+    names: dict[int, str] = {}
+    days_set: set[str] = set()
+    for row in conn.execute(
+        "SELECT day, account_id, name, balance FROM balance_snapshot"
+        " WHERE currency = ? ORDER BY day",
+        (currency.upper(),),
+    ):
+        per_account.setdefault(row["account_id"], {})[row["day"]] = Decimal(row["balance"])
+        names[row["account_id"]] = row["name"] or f"Compte #{row['account_id']}"
+        days_set.add(row["day"])
+    return sorted(days_set), per_account, names
+
+
 def net_worth_history(
     conn: sqlite3.Connection,
     *,
@@ -343,18 +361,74 @@ def net_worth_history(
     If *since* is given, only points on or after that date are returned. ``limit``
     borne le nombre de points par échantillonnage (jamais par troncature) — les
     montants restent sommés en :class:`Decimal`, pas en ``SUM()`` SQLite (REAL).
+
+    Les trous d'un compte ENTRE deux apparitions sont comblés avec son dernier
+    solde connu : une connexion en panne fait « disparaître » un compte quelques
+    jours (cas vécu : prêt de -257 k€ désactivé du 01 au 13/08), et la courbe
+    sautait de son montant à l'aller comme au retour, sans qu'un euro n'ait
+    bougé. Un compte n'est jamais prolongé AVANT sa première apparition ni
+    APRÈS sa dernière — connecter une nouvelle banque ou clore un compte reste
+    un vrai changement de périmètre (voir :func:`perimeter_changes`).
     """
-    sql = "SELECT day, balance FROM balance_snapshot WHERE currency = ?"
-    params: list[object] = [currency.upper()]
+    days, per_account, _ = _per_account_series(conn, currency)
+    if not days:
+        return []
+    totals: dict[str, Decimal] = dict.fromkeys(days, Decimal(0))
+    for series in per_account.values():
+        account_days = sorted(series)
+        first, last = account_days[0], account_days[-1]
+        current = Decimal(0)
+        for day in days:
+            if day < first or day > last:
+                continue
+            current = series.get(day, current)
+            totals[day] += current
+    points = [(date.fromisoformat(day), totals[day]) for day in days]
     if since is not None:
-        sql += " AND day >= ?"
-        params.append(since.isoformat())
-    cursor = conn.execute(sql + " ORDER BY day", params)
-    totals: dict[str, Decimal] = {}
-    for row in cursor:
-        totals[row["day"]] = totals.get(row["day"], Decimal(0)) + Decimal(row["balance"])
-    points = [(date.fromisoformat(day), total) for day, total in sorted(totals.items())]
+        points = [(d, v) for d, v in points if d >= since]
     return _downsample(points, limit)
+
+
+def perimeter_changes(
+    conn: sqlite3.Connection, *, currency: str = "EUR"
+) -> list[dict[str, Any]]:
+    """Jours où le PÉRIMÈTRE des comptes archivés a durablement changé.
+
+    Le comblement des trous (:func:`net_worth_history`) neutralise les absences
+    temporaires ; restent les vrais événements, qui déplacent la courbe d'un
+    montant qui n'a été ni gagné ni dépensé :
+
+    * un compte ENTRE (nouvelle banque connectée) — jour de sa 1re apparition ;
+    * un compte SORT définitivement (clos, déconnecté) — premier jour archivé
+      APRÈS sa dernière apparition.
+
+    Le premier jour d'archivage global est ignoré (tout « entre » ce jour-là).
+    """
+    days, per_account, names = _per_account_series(conn, currency)
+    if len(days) < 2:
+        return []
+    global_first, global_last = days[0], days[-1]
+    changes: dict[str, dict[str, Any]] = {}
+
+    def _entry(day: str) -> dict[str, Any]:
+        return changes.setdefault(
+            day, {"day": date.fromisoformat(day), "entered": [], "left": [], "delta": Decimal(0)}
+        )
+
+    for account_id, series in per_account.items():
+        account_days = sorted(series)
+        first, last = account_days[0], account_days[-1]
+        if first > global_first:
+            entry = _entry(first)
+            entry["entered"].append(names[account_id])
+            entry["delta"] += series[first]
+        if last < global_last:
+            # L'effet se voit le premier jour archivé qui SUIT la dernière trace.
+            following = next(d for d in days if d > last)
+            entry = _entry(following)
+            entry["left"].append(names[account_id])
+            entry["delta"] -= series[last]
+    return [changes[d] for d in sorted(changes)]
 
 
 def account_balance_history(

@@ -289,3 +289,63 @@ def test_acknowledged_increase_does_not_retrigger_without_change(conn):
     key = store.series_key(raised)
     assert changes[key]["increase_pct"] is None
     assert changes[key]["new"] is False
+
+
+# ------------------------------------------------- trous et périmètre de comptes
+
+def _snap(conn, day, *accounts):
+    store.record_snapshot(conn, list(accounts), day=day)
+
+
+def test_temporary_absence_is_filled_with_last_known_balance(conn):
+    """Le prêt fantôme : une connexion en panne fait disparaître un compte
+    quelques jours — la courbe ne doit plus sauter de son montant."""
+    d = date(2026, 8, 1)
+    loan = Acc(2, name="Prêt", type="loan", balance=Decimal("-1000"))
+    _snap(conn, d, Acc(1), loan)
+    _snap(conn, d + timedelta(days=1), Acc(1))                      # prêt absent
+    _snap(conn, d + timedelta(days=2), Acc(1))                      # toujours absent
+    _snap(conn, d + timedelta(days=3), Acc(1), Acc(2, name="Prêt", type="loan",
+                                                    balance=Decimal("-990")))
+    history = store.net_worth_history(conn)
+    # 100 - 1000 = -900 partout : l'absence des jours 2-3 est comblée à -1000.
+    assert [v for _, v in history] == [
+        Decimal("-900"), Decimal("-900"), Decimal("-900"), Decimal("-890")
+    ]
+
+
+def test_fill_never_extends_before_first_or_after_last_appearance(conn):
+    d = date(2026, 8, 1)
+    _snap(conn, d, Acc(1))
+    _snap(conn, d + timedelta(days=1), Acc(1), Acc(2, balance=Decimal("50")))
+    _snap(conn, d + timedelta(days=2), Acc(1))  # le compte 2 ne revient jamais
+    history = store.net_worth_history(conn)
+    assert [v for _, v in history] == [Decimal("100"), Decimal("150"), Decimal("100")]
+
+
+def test_perimeter_changes_flags_durable_entries_and_exits(conn):
+    d = date(2026, 8, 1)
+    _snap(conn, d, Acc(1, name="Courant"))
+    # Le compte 2 ENTRE le 2, le compte 1 SORT après le 2 (effet visible le 3).
+    _snap(conn, d + timedelta(days=1), Acc(1, name="Courant"),
+          Acc(2, name="Livret", balance=Decimal("50")))
+    _snap(conn, d + timedelta(days=2), Acc(2, name="Livret", balance=Decimal("50")))
+
+    changes = store.perimeter_changes(conn)
+    assert len(changes) == 2
+    entered, left = changes[0], changes[1]
+    assert entered["day"] == d + timedelta(days=1)
+    assert entered["entered"] == ["Livret"]
+    assert entered["delta"] == Decimal("50")
+    assert left["day"] == d + timedelta(days=2)
+    assert left["left"] == ["Courant"]
+    assert left["delta"] == Decimal("-100")
+
+
+def test_temporary_absence_is_not_a_perimeter_change(conn):
+    """Une absence comblée ne doit PAS être signalée comme changement."""
+    d = date(2026, 8, 1)
+    _snap(conn, d, Acc(1), Acc(2, balance=Decimal("50")))
+    _snap(conn, d + timedelta(days=1), Acc(1))
+    _snap(conn, d + timedelta(days=2), Acc(1), Acc(2, balance=Decimal("50")))
+    assert store.perimeter_changes(conn) == []
