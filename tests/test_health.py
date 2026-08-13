@@ -69,10 +69,12 @@ def test_disabled_account_with_balance_is_reported_as_excluded(client, fake_clie
     )
     _reset(fake_client)
 
-    body = _text(client.get("/comptes").text)
-    assert "hors du total" in body
-    assert "PRET IMMO MODULABLE" in body
-    assert "256 797,68" in body
+    body = client.get("/comptes").text
+    plain = _text(body)
+    assert "PRET IMMO MODULABLE" in plain
+    assert "exclu du patrimoine" in plain
+    assert "256 797,68" in plain
+    assert 'action="/comptes/27/reactiver"' in body  # le bouton Réintégrer
 
     fake_client._disabled_accounts.clear()
     _reset(fake_client)
@@ -95,8 +97,8 @@ def test_deleted_ghost_versions_are_not_double_counted(client, fake_client):
     fake_client._disabled_accounts.extend([ghost, live])
     _reset(fake_client)
 
-    body = _text(client.get("/comptes").text)
-    assert "1 compte hors du total" in body  # pas « 2 comptes »
+    body = client.get("/comptes").text
+    assert body.count("reactiver") == 1  # un seul bouton, pas un par fantôme
 
     fake_client._disabled_accounts.clear()
     _reset(fake_client)
@@ -114,3 +116,30 @@ def test_banner_failure_never_breaks_the_page(client, fake_client, monkeypatch):
     response = client.get("/comptes")
     assert response.status_code == 200
     assert "alert-strip" not in response.text
+
+
+def test_reactivating_the_account_clears_the_alert(client, fake_client):
+    """Après réparation, Powens recrée le compte DÉSACTIVÉ : le bouton
+    Réintégrer est le seul chemin pour le faire revenir dans le total."""
+    fake_client._disabled_accounts.append(
+        {
+            "id": 28,
+            "id_connection": 1,
+            "name": "PRET IMMO MODULABLE",
+            "type": "loan",
+            "balance": "-255954.00",
+            "currency": {"id": "EUR"},
+            "disabled": "2026-06-01 09:59:27",
+        }
+    )
+    _reset(fake_client)
+    assert "exclu du patrimoine" in _text(client.get("/comptes").text)
+
+    response = client.post("/comptes/28/reactiver", follow_redirects=False)
+    assert response.status_code == 303
+
+    body = _text(client.get("/comptes").text)
+    assert "exclu du patrimoine" not in body
+
+    fake_client._disabled_accounts.clear()
+    _reset(fake_client)

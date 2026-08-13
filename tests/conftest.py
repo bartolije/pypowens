@@ -202,6 +202,14 @@ class FakeClient:
             accounts = [*accounts, *self._disabled_accounts]
         return AccountsList.from_api({"accounts": accounts, "balances": {"EUR": "59500.00"}})
 
+    async def update_account(self, account_id, *, disabled=None, **kwargs):
+        # Rejoue PUT /accounts/{id} : disabled=False réactive le compte.
+        if disabled is False:
+            for raw in self._disabled_accounts:
+                if raw.get("id") == account_id:
+                    raw.pop("disabled", None)
+        return None
+
     async def list_connections(self, *args, **kwargs) -> list[Connection]:
         return [Connection.from_api(c) for c in self._connections]
 

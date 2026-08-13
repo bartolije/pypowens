@@ -92,29 +92,27 @@ async def connection_alerts(
 
     # Comptes désactivés côté Powens mais porteurs d'un solde : ils ne comptent
     # plus dans le patrimoine. Powens recrée parfois le même compte plusieurs
-    # fois pendant une panne — seule la version non supprimée compte.
+    # fois pendant une panne — seule la version non supprimée compte. Cas vécu :
+    # après réparation de la connexion, le compte est RECRÉÉ DÉSACTIVÉ — sans le
+    # bouton « Réintégrer » ci-dessous, rien dans l'UI ne permettait de le
+    # faire revenir dans le total.
     all_accounts = await load_all_accounts(client)
     excluded = [
         a
         for a in all_accounts.accounts
         if a.raw.get("disabled") and not a.raw.get("deleted") and a.balance
     ]
-    if excluded:
-        total = sum((a.balance or Decimal(0) for a in excluded), Decimal(0))
-        names = ", ".join((a.name or "?") for a in excluded[:3])
-        if len(excluded) > 3:
-            names += ", …"
+    for account in excluded:
         alerts.append(
             {
                 "kind": "excluded",
-                "title": f"{len(excluded)} compte{'s' if len(excluded) > 1 else ''} "
-                "hors du total",
-                "detail": f"désactivé(s) côté Powens : {names} — le patrimoine "
-                "affiché ne les compte plus",
-                "action_url": "/patrimoine",
+                "title": account.name or "Compte",
+                "detail": "désactivé côté Powens — exclu du patrimoine affiché",
+                "action_url": None,
                 "sync_id": None,
-                "action_label": "Voir",
-                "amount": total,
+                "reactivate_id": account.id,
+                "action_label": "Réintégrer",
+                "amount": account.balance or Decimal(0),
             }
         )
     return alerts

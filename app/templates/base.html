@@ -81,6 +81,10 @@
         <form method="post" action="/synchroniser/{{ a.sync_id }}" class="alert-action">
           <button type="submit" class="btn btn-sm">{{ a.action_label }}</button>
         </form>
+        {% elif a.reactivate_id %}
+        <form method="post" action="/comptes/{{ a.reactivate_id }}/reactiver" class="alert-action">
+          <button type="submit" class="btn btn-sm">{{ a.action_label }}</button>
+        </form>
         {% elif a.action_url %}
         <a class="btn btn-sm alert-action" href="{{ a.action_url }}">{{ a.action_label }}</a>
         {% endif %}

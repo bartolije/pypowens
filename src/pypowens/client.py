@@ -543,6 +543,35 @@ class PowensClient:
         data = await self._request("GET", f"users/{user_id}/accounts", params=params)
         return AccountsList.from_api(data if isinstance(data, dict) else {"accounts": data})
 
+    async def update_account(
+        self,
+        account_id: int,
+        *,
+        user_id: int | str = "me",
+        disabled: bool | None = None,
+        **fields: Any,
+    ) -> Account:
+        """Update an account's settings (``PUT /users/{id}/accounts/{aid}``).
+
+        The main use is re-enabling a **disabled** account: after a connection
+        repair, Powens can recreate an account in disabled state — it then
+        silently drops out of every aggregate until someone re-enables it.
+        Pass ``disabled=False`` to bring it back.
+        """
+        payload: dict[str, Any] = dict(fields)
+        if disabled is not None:
+            payload["disabled"] = disabled
+        data = await self._request(
+            "PUT",
+            f"users/{user_id}/accounts/{account_id}",
+            # ``all`` est indispensable : sans lui, un compte DÉSACTIVÉ est
+            # invisible pour l'adressage et le PUT répond 404 « notFound » —
+            # alors que réactiver un compte désactivé est précisément l'usage.
+            params={"all": ""},
+            json=payload,
+        )
+        return Account.from_api(data if isinstance(data, dict) else {"id": account_id})
+
     async def get_account(self, account_id: int, user_id: int | str = "me") -> Account:
         """Return a single bank account (``GET /users/{id}/accounts/{accountId}``)."""
         return Account.from_api(

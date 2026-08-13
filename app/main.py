@@ -437,3 +437,19 @@ async def synchronize(
     await client.update_connection(connection_id)
     clear_cache()
     return RedirectResponse("/patrimoine?synced=1", status_code=303)
+
+
+@app.post("/comptes/{account_id}/reactiver")
+async def reactivate_account(
+    account_id: int,
+    client: PowensClient = Depends(get_client),
+) -> RedirectResponse:
+    """Réintègre un compte désactivé côté Powens dans le patrimoine.
+
+    Après la réparation d'une connexion, Powens peut RECRÉER un compte à l'état
+    désactivé : son solde sort de tous les agrégats et rien dans le Webview ne
+    le réactive. C'est le bouton « Réintégrer » du bandeau de santé.
+    """
+    await client.update_account(account_id, disabled=False)
+    clear_cache()
+    return RedirectResponse("/patrimoine?reactivated=1", status_code=303)

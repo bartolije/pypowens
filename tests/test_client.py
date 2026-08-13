@@ -277,3 +277,26 @@ async def test_max_transactions_caps_the_page_size():
     async with PowensClient("myapp-sandbox", access_token="tok") as powens:
         await powens.list_transactions(max_transactions=10)
     assert captured.get("limit") == "10"
+
+
+@respx.mock
+async def test_update_account_reenables_a_disabled_account():
+    """PUT /users/me/accounts/{id} avec disabled=False : le seul chemin pour
+    réintégrer un compte que Powens a recréé désactivé après une panne."""
+    captured = {}
+
+    def record(request):
+        import json as _json
+
+        captured["body"] = _json.loads(request.content)
+        captured["params"] = dict(request.url.params)
+        return httpx.Response(200, json={"id": 28, "name": "PRET", "disabled": None})
+
+    route = respx.put(f"{BASE}/users/me/accounts/28").mock(side_effect=record)
+    async with PowensClient("myapp-sandbox", access_token="tok") as powens:
+        account = await powens.update_account(28, disabled=False)
+    assert route.call_count == 1
+    assert captured["body"] == {"disabled": False}
+    # Sans ?all, un compte désactivé est inadressable : PUT répond 404.
+    assert "all" in captured["params"]
+    assert account.id == 28
