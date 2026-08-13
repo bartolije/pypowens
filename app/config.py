@@ -31,6 +31,10 @@ class Settings:
     # OpenFIGI API key for investment classification (sector/country enrichment).
     # Optional: without it, classification is skipped silently.
     openfigi_api_key: str | None = None
+    # Indice de référence de la page performance (ticker Yahoo Finance).
+    # IWDA.AS = iShares Core MSCI World, coté en EUR à Amsterdam.
+    benchmark_ticker: str = "IWDA.AS"
+    benchmark_label: str = "MSCI World (IWDA)"
 
     @property
     def redirect_uri(self) -> str:
@@ -84,4 +88,6 @@ def get_settings() -> Settings:
         history_months=int(os.environ.get("APP_HISTORY_MONTHS", "36")),
         base_currency=(os.environ.get("APP_BASE_CURRENCY") or "EUR").strip().upper(),
         openfigi_api_key=os.environ.get("OPENFIGI_API_KEY") or None,
+        benchmark_ticker=(os.environ.get("APP_BENCHMARK_TICKER") or "IWDA.AS").strip(),
+        benchmark_label=(os.environ.get("APP_BENCHMARK_LABEL") or "MSCI World (IWDA)").strip(),
     )

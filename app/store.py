@@ -41,6 +41,15 @@ CREATE TABLE IF NOT EXISTS category_override (
     updated      TEXT NOT NULL
 );
 
+-- Clôtures quotidiennes d'un indice de référence (via yfinance, par le
+-- collecteur) : la page performance se compare à lui sans appel réseau.
+CREATE TABLE IF NOT EXISTS benchmark_value (
+    ticker TEXT NOT NULL,
+    day    TEXT NOT NULL,
+    close  TEXT NOT NULL,                 -- Decimal en texte
+    PRIMARY KEY (ticker, day)
+);
+
 -- Renommage local d'un compte (le nom Powens est souvent générique : trois
 -- « M BARTOLI JEREMIE » indistinguables). Appliqué à la lecture des comptes.
 CREATE TABLE IF NOT EXISTS account_alias (
@@ -552,6 +561,54 @@ def clear_override(conn: sqlite3.Connection, merchant_key: str) -> None:
         "DELETE FROM category_override WHERE merchant_key = ?", (merchant_key.upper().strip(),)
     )
     conn.commit()
+
+
+def pending_subscription_alerts(conn: sqlite3.Connection) -> int:
+    """Alertes « nouveau / hausse » pas encore acquittées (pour la notification)."""
+    row = conn.execute(
+        "SELECT COUNT(*) AS n FROM series_state"
+        " WHERE alert_kind IS NOT NULL AND acknowledged = 0"
+    ).fetchone()
+    return int(row["n"])
+
+
+# ------------------------------------------------------------------ benchmark
+
+
+def save_benchmark_values(
+    conn: sqlite3.Connection, ticker: str, values: Iterable[tuple[date, Decimal]]
+) -> int:
+    """Archive des clôtures quotidiennes d'un indice (idempotent par jour)."""
+    rows = [(ticker, day.isoformat(), str(close)) for day, close in values]
+    if not rows:
+        return 0
+    conn.executemany(
+        "INSERT OR REPLACE INTO benchmark_value (ticker, day, close) VALUES (?, ?, ?)",
+        rows,
+    )
+    conn.commit()
+    return len(rows)
+
+
+def benchmark_history(
+    conn: sqlite3.Connection, ticker: str, *, since: date | None = None
+) -> list[tuple[date, Decimal]]:
+    sql = "SELECT day, close FROM benchmark_value WHERE ticker = ?"
+    params: list[object] = [ticker]
+    if since is not None:
+        sql += " AND day >= ?"
+        params.append(since.isoformat())
+    return [
+        (date.fromisoformat(row["day"]), Decimal(row["close"]))
+        for row in conn.execute(sql + " ORDER BY day", params)
+    ]
+
+
+def benchmark_last_day(conn: sqlite3.Connection, ticker: str) -> date | None:
+    row = conn.execute(
+        "SELECT MAX(day) AS last FROM benchmark_value WHERE ticker = ?", (ticker,)
+    ).fetchone()
+    return date.fromisoformat(row["last"]) if row and row["last"] else None
 
 
 # ---------------------------------------------------------- alias & fusions

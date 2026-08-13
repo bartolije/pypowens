@@ -176,6 +176,8 @@ def line_chart(
     unit: str = "€",
     color: str = "#635bff",
     y_ticks: int = 4,
+    benchmark: list[float | None] | None = None,
+    benchmark_label: str = "",
 ) -> str:
     """Time series as an SVG area+line chart. ``items`` = list of (label, value).
 
@@ -190,7 +192,14 @@ def line_chart(
     if len(points) < 2:
         return '<p class="muted">Pas encore assez d\'historique — repassez demain.</p>'
 
+    # ``benchmark`` : mêmes indices x que ``items`` (None = pas de clôture ce
+    # jour-là). Rebasé PAR L'APPELANT sur la valeur de départ de la série : la
+    # lecture est « si la même somme était sur l'indice ».
+    bench = list(benchmark) if benchmark and len(benchmark) == len(points) else None
+
     values = [v for _, v in points]
+    if bench:
+        values = values + [v for v in bench if v is not None]
     lo_data, hi_data = min(values), max(values)
     span = (hi_data - lo_data) or (abs(hi_data) or 1)
 
@@ -252,11 +261,31 @@ def line_chart(
             f'class="cv">{_e(points[i][0])}</text>'
         )
 
+    bench_svg = ""
+    if bench:
+        # Les None ne surviennent qu'en tête (avant la première clôture
+        # archivée) : une seule polyligne des points datés suffit.
+        bench_points = [
+            f"{_x(i):.1f},{_y(v):.1f}" for i, v in enumerate(bench) if v is not None
+        ]
+        if len(bench_points) >= 2:
+            bench_svg = (
+                f'<polyline points="{" ".join(bench_points)}" fill="none" '
+                f'stroke="#7c8db5" stroke-width="1.2" stroke-dasharray="4 3" '
+                f'stroke-linejoin="round"/>'
+            )
+        if bench_svg and benchmark_label:
+            bench_svg += (
+                f'<text x="{width - pad_r}" y="{pad_t + 2}" text-anchor="end" '
+                f'class="cv" fill="#7c8db5">- - {_e(benchmark_label)}</text>'
+            )
+
     return (
         f'<svg viewBox="0 0 {width} {height}" class="chart" role="img" width="100%" '
         f'preserveAspectRatio="xMinYMin meet">'
         f"{grid}"
         f'<polygon points="{area}" fill="{color}" opacity="0.14"/>'
+        f"{bench_svg}"
         f'<polyline points="{line}" fill="none" stroke="{color}" stroke-width="1.5" '
         f'stroke-linejoin="round" stroke-linecap="round"/>'
         f"{dots}{ticks}</svg>"

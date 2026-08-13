@@ -156,3 +156,12 @@ def test_overrun_budget_raises_a_banner_alert(client):
     assert "Budget Streaming / Médias dépassé" not in body  # mois courant vide
 
     client.post("/budgets", data={"categorie": "Streaming / Médias", "montant": ""})
+
+
+def test_notify_is_gated_and_escapes_applescript(monkeypatch):
+    from app import notify as notify_mod
+
+    monkeypatch.setenv("APP_NOTIFY", "0")
+    assert notify_mod.notify("T", "M") is False  # coupé par l'env, sans subprocess
+
+    assert notify_mod._escape('a "b" \\ c') == 'a \\"b\\" \\\\ c'

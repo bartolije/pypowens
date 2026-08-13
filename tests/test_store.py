@@ -364,3 +364,28 @@ def test_budget_roundtrip_and_removal(conn):
     store.set_budget(conn, "Carburant", None)  # retrait
     store.set_budget(conn, "Restauration", Decimal("0"))  # 0 = retrait aussi
     assert store.budgets(conn) == {}
+
+
+# ------------------------------------------------------------------ benchmark
+
+def test_benchmark_roundtrip_and_resume_point(conn):
+    d = date(2026, 8, 1)
+    saved = store.save_benchmark_values(
+        conn, "IWDA.AS", [(d, Decimal("106.10")), (d + timedelta(days=1), Decimal("106.90"))]
+    )
+    assert saved == 2
+    assert store.benchmark_last_day(conn, "IWDA.AS") == d + timedelta(days=1)
+    history = store.benchmark_history(conn, "IWDA.AS", since=d + timedelta(days=1))
+    assert history == [(d + timedelta(days=1), Decimal("106.90"))]
+    # Idempotent : réécrire le même jour ne duplique pas.
+    store.save_benchmark_values(conn, "IWDA.AS", [(d, Decimal("106.10"))])
+    assert len(store.benchmark_history(conn, "IWDA.AS")) == 2
+
+
+def test_pending_subscription_alerts_counts_unacknowledged(conn):
+    netflix = Series("NETFLIX", "Netflix", Decimal("13.49"))
+    _sync(conn, netflix)
+    _sync(conn, netflix, Series("SPOTIFY", "Spotify", Decimal("10.99")))  # nouveau
+    assert store.pending_subscription_alerts(conn) == 1
+    store.acknowledge_alerts(conn)
+    assert store.pending_subscription_alerts(conn) == 0

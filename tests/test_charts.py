@@ -79,3 +79,40 @@ def test_a_flat_series_still_renders_an_axis():
     svg = line_chart([("a", 21573.0), ("b", 21573.0), ("c", 21573.0)])
     assert 'class="grid"' in svg
     assert "polyline" in svg
+
+
+def test_line_chart_can_overlay_a_benchmark():
+    from app.helpers import line_chart
+
+    svg = line_chart(
+        [("01/08", 100.0), ("02/08", 110.0), ("03/08", 105.0)],
+        benchmark=[100.0, None, 108.0],
+        benchmark_label="MSCI World (IWDA)",
+    )
+    assert "stroke-dasharray" in svg
+    assert "MSCI World (IWDA)" in svg
+    # Un benchmark mal aligné (longueur différente) est ignoré, jamais une erreur.
+    svg = line_chart([("a", 1.0), ("b", 2.0)], benchmark=[1.0], benchmark_label="X")
+    assert "stroke-dasharray" not in svg
+
+
+def test_benchmark_overlay_rebases_on_the_series_start():
+    """La lecture : « si la même somme était sur l'indice »."""
+    from datetime import date
+    from decimal import Decimal
+
+    from app.investments import _benchmark_overlay
+    from app.performance import Point
+
+    kept = [
+        Point(day=date(2026, 8, 1), value=Decimal("1000")),
+        Point(day=date(2026, 8, 3), value=Decimal("1050")),  # le 2 = week-end
+    ]
+    closes = [
+        (date(2026, 8, 1), Decimal("100")),
+        (date(2026, 8, 3), Decimal("104")),
+    ]
+    overlay = _benchmark_overlay(kept, closes)
+    assert overlay == [1000.0, 1040.0]  # rebasé sur 1000, +4 % comme l'indice
+    # Sans clôture archivée : pas d'overlay, pas d'erreur.
+    assert _benchmark_overlay(kept, []) == []

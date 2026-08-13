@@ -22,6 +22,7 @@ import logging
 import sqlite3
 from dataclasses import dataclass
 from datetime import date, timedelta
+from decimal import Decimal
 
 from pypowens import PowensAPIError, PowensAuthError, PowensClient
 
@@ -123,6 +124,39 @@ async def collect(
     return report
 
 
+def _collect_benchmark(conn: sqlite3.Connection, settings: Settings) -> int:
+    """Archive les clôtures de l'indice de référence (yfinance, best effort).
+
+    Même logique de rattrapage que les VL : on repart du dernier jour archivé
+    (moins le recouvrement), et la page performance lit ensuite en local.
+    """
+    ticker = settings.benchmark_ticker
+    if not ticker:
+        return 0
+    try:
+        import yfinance as yf  # noqa: PLC0415 — optionnel, comme dans classify
+    except ImportError:
+        _log.warning("yfinance absent — pas d'archivage de l'indice %s", ticker)
+        return 0
+    last = store.benchmark_last_day(conn, ticker)
+    start = (last - timedelta(days=OVERLAP_DAYS)) if last else None
+    try:
+        history = yf.Ticker(ticker).history(
+            start=start.isoformat() if start else None,
+            period=None if start else "5y",
+            auto_adjust=True,
+        )
+    except Exception:  # noqa: BLE001 — une source externe ne casse pas la collecte
+        _log.warning("indice %s : téléchargement impossible", ticker, exc_info=True)
+        return 0
+    values = [
+        (idx.date(), Decimal(str(round(float(close), 4))))
+        for idx, close in history["Close"].items()
+        if close == close  # écarte les NaN pandas
+    ]
+    return store.save_benchmark_values(conn, ticker, values)
+
+
 async def main() -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s"
@@ -138,6 +172,10 @@ async def main() -> None:
     except (sqlite3.Error, OSError):
         _log.exception("copie de sûreté impossible — la collecte continue sans")
     client = await bootstrap_client(settings)
+    benchmark_count = _collect_benchmark(conn, settings)
+    if benchmark_count:
+        _log.info("indice %s : %d clôture(s) archivée(s)", settings.benchmark_ticker,
+                  benchmark_count)
     try:
         try:
             report = await collect(client, conn, settings=settings)
@@ -149,6 +187,22 @@ async def main() -> None:
                 raise
             _log.info("token renouvelé, reprise de la collecte")
             report = await collect(client, conn, settings=settings)
+        # Les alertes ne vivent que dans le bandeau de l'app : tant que
+        # l'onglet n'est pas ouvert, personne ne les voit. Le collecteur, lui,
+        # passe plusieurs fois par jour — c'est lui qui pousse la notification.
+        try:
+            from .health import connection_alerts  # import tardif (module routes)
+            from .notify import notify
+
+            alerts = await connection_alerts(client, conn)
+            lines = [f"{a['title']} : {a['detail']}" for a in alerts[:3]]
+            pending = store.pending_subscription_alerts(conn)
+            if pending:
+                lines.append(f"{pending} alerte(s) d'abonnement à examiner")
+            if lines:
+                notify("Powens Finance", " · ".join(lines))
+        except Exception:  # noqa: BLE001 — la notification ne casse jamais la collecte
+            _log.warning("notification des alertes impossible", exc_info=True)
     finally:
         await client.aclose()
         conn.close()

@@ -9,6 +9,7 @@ est juste un nombre crédible.
 from __future__ import annotations
 
 import sqlite3
+from bisect import bisect_right
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
@@ -105,7 +106,41 @@ def _lines_of(investments: list[Investment]) -> list[Line]:
     return sorted(rows, key=lambda r: r.valuation, reverse=True)
 
 
-def _chart(points: list[perf.Point]) -> str:
+def _benchmark_overlay(
+    kept: list[perf.Point], closes: list[tuple[date, Decimal]]
+) -> list[float | None]:
+    """L'indice, aligné sur les jours de la série et REBASÉ sur sa valeur de
+    départ : la courbe pointillée se lit « si la même somme était sur l'indice ».
+
+    Pour chaque point, la dernière clôture connue (l'indice ne cote pas le
+    week-end). Les jours d'avant la première clôture archivée restent None.
+    """
+    if not closes:
+        return []
+    days = [c[0] for c in closes]
+    aligned: list[Decimal | None] = []
+    for point in kept:
+        i = bisect_right(days, point.day) - 1
+        aligned.append(closes[i][1] if i >= 0 else None)
+    base_index = next(
+        (i for i, v in enumerate(aligned) if v is not None and kept[i].value), None
+    )
+    if base_index is None:
+        return []
+    start_value = kept[base_index].value
+    base_close = aligned[base_index]
+    assert base_close is not None  # garanti par la sélection de base_index
+    return [
+        float(start_value * close / base_close) if close is not None else None
+        for close in aligned
+    ]
+
+
+def _chart(
+    points: list[perf.Point],
+    closes: list[tuple[date, Decimal]] | None = None,
+    benchmark_label: str = "",
+) -> str:
     """Courbe de valorisation. Les libellés restent lisibles : un point sur cinq suffit."""
     if len(points) < 2:
         return ""
@@ -115,7 +150,12 @@ def _chart(points: list[perf.Point]) -> str:
     # condition ``len(points) % step`` le perdait ou le dupliquait selon le reste.
     if kept[-1] is not points[-1]:
         kept.append(points[-1])
-    return line_chart([(f"{p.day:%d/%m}", float(p.value)) for p in kept])
+    overlay = _benchmark_overlay(kept, closes or [])
+    return line_chart(
+        [(f"{p.day:%d/%m}", float(p.value)) for p in kept],
+        benchmark=overlay or None,
+        benchmark_label=benchmark_label,
+    )
 
 
 @router.get("/performance", response_class=HTMLResponse)
@@ -136,6 +176,11 @@ async def performance_page(
     investments = await client.list_investments()
     txns = await load_transactions(client, months=settings.history_months, conn=conn)
     overrides = store.flow_overrides(conn)
+    # Clôtures de l'indice de référence, archivées par le collecteur : la
+    # comparaison se fait sans appel réseau (vide tant qu'il n'est pas passé).
+    benchmark_closes = store.benchmark_history(
+        conn, settings.benchmark_ticker, since=since
+    )
 
     cards: list[Card] = []
     for account in sorted(holders, key=lambda a: a.balance or Decimal(0), reverse=True):
@@ -182,7 +227,11 @@ async def performance_page(
                 cost=cost,
                 unrealized=unrealized,
                 performance=computed,
-                chart=_chart(computed.points) if computed else "",
+                chart=_chart(
+                    computed.points, benchmark_closes, settings.benchmark_label
+                )
+                if computed
+                else "",
                 points=len(points),
                 flows=list(reversed(window_flows))[:25],
             )
