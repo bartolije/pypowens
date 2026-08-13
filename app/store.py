@@ -15,6 +15,7 @@ below the cost of one Powens round-trip.
 
 from __future__ import annotations
 
+import logging
 import re
 import sqlite3
 from collections.abc import Iterable, Mapping, Sequence
@@ -39,6 +40,19 @@ CREATE TABLE IF NOT EXISTS category_override (
     merchant_key TEXT PRIMARY KEY,
     category     TEXT NOT NULL,
     updated      TEXT NOT NULL
+);
+
+-- Identité STABLE d'un compte, insensible au renumérotage de Powens. Quand une
+-- connexion tombe, Powens supprime ses comptes et les recrée sous de nouveaux
+-- ids : l'historique se scindait en deux, la courbe sautait du montant du
+-- compte à l'aller comme au retour (vécu le 01/08 avec un prêt de -257 k€, qui
+-- a porté quatre ids successifs). Cette table retient « telle signature = tel
+-- id courant » et permet de recoller l'historique au passage suivant.
+CREATE TABLE IF NOT EXISTS account_identity (
+    signature  TEXT PRIMARY KEY,
+    account_id INTEGER NOT NULL,
+    name       TEXT,
+    updated    TEXT NOT NULL
 );
 
 -- Clôtures quotidiennes d'un indice de référence (via yfinance, par le
@@ -150,6 +164,9 @@ CREATE TABLE IF NOT EXISTS imported_transaction (
 );
 CREATE INDEX IF NOT EXISTS idx_imported_day ON imported_transaction (day);
 """
+
+
+_log = logging.getLogger(__name__)
 
 
 class SeriesLike(Protocol):
@@ -269,6 +286,133 @@ def backup(
     return target
 
 
+# --------------------------------------------------- identité stable des comptes
+
+
+def account_signature(account: Any) -> str | None:
+    """Identité d'un compte qui SURVIT au renumérotage de Powens.
+
+    Deux stratégies, dans cet ordre :
+
+    * l'**IBAN** quand il existe — c'est l'identité bancaire, unique et stable,
+      et le seul moyen de distinguer deux comptes du même nom (deux comptes
+      courants « M BARTOLI JEREMIE » chez la même banque) ;
+    * sinon **(connexion, nom)**. Ni le ``number`` ni le ``type`` ne peuvent
+      servir : sur un prêt observé, le ``number`` était un hash régénéré à
+      chaque recréation (``5bb6c9e6…`` puis ``8519e6d0…``) et le ``type``
+      oscillait entre ``loan`` et ``mortgage``. Le nom, lui, n'a pas bougé.
+
+    ``None`` quand aucune identité fiable ne se dégage (compte importé, id
+    négatif, nom vide) : ces comptes gardent leur id comme identité.
+    """
+    account_id = getattr(account, "id", None)
+    if account_id is None or account_id < 0:
+        return None  # comptes importés : jamais renumérotés par Powens
+    raw = getattr(account, "raw", None) or {}
+    iban = str(raw.get("iban") or "").strip()
+    if iban:
+        return f"iban:{iban.upper()}"
+    name = " ".join(str(getattr(account, "name", "") or "").split()).upper()
+    if not name:
+        return None
+    return f"conn:{raw.get('id_connection')}|{name}"
+
+
+def remap_account(conn: sqlite3.Connection, old_id: int, new_id: int) -> int:
+    """Réattribue TOUT l'historique local d'un compte renuméroté.
+
+    Quatre tables référencent un id de compte ; en oublier une laisserait des
+    données orphelines (des VL rattachées à un compte qui n'existe plus, un
+    relevé importé décroché de sa cible). Retourne le nombre de snapshots
+    déplacés.
+    """
+    if old_id == new_id:
+        return 0
+    # Jours couverts par les DEUX ids : la version récente prime (Powens vient
+    # de la publier), l'ancienne est supprimée pour éviter la collision de clé.
+    conn.execute(
+        "DELETE FROM balance_snapshot WHERE account_id = ?"
+        " AND day IN (SELECT day FROM balance_snapshot WHERE account_id = ?)",
+        (old_id, new_id),
+    )
+    moved = conn.execute(
+        "UPDATE balance_snapshot SET account_id = ? WHERE account_id = ?", (new_id, old_id)
+    ).rowcount or 0
+    conn.execute(
+        "UPDATE investment_value SET account_id = ? WHERE account_id = ?", (new_id, old_id)
+    )
+    conn.execute(
+        "UPDATE imported_account SET powens_account_id = ? WHERE powens_account_id = ?",
+        (new_id, old_id),
+    )
+    # Le renommage local suit le compte, sauf si le nouvel id en a déjà un.
+    conn.execute(
+        "DELETE FROM account_alias WHERE account_id = ?"
+        " AND EXISTS (SELECT 1 FROM account_alias WHERE account_id = ?)",
+        (old_id, new_id),
+    )
+    conn.execute(
+        "UPDATE account_alias SET account_id = ? WHERE account_id = ?", (new_id, old_id)
+    )
+    conn.commit()
+    return moved
+
+
+def sync_account_identities(
+    conn: sqlite3.Connection, accounts: Iterable[Any]
+) -> list[tuple[int, int]]:
+    """Détecte les renumérotages et recolle l'historique. Retourne ``[(ancien, nouveau)]``.
+
+    Appelée à chaque archivage : le prochain passage du collecteur répare donc
+    tout seul ce qu'une panne de connexion a cassé.
+
+    Garde-fou : si deux comptes COURANTS partagent la même signature, elle
+    n'identifie plus rien — ils sont laissés à leur id, sans quoi la fusion
+    mélangerait deux comptes distincts.
+    """
+    signatures: dict[str, list[Any]] = {}
+    for account in accounts:
+        signature = account_signature(account)
+        if signature is not None:
+            signatures.setdefault(signature, []).append(account)
+
+    known = {
+        row["signature"]: int(row["account_id"])
+        for row in conn.execute("SELECT signature, account_id FROM account_identity")
+    }
+    today = date.today().isoformat()
+    remapped: list[tuple[int, int]] = []
+
+    for signature, matched in signatures.items():
+        if len(matched) > 1:
+            _log.warning(
+                "signature ambiguë (%s) partagée par %s — identification par id",
+                signature,
+                [a.id for a in matched],
+            )
+            continue
+        account = matched[0]
+        current = account.id
+        previous = known.get(signature)
+        if previous is not None and previous != current:
+            moved = remap_account(conn, previous, current)
+            remapped.append((previous, current))
+            _log.warning(
+                "compte renuméroté par Powens (%s) : id %s → %s, %d jour(s) recollé(s)",
+                signature,
+                previous,
+                current,
+                moved,
+            )
+        conn.execute(
+            "INSERT OR REPLACE INTO account_identity (signature, account_id, name, updated)"
+            " VALUES (?, ?, ?, ?)",
+            (signature, current, getattr(account, "name", None), today),
+        )
+    conn.commit()
+    return remapped
+
+
 # ------------------------------------------------------------ balance history
 
 
@@ -288,6 +432,11 @@ def record_snapshot(
     default_currency: str = "EUR",
 ) -> int:
     """Store today's balance for each account (idempotent: one row per day+account)."""
+    # AVANT d'écrire : si Powens a renuméroté un compte depuis le dernier
+    # passage, recoller son historique — sinon la ligne du jour partirait
+    # sous un nouvel id et la courbe se scinderait en deux (cf. le prêt du
+    # 01/08, quatre ids successifs pour un même emprunt).
+    sync_account_identities(conn, accounts)
     day = day or date.today()
     rows = [
         (

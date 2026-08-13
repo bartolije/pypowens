@@ -389,3 +389,93 @@ def test_pending_subscription_alerts_counts_unacknowledged(conn):
     assert store.pending_subscription_alerts(conn) == 1
     store.acknowledge_alerts(conn)
     assert store.pending_subscription_alerts(conn) == 0
+
+
+# ------------------------------------- identité stable / renumérotage Powens
+
+class _Acc:
+    """Compte avec sa payload brute, comme Account.from_api en produit une."""
+
+    def __init__(self, account_id, name, *, iban=None, connection=8, balance="-100",
+                 type="loan", number=None):
+        self.id = account_id
+        self.name = name
+        self.type = type
+        self.currency = "EUR"
+        self.balance = Decimal(balance)
+        self.raw = {"iban": iban, "id_connection": connection, "number": number}
+
+
+def test_signature_prefers_iban_then_connection_and_name():
+    # Deux comptes du même nom chez la même banque : seul l'IBAN les sépare.
+    a = _Acc(1, "M BARTOLI JEREMIE", iban="FR7630004037438933")
+    b = _Acc(2, "M BARTOLI JEREMIE", iban="FR7630004089361704")
+    assert store.account_signature(a) != store.account_signature(b)
+    # Sans IBAN : connexion + nom.
+    assert store.account_signature(_Acc(3, "PRET IMMO", connection=8)) == "conn:8|PRET IMMO"
+    # Un compte importé (id négatif) n'a pas de signature : jamais renuméroté.
+    assert store.account_signature(_Acc(-1, "CCF")) is None
+
+
+def test_signature_ignores_number_and_type_which_powens_regenerates():
+    """Cas vécu : le prêt a porté 4 ids, 2 types et 4 « number » différents —
+    seuls le nom et la connexion sont restés constants."""
+    before = _Acc(20, "PRET IMMO MODULABLE CCF", type="loan", number="5bb6c9e6a861")
+    after = _Acc(28, "PRET IMMO MODULABLE CCF", type="mortgage", number="937b750339d5")
+    assert store.account_signature(before) == store.account_signature(after)
+
+
+def test_renumbering_is_detected_and_history_is_reattached(conn):
+    """Le scénario complet : le compte disparaît, revient sous un autre id, et
+    l'historique doit se recoller tout seul au passage suivant."""
+    loan_before = _Acc(20, "PRET IMMO MODULABLE CCF")
+    store.record_snapshot(conn, [Acc(1), loan_before], day=date(2026, 8, 1))
+    store.record_snapshot(conn, [Acc(1)], day=date(2026, 8, 2))  # connexion en panne
+
+    loan_after = _Acc(28, "PRET IMMO MODULABLE CCF", balance="-99")
+    remapped = store.sync_account_identities(conn, [Acc(1), loan_after])
+    assert remapped == [(20, 28)]
+
+    # L'historique du 01/08 porte désormais le nouvel id : un seul compte.
+    rows = list(conn.execute(
+        "SELECT day, account_id FROM balance_snapshot WHERE name LIKE 'PRET%' ORDER BY day"
+    ))
+    assert [(r["day"], r["account_id"]) for r in rows] == [("2026-08-01", 28)]
+
+    # Et le trou du 02/08 est comblé : plus de faux changement de périmètre.
+    store.record_snapshot(conn, [Acc(1), loan_after], day=date(2026, 8, 3))
+    assert store.perimeter_changes(conn) == []
+
+
+def test_remap_moves_every_table_that_references_the_account(conn):
+    class _Value:
+        id_investment = 7
+        vdate = date(2026, 8, 1)
+        unit_value = Decimal("10")
+
+    store.save_investment_values(
+        conn, [_Value()], account_id=20, label="ETF", code="FR0000"
+    )
+    db_id = store.upsert_imported_account(conn, "Relevé CCF")
+    store.link_imported_account(conn, db_id, 20)
+    store.set_account_alias(conn, 20, "Mon prêt")
+
+    store.remap_account(conn, 20, 28)
+
+    assert conn.execute(
+        "SELECT COUNT(*) n FROM investment_value WHERE account_id = 28"
+    ).fetchone()["n"] == 1
+    assert store.imported_links(conn) == {db_id: 28}
+    assert store.account_aliases(conn) == {28: "Mon prêt"}
+
+
+def test_ambiguous_signature_is_never_used_to_merge(conn):
+    """Deux comptes distincts au même nom sans IBAN : les fusionner serait pire
+    que de les laisser séparés."""
+    twin_a = _Acc(30, "COMPTE", connection=9)
+    twin_b = _Acc(31, "COMPTE", connection=9)
+    assert store.sync_account_identities(conn, [twin_a, twin_b]) == []
+    # Rien n'est mémorisé : la signature ambiguë n'identifie personne.
+    assert conn.execute(
+        "SELECT COUNT(*) n FROM account_identity WHERE signature = 'conn:9|COMPTE'"
+    ).fetchone()["n"] == 0
