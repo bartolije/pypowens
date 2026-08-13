@@ -175,3 +175,27 @@ def test_a_phone_is_sent_straight_to_the_bank(client, fake_client):
     fake_client._connections[0].update({"state": None, "error_message": None})
     fake_client._connections[0].pop("expire", None)
     app.data.clear_cache()
+
+
+def test_the_page_warns_about_the_expected_localhost_error(client, fake_client):
+    """Après validation, le téléphone est renvoyé vers 127.0.0.1 — l'adresse de
+    CETTE machine, injoignable depuis le mobile. L'erreur affichée effraie
+    alors que la connexion bancaire est déjà faite : il faut le dire avant."""
+    import app.data
+
+    fake_client._connections[0].update(
+        {"state": "webauthRequired", "error_message": REAL, "expire": "2099-01-01 00:00:00"}
+    )
+    app.data.clear_cache()
+
+    body = client.get(
+        "/reconnecter/1",
+        headers={"User-Agent": "Mozilla/5.0 (Macintosh) Chrome/126"},
+    ).text
+    assert "erreur de connexion" in body
+    assert "127.0.0.1" in body
+    assert "sans conséquence" in body
+
+    fake_client._connections[0].update({"state": None, "error_message": None})
+    fake_client._connections[0].pop("expire", None)
+    app.data.clear_cache()
