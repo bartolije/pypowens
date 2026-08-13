@@ -74,7 +74,7 @@ def is_mobile(user_agent: str | None) -> bool:
     return bool(user_agent and _MOBILE_UA.search(user_agent))
 
 
-def qr_svg(url: str, *, scale: int = 5) -> str:
+def qr_svg(url: str, *, scale: int = 8) -> str:
     """QR code du lien d'autorisation, en SVG inline.
 
     Le seul moyen commode de passer un lien de 200 caractères d'un écran
@@ -87,7 +87,13 @@ def qr_svg(url: str, *, scale: int = 5) -> str:
     import segno  # noqa: PLC0415 — dépendance de l'app, pas de la lib
 
     buffer = io.BytesIO()  # segno écrit des octets, même en SVG
-    segno.make(url, error="m").save(
+    # Correction d'erreur BASSE, à dessein : ces liens font ~200 caractères,
+    # et chaque niveau de correction ajoute des modules. Une correction moyenne
+    # donnait 57×57 modules, soit 3,3 px chacun à l'écran — sous le seuil de
+    # lecture d'un appareil photo, qui détecte le code (cadre jaune) sans
+    # parvenir à le décoder. En 53×53 affichés plus grand, chaque module fait
+    # près de 6 px.
+    segno.make(url, error="l").save(
         buffer, kind="svg", scale=scale, dark="#111111", light="#ffffff",
         border=2, xmldecl=False, svgns=True,
     )

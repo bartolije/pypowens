@@ -23,6 +23,7 @@ from app.enrich import (
     merchant_key,
     resolve_category,
     resolve_category_txn,
+    split_wording,
 )
 
 
@@ -276,3 +277,61 @@ def test_short_keywords_no_longer_match_inside_words(wording, not_category):
 )
 def test_short_keywords_still_match_as_whole_words(wording, category):
     assert categorize(wording) == category
+
+
+# ------------------------------- coupes de libellé (cas réels de relevés)
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        # Répétition : la banque redit deux fois la même chose, références comprises.
+        (
+            "Wombat Gambetta PRLV On Air Lyon Saxe-Gambetta - PRLV On Air Lyon "
+            "Saxe-Gambetta - ona-08- -lOVzU388 ona-08- -lOVzU388",
+            "Wombat Gambetta PRLV On Air Lyon Saxe-Gambetta",
+        ),
+        # Bascule de casse : l'émetteur en capitales, la prose de la banque après.
+        # Le « E » final est un fragment de troncature, pas un mot.
+        (
+            "TOTALENERGIES ELECTRICITE E Prelevement TotalEnergies Electr "
+            "Prelevement TotalEnergies Electricite et Gaz France-Reference client",
+            "TOTALENERGIES ELECTRICITE",
+        ),
+        # Virement : le bénéficiaire en capitales, le motif libre après.
+        ("INST LAETITIA DENIS Anniversaire Emilien", "INST LAETITIA DENIS"),
+        # Un libellé qui NE commence pas en capitales garde sa casse mélangée.
+        (
+            "EDF clients particuliers BARTOLI JEREMIE Numero de client : 602965391",
+            "EDF clients particuliers BARTOLI JEREMIE",
+        ),
+        # Rien à couper.
+        ("NETFLIX.COM", "NETFLIX.COM"),
+    ],
+)
+def test_split_wording_on_real_statements(raw, expected):
+    assert split_wording(raw)[0] == expected
+
+
+def test_the_cut_part_is_kept_not_thrown_away():
+    """Ce qui est retiré s'affiche en dessous : rien ne doit disparaître."""
+    essential, detail = split_wording("INST LAETITIA DENIS Anniversaire Emilien")
+    assert essential == "INST LAETITIA DENIS"
+    assert detail == "Anniversaire Emilien"
+
+
+def test_short_words_never_trigger_the_repetition_cut():
+    """« DE », « ET », « LA » reviennent dans toute phrase française."""
+    raw = "SARL DE LA BOULANGERIE DE LA PLACE"
+    assert split_wording(raw)[0] == raw
+
+
+def test_payment_rail_is_named_for_every_powens_type():
+    from app.wealth import rail
+
+    assert rail("card") == ("💳", "Carte")
+    assert rail("order")[1] == "Prélèvement"
+    assert rail("transfer")[1] == "Virement"
+    assert rail("withdrawal")[1] == "Retrait"
+    # Type inconnu : pas de pictogramme inventé.
+    assert rail("quelque_chose") == ("", "")
+    assert rail(None) == ("", "")

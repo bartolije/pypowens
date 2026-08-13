@@ -25,7 +25,7 @@ from .data import load_accounts, load_connections, load_internal_ids, load_trans
 from .deps import get_client, get_settings, get_store
 from .enrich import all_categories, merchant_key, resolve_category_txn, split_wording
 from .helpers import month_key, month_label_fr
-from .wealth import category_emoji, monogram
+from .wealth import category_emoji, monogram, rail
 from .web import templates
 
 router = APIRouter()
@@ -52,6 +52,8 @@ class Row:
     label: str = ""
     detail: str = ""
     emoji: str = "•"
+    rail_emoji: str = ""
+    rail_label: str = ""
     bank_initials: str = ""
     bank_color: str = "#8a8a8a"
     bank_ink: str = "#ffffff"
@@ -183,6 +185,7 @@ async def accounts_page(
             t.simplified_wording or t.wording or t.original_wording or ""
         )
         initials, color, ink = account_bank.get(t.id_account, ("", "#8a8a8a", "#ffffff"))
+        rail_emoji, rail_label = rail(t.type)
         month_rows.append(
             Row(
                 txn=t,
@@ -193,6 +196,8 @@ async def accounts_page(
                 label=label or "—",
                 detail=detail,
                 emoji=category_emoji(category),
+                rail_emoji=rail_emoji,
+                rail_label=rail_label,
                 bank_initials=initials,
                 bank_color=color,
                 bank_ink=ink,

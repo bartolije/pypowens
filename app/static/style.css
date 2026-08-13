@@ -580,7 +580,15 @@ th.sortable { cursor: pointer; }
   background: #ffffff; padding: 10px; border-radius: var(--radius-sm);
   line-height: 0; flex: 0 0 auto;
 }
-.qr-frame svg { width: 190px; height: 190px; }
+/* 300 px minimum : en dessous, les modules passent sous 4 px et l'appareil
+   photo détecte le code sans le décoder. */
+.qr-frame svg { width: 300px; height: 300px; }
+
+/* Moyen de paiement : discret, devant le libellé — carte, virement,
+   prélèvement. Lire une ligne, c'est aussi savoir par quel rail elle est
+   passée (une carte se conteste, un mandat se résilie). */
+.rail { display: inline-block; width: 1.2em; margin-right: 4px; opacity: 0.75;
+        font-size: 0.9em; text-align: center; }
 
 /* Pastille réduite, pour les lignes de tableau. */
 .monogram-sm { width: 22px; height: 22px; font-size: 0.58rem; }

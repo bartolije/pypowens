@@ -176,3 +176,31 @@ CATEGORY_EMOJI: dict[str, str] = {
 
 def category_emoji(category: str) -> str:
     return CATEGORY_EMOJI.get(category, "•")
+
+
+# ------------------------------------------------------- moyen de paiement
+
+# Le « rail » emprunté par l'argent : lire une ligne, c'est aussi savoir si
+# elle est passée par la carte (donc annulable, contestable) ou par un mandat
+# de prélèvement (donc contractuelle). Le type Powens le dit déjà.
+RAIL_LABEL: dict[str, tuple[str, str]] = {
+    "card": ("💳", "Carte"),
+    "deferred_card": ("💳", "Carte à débit différé"),
+    "transfer": ("↔", "Virement"),
+    "order": ("🔁", "Prélèvement"),
+    "loan_repayment": ("🏦", "Échéance de prêt"),
+    "withdrawal": ("🏧", "Retrait"),
+    "check": ("🧾", "Chèque"),
+    "deposit": ("⬇", "Dépôt"),
+    "payback": ("↩", "Remboursement"),
+    "bank": ("🏛", "Frais bancaires"),
+    "market_order": ("📈", "Ordre de bourse"),
+    "market_fee": ("📈", "Frais de marché"),
+    "arbitrage": ("⚖", "Arbitrage"),
+    "profit": ("💹", "Gain"),
+}
+
+
+def rail(kind: str | None) -> tuple[str, str]:
+    """(pictogramme, libellé) du moyen de paiement — vide si Powens ne dit rien."""
+    return RAIL_LABEL.get((kind or "").lower(), ("", ""))

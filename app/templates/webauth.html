@@ -59,6 +59,12 @@
           </div>
         </details>
         <a class="btn" href="{{ url }}" rel="noopener">Tenter quand même dans ce navigateur</a>
+        <p class="text-secondary small mt-2 mb-2">
+          Ou recopier ce lien sur le téléphone (sélectionnable) :
+        </p>
+        <textarea readonly rows="3" class="search" style="width: 100%; font-size: 0.7rem;
+                  font-family: ui-monospace, monospace; resize: vertical;"
+                  onclick="this.select()">{{ url }}</textarea>
       </div>
     </div>
   </div>

@@ -126,6 +126,9 @@
             <td>
               {# Le libellé utile en clair, la référence de mandat en dessous :
                  c'est la même coupe que celle du regroupement par marchand. #}
+              {% if r.rail_emoji %}
+              <span class="rail" title="{{ r.rail_label }}" aria-label="{{ r.rail_label }}">{{ r.rail_emoji }}</span>
+              {% endif %}
               <a href="/transactions?label={{ merchant_key(r.txn) | urlencode }}">{{ r.label }}</a>
               {% if r.internal %}<span class="badge badge-muted" style="margin-left: 6px;" title="Virement entre vos comptes">interne</span>{% endif %}
               {% if r.detail %}

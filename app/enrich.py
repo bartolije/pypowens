@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from collections import defaultdict
 from collections.abc import Sequence
 from functools import lru_cache
@@ -72,6 +73,57 @@ _MULTISPACE = re.compile(r"\s+")
 # transforme un coût par transaction en coût par libellé distinct.
 
 
+def _cut_at_repetition(words: list[str]) -> int:
+    """Index du premier mot DÉJÀ vu — les banques se répètent beaucoup.
+
+    « Wombat Gambetta PRLV On Air Lyon Saxe-Gambetta - PRLV On Air Lyon
+    Saxe-Gambetta - ona-08-… » : le libellé utile s'arrête à la deuxième
+    occurrence de « PRLV ». Seuls les mots d'au moins quatre lettres comptent,
+    sinon « DE », « ET » ou « LA » couperaient n'importe quelle phrase. La
+    comparaison tolère les troncatures (« Electr » ≈ « Electricite »), que les
+    banques produisent en coupant leurs propres libellés à longueur fixe.
+    """
+    seen: list[str] = []
+    for index, word in enumerate(words):
+        key = _fold(word)
+        if len(key) >= 4 and any(
+            key.startswith(other) or other.startswith(key) for other in seen
+        ):
+            return index
+        if len(key) >= 4:
+            seen.append(key)
+    return len(words)
+
+
+def _cut_at_case_change(words: list[str]) -> int:
+    """Index où un libellé TOUT EN MAJUSCULES bascule en casse normale.
+
+    Les banques écrivent l'émetteur en capitales et collent ensuite leur propre
+    prose : « TOTALENERGIES ELECTRICITE E Prelevement TotalEnergies… », ou le
+    motif libre saisi par l'utilisateur : « INST LAETITIA DENIS Anniversaire
+    Emilien ». Deux mots capitalisés au minimum sont exigés, sans quoi un
+    simple « EDF clients particuliers » serait tronqué à son premier mot.
+    """
+    capitals = 0
+    for index, word in enumerate(words):
+        letters = [c for c in word if c.isalpha()]
+        if letters and all(c.isupper() for c in letters):
+            capitals += 1
+            continue
+        if capitals >= 2 and letters:
+            return index
+        if letters:
+            return len(words)  # le libellé ne commence pas en capitales
+    return len(words)
+
+
+@lru_cache(maxsize=16384)
+def _fold(word: str) -> str:
+    """Mot normalisé pour comparaison : sans accent, sans ponctuation, majuscule."""
+    stripped = unicodedata.normalize("NFKD", word)
+    return "".join(c for c in stripped if c.isalnum() and not unicodedata.combining(c)).upper()
+
+
 @lru_cache(maxsize=16384)
 def clean_wording(text: str) -> str:
     """Strip references/noise from a wording, keeping the merchant part."""
@@ -81,6 +133,16 @@ def clean_wording(text: str) -> str:
     w = _CB_SUFFIX.sub("", w)  # card format MERCHANT CB*1234
     w = _LEADING_PREFIX.sub("", w)
     w = _NOISE_CUT.sub("", w)
+    # Deux coupes qui n'ont pas de mot-clé pour les déclencher, seulement une
+    # forme : la répétition et le changement de casse. On garde la plus courte.
+    words = w.split()
+    if words:
+        kept = words[: min(_cut_at_repetition(words), _cut_at_case_change(words))]
+        # Une lettre isolée en fin de coupe est un fragment de libellé tronqué
+        # par la banque (« TOTALENERGIES ELECTRICITE E »), jamais un mot.
+        while kept and len(kept[-1]) == 1 and kept[-1].isalpha():
+            kept.pop()
+        w = " ".join(kept)
     w = _LONG_DIGITS.sub(" ", w)
     w = _NON_NAME.sub(" ", w)
     w = _MULTISPACE.sub(" ", w).strip(" -.")
