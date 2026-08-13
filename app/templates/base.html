@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Powens Finance{% endblock %}</title>
+  {# Sans icône déclarée, le navigateur réclame /favicon.ico à chaque page et
+     prend un 404 : onglet sans repère visuel, et du bruit dans les logs. #}
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v={{ static_v }}">
   {# Police auto-hébergée : chaque affichage notifiait Google (IP, UA, Referer). #}
   <link rel="stylesheet" href="/static/vendor/fonts.css?v={{ static_v }}">
   <link rel="stylesheet" href="/static/style.css?v={{ static_v }}">

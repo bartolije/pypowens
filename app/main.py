@@ -156,6 +156,12 @@ app.mount(
     name="static",
 )
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon() -> Response:
+    """Certains navigateurs réclament /favicon.ico malgré le <link> déclaré."""
+    return RedirectResponse("/static/favicon.svg", status_code=301)
+
+
 app.include_router(synthese.router)
 app.include_router(accounts.router)
 app.include_router(connections.router)
