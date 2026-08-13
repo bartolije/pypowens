@@ -23,7 +23,7 @@ from . import performance as perf
 from . import store
 from .collector import INVESTMENT_TYPES
 from .config import Settings
-from .data import load_accounts, load_transactions
+from .data import load_accounts, load_investments, load_transactions
 from .deps import get_client, get_settings, get_store
 from .helpers import line_chart
 from .web import templates
@@ -173,7 +173,10 @@ async def performance_page(
 
     accounts = (await load_accounts(client, conn=conn)).accounts
     holders = [a for a in accounts if (a.type or "") in INVESTMENT_TYPES]
-    investments = await client.list_investments()
+    # Via le cache : l'appel direct coûtait un aller-retour Powens de ~0,9 s à
+    # CHAQUE affichage, alors que toutes les autres pages lisent la même liste
+    # depuis load_investments. C'était l'essentiel du temps de chargement.
+    investments = await load_investments(client)
     txns = await load_transactions(client, months=settings.history_months, conn=conn)
     overrides = store.flow_overrides(conn)
     # Clôtures de l'indice de référence, archivées par le collecteur : la

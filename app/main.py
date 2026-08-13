@@ -3,6 +3,7 @@ Webview connect flow."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import secrets
@@ -36,7 +37,7 @@ from . import (
     webauth,
 )
 from .config import Settings, apply_overrides, get_settings
-from .data import clear_cache, load_connections
+from .data import clear_cache, load_connections, warm_up
 from .deps import get_client
 from .deps import get_settings as settings_dep
 from .health import auto_sync_stuck_connections, connection_alerts
@@ -72,9 +73,20 @@ async def lifespan(app: FastAPI):
         # connexion SQLite ouverte derrière un « Application startup failed ».
         app.state.store.close()
         raise
+    # Préchauffage en TÂCHE DE FOND : le serveur répond immédiatement, et le
+    # cache se remplit pendant que l'utilisateur ouvre son navigateur. Sans
+    # cela, la première page payait deux secondes de téléchargement.
+    warm = asyncio.create_task(
+        warm_up(
+            app.state.client,
+            app.state.store,
+            months=app.state.settings.history_months,
+        )
+    )
     try:
         yield
     finally:
+        warm.cancel()
         await app.state.client.aclose()
         app.state.store.close()
 

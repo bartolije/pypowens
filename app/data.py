@@ -9,6 +9,7 @@ used to trigger two full downloads and keep both lists alive forever.
 from __future__ import annotations
 
 import asyncio
+import logging
 import sqlite3
 import time
 from dataclasses import replace
@@ -37,6 +38,8 @@ SPENDING_ACCOUNT_TYPES = frozenset({"checking", "card"})
 # demandait ~1500 mois, soit le téléchargement de TOUT l'historique Powens, mis
 # en cache définitivement. 10 ans couvrent tout usage réel.
 MAX_WINDOW_MONTHS = 120
+
+_log = logging.getLogger(__name__)
 
 _TXN_KEY = "transactions"
 _INTERNAL_KEY = "internal"
@@ -341,3 +344,30 @@ async def load_internal_ids(
             }
     _set(key, ids)
     return ids
+
+
+async def warm_up(
+    client: PowensClient, conn: sqlite3.Connection | None = None, *, months: int = 36
+) -> None:
+    """Remplit le cache pendant que l'utilisateur ouvre encore son navigateur.
+
+    Le premier affichage payait le téléchargement de l'historique complet —
+    deux secondes pendant lesquelles la page ne s'affiche pas. Lancée en tâche
+    de fond au démarrage, cette fonction absorbe ce coût avant la première
+    requête. Best effort : une panne réseau ici ne doit pas empêcher
+    l'application de démarrer, la page se contentera de charger à froid.
+    """
+    try:
+        # Ordre choisi : les appels COURTS d'abord, pour que les pages qui n'en
+        # dépendent que d'eux soient prêtes tout de suite. L'historique des
+        # transactions prend deux secondes à lui seul ; le mettre en tête
+        # laissait /performance lent pendant tout ce temps, alors qu'il ne lui
+        # manquait que la liste des investissements.
+        await load_accounts(client, conn=conn)
+        await load_connections(client)
+        await load_investments(client)
+        await load_transactions(client, months=months, conn=conn)
+        await load_internal_ids(client, months=months, conn=conn)
+        _log.info("cache préchauffé")
+    except Exception:  # noqa: BLE001 — préchauffage, jamais bloquant
+        _log.warning("préchauffage du cache interrompu", exc_info=True)
