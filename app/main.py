@@ -21,6 +21,7 @@ from pypowens import PowensAPIError, PowensAuthError, PowensClient, PowensRateLi
 from . import (
     accounts,
     analysis,
+    connections,
     detail,
     enrich,
     frequency,
@@ -152,6 +153,7 @@ app.mount(
 
 app.include_router(synthese.router)
 app.include_router(accounts.router)
+app.include_router(connections.router)
 app.include_router(recap.router)
 app.include_router(detail.router)
 app.include_router(frequency.router)

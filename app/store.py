@@ -661,6 +661,20 @@ def ensure_snapshot(
     return record_snapshot(conn, accounts, day=day, default_currency=default_currency)
 
 
+def last_snapshot_days(conn: sqlite3.Connection) -> dict[int, date]:
+    """Dernier jour archivé par compte — dit si NOTRE courbe est à jour.
+
+    Distinct de la date de synchro Powens : une banque peut répondre pendant
+    que le collecteur, lui, ne tourne plus.
+    """
+    return {
+        int(row["account_id"]): date.fromisoformat(row["last"])
+        for row in conn.execute(
+            "SELECT account_id, MAX(day) AS last FROM balance_snapshot GROUP BY account_id"
+        )
+    }
+
+
 def previous_net_worth(
     conn: sqlite3.Connection, *, currency: str = "EUR", before: date | None = None
 ) -> tuple[date, Decimal] | None:

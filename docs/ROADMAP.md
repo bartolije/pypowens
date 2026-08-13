@@ -97,6 +97,18 @@ critère clair n'est pas prêt à être attaqué.
   de la dernière synchro affiché par connexion sur /patrimoine (« il y a
   12 j » — une date seule ne dit pas au lecteur que c'est vieux).
 
+## Livré après le plan (13/08, sur demande)
+
+- [x] **Parade structurelle au renumérotage Powens** : `account_signature()`
+  (IBAN, sinon connexion+nom — ni le `number` ni le `type`, régénérés par
+  Powens à chaque recréation) + `remap_account()` qui recolle les quatre
+  tables référençant un id de compte, appelé automatiquement par
+  `record_snapshot`. L'historique se répare seul au prochain passage.
+- [x] **Page /connexions** : ce que chaque banque remonte, l'âge de la
+  synchro, la dernière opération par compte, le dernier solde archivé, les
+  comptes désactivés « hors total », les relevés importés. La vue proactive
+  qui manquait à côté du bandeau (qui ne parle que quand ça casse).
+
 ## Tout le plan est traité
 
 P0, P1, P2 et P3 sont livrés (13/08). Restent, hors périmètre initial :
