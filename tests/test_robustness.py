@@ -161,6 +161,13 @@ def test_auth_error_replays_after_successful_renew(client, monkeypatch, fake_cli
     import app.main
     from pypowens import PowensAuthError
 
+    # Le bandeau de santé appelle les loaders AVANT la route : il consommerait
+    # l'unique échec simulé ci-dessous. Ce test vise le replay, pas le bandeau.
+    async def no_alerts(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(app.main, "connection_alerts", no_alerts)
+
     calls = {"n": 0}
     original = fake_client.list_accounts
 

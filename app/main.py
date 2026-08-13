@@ -34,6 +34,7 @@ from .config import Settings, get_settings
 from .data import clear_cache
 from .deps import get_client
 from .deps import get_settings as settings_dep
+from .health import connection_alerts
 from .state import bootstrap_client, persist_token, try_renew
 from .web import templates
 
@@ -98,6 +99,32 @@ async def _reject_cross_site_posts(request: Request, call_next):
                     "Requête cross-site refusée : cette application n'accepte que "
                     "les formulaires émis par ses propres pages.",
                     status_code=403,
+                )
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def _health_banner(request: Request, call_next):
+    """Alerte de santé des connexions sur TOUTES les pages (bandeau du layout).
+
+    Un compte peut sortir du patrimoine du jour au lendemain (connexion en
+    panne → compte désactivé) : tant que l'alerte ne vivait que sur
+    /patrimoine, le chiffre des autres pages mentait sans signal. Ne doit
+    JAMAIS casser une page : toute erreur ici rend simplement un bandeau vide.
+    Les loaders sont cachés (TTL 120/300 s) — coût nul en croisière.
+    """
+    request.state.health_alerts = []
+    if request.method == "GET" and not request.url.path.startswith(
+        ("/static", "/export", "/callback")
+    ):
+        client = getattr(request.app.state, "client", None)
+        conn = getattr(request.app.state, "store", None)
+        if client is not None:
+            try:
+                request.state.health_alerts = await connection_alerts(client, conn)
+            except Exception:  # noqa: BLE001 — bandeau best-effort, jamais bloquant
+                logging.getLogger(__name__).debug(
+                    "bandeau de santé indisponible", exc_info=True
                 )
     return await call_next(request)
 

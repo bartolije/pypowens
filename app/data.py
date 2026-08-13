@@ -105,6 +105,24 @@ async def load_accounts(
     )
 
 
+async def load_all_accounts(client: PowensClient, *, ttl: float = 300) -> AccountsList:
+    """Comptes Y COMPRIS désactivés — pour le bandeau de santé uniquement.
+
+    Les pages de patrimoine continuent d'exclure les comptes désactivés ; ce
+    loader existe précisément pour pouvoir DIRE qu'ils sont exclus.
+    """
+    cached = _get("accounts_all", ttl)
+    if cached is not None:
+        return cached
+    async with _lock("accounts_all"):
+        cached = _get("accounts_all", ttl)
+        if cached is not None:
+            return cached
+        data = await client.list_accounts(include_disabled=True)
+        _set("accounts_all", data)
+        return data
+
+
 async def load_connections(client: PowensClient, *, ttl: float = 120) -> list[Connection]:
     cached = _get("connections", ttl)
     if cached is not None:

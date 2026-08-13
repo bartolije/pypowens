@@ -68,6 +68,27 @@
       </div>
     </header>
 
+    {# ── Santé des connexions : visible partout, sinon le total ment sans signal ── #}
+    {% if request.state.health_alerts %}
+    <div class="alert-strip">
+      {% for a in request.state.health_alerts %}
+      <div class="alert-item alert-{{ a.kind }}">
+        <span class="alert-dot"></span>
+        <strong>{{ a.title }}</strong>
+        {% if a.amount is not none %}<span class="amount">{{ a.amount | money }}</span>{% endif %}
+        <span class="alert-detail">{{ a.detail }}</span>
+        {% if a.sync_id %}
+        <form method="post" action="/synchroniser/{{ a.sync_id }}" class="alert-action">
+          <button type="submit" class="btn btn-sm">{{ a.action_label }}</button>
+        </form>
+        {% elif a.action_url %}
+        <a class="btn btn-sm alert-action" href="{{ a.action_url }}">{{ a.action_label }}</a>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
     <div class="content">
       {% block content %}{% endblock %}
     </div>

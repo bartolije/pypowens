@@ -187,6 +187,9 @@ class FakeClient:
         self._accounts = accounts
         self._connections = connections
         self._txns = txns
+        # Comptes désactivés côté Powens : servis SEULEMENT avec include_disabled=True,
+        # comme le vrai endpoint. Alimente le bandeau « comptes hors du total ».
+        self._disabled_accounts: list[dict] = []
         self.access_token = "fake-token"
         self.client_id = "cid"
         self.closed = False
@@ -194,7 +197,10 @@ class FakeClient:
         self.redirect_uris = ["http://127.0.0.1:8000/callback"]
 
     async def list_accounts(self, *args, **kwargs) -> AccountsList:
-        return AccountsList.from_api({"accounts": self._accounts, "balances": {"EUR": "59500.00"}})
+        accounts = list(self._accounts)
+        if kwargs.get("include_disabled"):
+            accounts = [*accounts, *self._disabled_accounts]
+        return AccountsList.from_api({"accounts": accounts, "balances": {"EUR": "59500.00"}})
 
     async def list_connections(self, *args, **kwargs) -> list[Connection]:
         return [Connection.from_api(c) for c in self._connections]
