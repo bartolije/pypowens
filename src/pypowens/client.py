@@ -16,6 +16,7 @@ from urllib.parse import urlencode, urlsplit
 
 import httpx
 
+from ._version import __version__
 from .exceptions import (
     PowensAPIError,
     PowensAuthError,
@@ -193,7 +194,11 @@ class PowensClient:
         json: dict[str, Any] | None = None,
         auth: bool = True,
     ) -> Any:
-        headers: dict[str, str] = {"Accept": "application/json"}
+        headers: dict[str, str] = {
+            "Accept": "application/json",
+            # Identifie le client auprès des WAF et du support Powens.
+            "User-Agent": f"pypowens/{__version__}",
+        }
         if auth:
             if not self._access_token:
                 raise PowensAuthError(
@@ -274,6 +279,7 @@ class PowensClient:
             return data
 
         code = message = None
+        request_id = response.headers.get("X-Request-Id")
         if isinstance(data, dict):
             code = data.get("code")
             message = (
@@ -282,6 +288,12 @@ class PowensClient:
                 or data.get("error_description")
                 or data.get("error")
             )
+            request_id = data.get("request_id") or request_id
+        elif response.content:
+            # Corps non-JSON (page d'erreur HTML CloudFront, texte brut…) : en
+            # garder un extrait. Le jeter produisait « [HTTP 503] unknown
+            # error » — ininstruisible, alors que la page contenait la cause.
+            message = " ".join(response.text.split())[:300] or None
 
         if response.status_code in (401, 403):
             exc: type[PowensAPIError] = PowensAuthError
@@ -295,6 +307,7 @@ class PowensClient:
             message=message,
             payload=data,
             retry_after=_parse_retry_after(response.headers.get("Retry-After")),
+            request_id=request_id,
         )
 
     async def _paginate(

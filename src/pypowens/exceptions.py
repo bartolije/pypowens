@@ -29,6 +29,7 @@ class PowensAPIError(PowensError):
         message: str | None = None,
         payload: Any = None,
         retry_after: float | None = None,
+        request_id: str | None = None,
     ) -> None:
         self.status_code = status_code
         self.code = code
@@ -36,7 +37,12 @@ class PowensAPIError(PowensError):
         self.payload = payload
         # Seconds to wait before retrying, from the ``Retry-After`` header.
         self.retry_after: float | None = retry_after
+        # Powens joint un request_id à ses erreurs : c'est LA référence à donner
+        # à leur support — le perdre rend un ticket ininstruisible.
+        self.request_id: str | None = request_id
         detail = message or code or "unknown error"
+        if request_id:
+            detail = f"{detail} (request_id={request_id})"
         super().__init__(f"[HTTP {status_code}] {detail}")
 
 

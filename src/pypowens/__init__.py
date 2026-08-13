@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ._version import __version__
 from .client import PowensClient
 from .exceptions import (
     PowensAPIError,
@@ -24,8 +25,6 @@ from .models import (
     Transaction,
     User,
 )
-
-__version__ = "0.2.0"
 
 __all__ = [
     "PowensClient",

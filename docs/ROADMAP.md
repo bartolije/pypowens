@@ -33,27 +33,22 @@ critère clair n'est pas prêt à être attaqué.
 
 ## P1 — Lib : compléter la surface avant toute publication PyPI
 
-- [ ] **`GET /users/{id}/transactionsclusters`** — la détection de récurrences
-  NATIVE de Powens. Sert d'abord à évaluer le détecteur maison (page de
-  comparaison en mode debug). *Done : méthode + modèle + test respx.* (~2 h)
-- [ ] **`GET /users/{id}/pockets`** (poches PEA/AV : fonds euros vs UC) et
-  **`GET /users/{id}/loans`** (échéancier, taux, capital restant dû — pour un
-  vrai onglet Passifs). *Done : méthodes + modèles + tests ; /patrimoine/{id}
-  d'un crédit affiche taux et capital restant.* (~½ j)
+- [~] **transactionsclusters / pockets / loans / documents — REPORTÉS**
+  (sondés en live le 13/08 : `transactionsclusters` 0, `pockets` 0,
+  `documents` 0, `loans` 404 sous les deux formes). Powens ne les alimente pas
+  sur cette app — même syndrome que `indicators`/`categories`. Les implémenter
+  aujourd'hui serait du code mort. Re-sonder à l'occasion :
+  `client._request("GET", "users/me/pockets")` etc.
 - [x] ~~`PUT /users/{id}/accounts/{aid}`~~ (13/08, `update_account`) — avec le
   piège `?all` sans lequel un compte désactivé est inadressable (404) ; bouton
   « Réintégrer » branché sur le bandeau de santé.
-- [ ] **`DELETE /users/{id}` et `GET /users`** — manque RGPD : la lib crée des
-  utilisateurs mais ne peut ni les lister ni les supprimer (orphelins des
-  §3.1/3.40 de l'audit). *Done : méthodes + doc « nettoyer les orphelins ».* (~2 h)
-- [ ] **Documents** (`/documents`, `/documents/{id}/file`) — relevés et IFU
-  téléchargeables depuis l'app. *(~½ j)*
-- [ ] **Hygiène HTTP** : `User-Agent: pypowens/x.y`, conserver le corps
-  non-JSON des erreurs (page CloudFront jetée aujourd'hui), exposer un
-  `X-Request-Id` pour le support Powens. *(~2 h)*
-- [ ] **Publication** : job CI build + `twine check` + publication sur tag,
-  vérif que le wheel n'embarque pas `app/`. Aligner `__version__`/CHANGELOG.
-  *(~2 h)*
+- [—] **`DELETE /users` / `GET /users` (RGPD)** et **Publication PyPI** —
+  ÉCARTÉS par décision du 13/08 : sans intérêt pour une app perso locale.
+- [x] ~~Hygiène HTTP~~ (13/08) : `User-Agent: pypowens/x.y` sur chaque requête,
+  extrait du corps non-JSON conservé dans le message d'erreur (fini le
+  « [HTTP 503] unknown error » quand CloudFront renvoie une page HTML), et
+  `request_id` Powens exposé sur les exceptions (payload JSON ou en-tête).
+  Version unifiée dans `_version.py`.
 
 ## P2 — Produit
 

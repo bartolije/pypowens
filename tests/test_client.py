@@ -317,3 +317,53 @@ def test_datetimes_are_always_naive_and_comparable():
     assert sorted(forms) == forms  # comparables entre eux, plus de TypeError
     # L'heure murale est préservée telle quelle (pas de conversion sournoise).
     assert forms[2].hour == 12
+
+
+# ------------------------------------------------------------- hygiène HTTP
+
+@respx.mock
+async def test_every_request_carries_a_user_agent():
+    captured = {}
+
+    def record(request):
+        captured["ua"] = request.headers.get("user-agent")
+        return httpx.Response(200, json={"id": 1})
+
+    respx.get(f"{BASE}/users/me").mock(side_effect=record)
+    async with PowensClient("myapp-sandbox", access_token="tok") as powens:
+        await powens.get_current_user()
+    assert captured["ua"].startswith("pypowens/")
+
+
+@respx.mock
+async def test_non_json_error_body_is_kept_as_excerpt():
+    """Une page HTML CloudFront produisait « [HTTP 503] unknown error » : le
+    corps, qui contenait la cause, était jeté."""
+    respx.get(f"{BASE}/users/me").mock(
+        return_value=httpx.Response(
+            503,
+            headers={"Content-Type": "text/html", "X-Request-Id": "cf-abc123"},
+            text="<html><body><h1>503 ERROR</h1>The request could not be satisfied"
+                 " (CloudFront)</body></html>",
+        )
+    )
+    async with PowensClient("myapp-sandbox", access_token="tok", max_retries=0) as powens:
+        with pytest.raises(PowensAPIError) as err:
+            await powens.get_current_user()
+    assert "CloudFront" in (err.value.message or "")
+    assert err.value.request_id == "cf-abc123"
+    assert "cf-abc123" in str(err.value)
+
+
+@respx.mock
+async def test_request_id_from_the_json_payload_is_exposed():
+    respx.get(f"{BASE}/users/me").mock(
+        return_value=httpx.Response(
+            404, json={"code": "notFound", "description": "Ressource was not found.",
+                       "request_id": "37a1bc0d"}
+        )
+    )
+    async with PowensClient("myapp-sandbox", access_token="tok") as powens:
+        with pytest.raises(PowensAPIError) as err:
+            await powens.get_current_user()
+    assert err.value.request_id == "37a1bc0d"
