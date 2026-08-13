@@ -41,6 +41,20 @@ CREATE TABLE IF NOT EXISTS category_override (
     updated      TEXT NOT NULL
 );
 
+-- Renommage local d'un compte (le nom Powens est souvent générique : trois
+-- « M BARTOLI JEREMIE » indistinguables). Appliqué à la lecture des comptes.
+CREATE TABLE IF NOT EXISTS account_alias (
+    account_id INTEGER PRIMARY KEY,
+    name       TEXT NOT NULL
+);
+
+-- Fusion de marchands : deux clés normalisées qui désignent le même marchand
+-- (libellés carte vs prélèvement) regroupées sous une clé cible unique.
+CREATE TABLE IF NOT EXISTS merchant_alias (
+    from_key TEXT PRIMARY KEY,
+    to_key   TEXT NOT NULL
+);
+
 -- Enveloppes mensuelles par catégorie de dépense. Le suivi (« où j'en suis le
 -- 20 du mois ») se calcule sur le mois COURANT, contrairement à /analyse qui
 -- raisonne en mois complets.
@@ -537,6 +551,60 @@ def clear_override(conn: sqlite3.Connection, merchant_key: str) -> None:
     conn.execute(
         "DELETE FROM category_override WHERE merchant_key = ?", (merchant_key.upper().strip(),)
     )
+    conn.commit()
+
+
+# ---------------------------------------------------------- alias & fusions
+
+
+def account_aliases(conn: sqlite3.Connection) -> dict[int, str]:
+    return {
+        int(row["account_id"]): row["name"]
+        for row in conn.execute("SELECT account_id, name FROM account_alias")
+    }
+
+
+def set_account_alias(conn: sqlite3.Connection, account_id: int, name: str) -> None:
+    """Renomme localement un compte (nom vide = retour au nom Powens)."""
+    name = name.strip()
+    if not name:
+        conn.execute("DELETE FROM account_alias WHERE account_id = ?", (account_id,))
+    else:
+        conn.execute(
+            "INSERT OR REPLACE INTO account_alias (account_id, name) VALUES (?, ?)",
+            (account_id, name),
+        )
+    conn.commit()
+
+
+def merchant_aliases(conn: sqlite3.Connection) -> dict[str, str]:
+    return {
+        row["from_key"]: row["to_key"]
+        for row in conn.execute("SELECT from_key, to_key FROM merchant_alias")
+    }
+
+
+def set_merchant_alias(conn: sqlite3.Connection, from_key: str, to_key: str) -> None:
+    """Fusionne ``from_key`` dans ``to_key`` (cible vide = défusionner).
+
+    La cible est résolue à travers les fusions existantes (pas de chaîne à
+    suivre à la lecture) et une fusion sur soi-même est un défusionnage.
+    """
+    from_key = from_key.upper().strip()
+    to_key = to_key.upper().strip()
+    existing = merchant_aliases(conn)
+    to_key = existing.get(to_key, to_key)
+    if not to_key or to_key == from_key:
+        conn.execute("DELETE FROM merchant_alias WHERE from_key = ?", (from_key,))
+    else:
+        conn.execute(
+            "INSERT OR REPLACE INTO merchant_alias (from_key, to_key) VALUES (?, ?)",
+            (from_key, to_key),
+        )
+        # Rediriger les fusions qui pointaient sur from_key : jamais de chaîne.
+        conn.execute(
+            "UPDATE merchant_alias SET to_key = ? WHERE to_key = ?", (to_key, from_key)
+        )
     conn.commit()
 
 

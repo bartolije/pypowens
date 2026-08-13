@@ -95,10 +95,22 @@ def _merchant_key_of(raw: str, max_tokens: int) -> str:
     return key or raw.upper().strip()[:24] or "INCONNU"
 
 
+# Fusions de marchands (clé source → clé cible), chargées du store au démarrage
+# et rechargées après chaque édition. Appliquées à la SORTIE de merchant_key :
+# détecteurs, pages, overrides et budgets voient une clé unique sans le savoir.
+_MERCHANT_ALIASES: dict[str, str] = {}
+
+
+def set_merchant_aliases(aliases: dict[str, str]) -> None:
+    global _MERCHANT_ALIASES
+    _MERCHANT_ALIASES = dict(aliases)
+
+
 def merchant_key(txn: Txn, *, max_tokens: int = 3) -> str:
     """Normalized merchant identifier used to group recurring transactions."""
     raw = txn.simplified_wording or txn.wording or txn.original_wording or ""
-    return _merchant_key_of(raw, max_tokens)
+    key = _merchant_key_of(raw, max_tokens)
+    return _MERCHANT_ALIASES.get(key, key)
 
 
 # ----------------------------------------------------------------- categories

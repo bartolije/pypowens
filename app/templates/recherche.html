@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Recherche · Powens Finance{% endblock %}
+
+{% block topbar_left %}
+  <span class="section-title">Recherche</span>
+{% endblock %}
+
+{% block content %}
+
+<form method="get" action="/recherche" class="card mb-3">
+  <div class="card-body d-flex align-center gap-2 flex-wrap">
+    <input type="text" name="q" value="{{ q }}" class="search" style="min-width: 280px;"
+           placeholder="Libellé, marchand… ou montant exact (42,50)" autofocus>
+    <button type="submit" class="btn btn-primary">Rechercher</button>
+    {% if q %}
+    <span class="text-secondary small">
+      {{ count }} résultat{{ 's' if count > 1 }}{% if truncated %} — les 200 plus récents affichés{% endif %}
+    </span>
+    {% endif %}
+  </div>
+</form>
+
+{% if q and results %}
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Date</th><th>Libellé</th><th>Compte</th><th>Catégorie</th><th class="num">Montant</th></tr>
+      </thead>
+      <tbody>
+        {% for line in results %}
+        <tr {% if line.is_internal %}class="opacity-50"{% endif %}>
+          <td style="white-space: nowrap;">{{ line.txn.date.strftime('%d/%m/%y') if line.txn.date }}</td>
+          <td>
+            <a href="/transactions?label={{ merchant_key(line.txn) | urlencode }}">
+              {{ line.txn.simplified_wording or line.txn.wording }}
+            </a>
+            {% if line.is_internal %}<span class="badge badge-muted">virement interne</span>{% endif %}
+          </td>
+          <td class="text-secondary">{{ line.account }}</td>
+          <td class="text-secondary">{{ line.category }}</td>
+          <td class="num {{ 'text-green' if line.amount > 0 else 'text-red' }}">
+            <span class="amount">{{ line.amount | money }}</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% elif q %}
+<div class="card"><div class="card-body text-secondary">Aucun résultat pour « {{ q }} ».</div></div>
+{% endif %}
+
+{% endblock %}

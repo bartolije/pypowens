@@ -38,6 +38,19 @@
         <p class="text-secondary small mt-2">
           Le choix est mémorisé localement et s'applique partout dans l'app.
         </p>
+        <details class="mt-2">
+          <summary class="text-secondary small" style="cursor: pointer;">Fusionner ce marchand…</summary>
+          <form method="post" action="/marchands/fusionner" class="mt-2">
+            <input type="hidden" name="source" value="{{ label }}">
+            <input type="text" name="cible" class="search mb-2" style="width: 100%;"
+                   placeholder="Clé cible (ex : ENSEIGNE)" title="Vider pour défusionner">
+            <button type="submit" class="btn" style="width: 100%;">Fusionner</button>
+          </form>
+          <p class="text-secondary small mt-2">
+            Le libellé carte et le prélèvement du même marchand produisent deux
+            clés : la fusion les regroupe partout (abonnements, analyse, budgets).
+          </p>
+        </details>
       </div>
     </div>
   </div>

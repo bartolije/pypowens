@@ -21,6 +21,15 @@
       {% endif %}
       · {{ family }}
     </span>
+    <details style="margin-left: auto;">
+      <summary class="btn btn-sm" style="cursor: pointer; list-style: none;">Renommer</summary>
+      <form method="post" action="/comptes/{{ account.id }}/renommer"
+            class="d-flex gap-2" style="margin-top: 6px;">
+        <input type="text" name="nom" class="search" value="{{ account_name }}"
+               title="Vider pour revenir au nom Powens">
+        <button type="submit" class="btn btn-sm">OK</button>
+      </form>
+    </details>
   </div>
 
   {# ── Tabs ───────────────────────────────────────────────────────── #}
@@ -178,6 +187,17 @@
     {% else %}
     <div class="card-body">
       <p class="text-secondary">Aucune transaction</p>
+    </div>
+    {% endif %}
+    {% if total_pages > 1 %}
+    <div class="card-footer d-flex align-center justify-between">
+      {% if page > 1 %}
+      <a class="btn btn-sm" href="/patrimoine/{{ account.id }}?tab=transactions&page={{ page - 1 }}">← Plus récentes</a>
+      {% else %}<span></span>{% endif %}
+      <span class="text-secondary small">page {{ page }} / {{ total_pages }}</span>
+      {% if page < total_pages %}
+      <a class="btn btn-sm" href="/patrimoine/{{ account.id }}?tab=transactions&page={{ page + 1 }}">Plus anciennes →</a>
+      {% else %}<span></span>{% endif %}
     </div>
     {% endif %}
   </div>

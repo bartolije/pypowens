@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 import time
+from dataclasses import replace
 from datetime import date, timedelta
 
 from pypowens import (
@@ -96,10 +97,18 @@ async def load_accounts(
     if conn is None:
         return data
     extra = [Account.from_api(raw) for raw in store.imported_accounts(conn)]
-    if not extra:
+    # Renommages locaux : appliqués par reconstruction (jamais en mutant les
+    # objets du cache, partagés entre requêtes), puis propagés partout — pages,
+    # snapshots (record_snapshot lit .name) et notes de périmètre compris.
+    aliases = store.account_aliases(conn)
+    accounts = [
+        replace(a, name=aliases[a.id]) if a.id in aliases else a
+        for a in data.accounts
+    ]
+    if not extra and not aliases:
         return data
     return AccountsList(
-        accounts=[*data.accounts, *extra],
+        accounts=[*accounts, *extra],
         balances=data.balances,
         coming_balances=data.coming_balances,
     )

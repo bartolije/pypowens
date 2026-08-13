@@ -12,13 +12,14 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from pypowens import PowensClient, Transaction
 
-from . import store
+from . import enrich, store
 from .config import Settings
 from .data import (
     clear_cache,
@@ -41,6 +42,7 @@ class Line:
     account: str
     amount: Decimal
     is_internal: bool
+    category: str = ""  # rempli par /recherche, inutile au drill-down
 
 
 @router.get("/transactions", response_class=HTMLResponse)
@@ -176,4 +178,86 @@ async def export_csv(
         "\ufeff" + out.getvalue(),
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/marchands/fusionner")
+async def merge_merchants(
+    source: str = Form(...),
+    cible: str = Form(default=""),
+    conn: sqlite3.Connection = Depends(get_store),
+) -> RedirectResponse:
+    """Fusionne un marchand dans un autre (cible vide = défusionner).
+
+    Deux libellés du même marchand (carte « ENSEIGNE/VILLE » vs prélèvement
+    « PRLV SEPA ENSEIGNE SAS ») produisent deux clés — donc deux lignes
+    d'abonnement, deux historiques, deux corrections de catégorie. La fusion
+    est appliquée à la sortie de merchant_key : tout l'aval la voit.
+    """
+    store.set_merchant_alias(conn, source, cible)
+    enrich.set_merchant_aliases(store.merchant_aliases(conn))
+    clear_cache()
+    target = (cible or source).upper().strip()
+    return RedirectResponse(f"/transactions?label={quote(target)}", status_code=303)
+
+
+@router.get("/recherche", response_class=HTMLResponse)
+async def search(
+    request: Request,
+    q: str = Query(default=""),
+    client: PowensClient = Depends(get_client),
+    settings: Settings = Depends(get_settings),
+    conn: sqlite3.Connection = Depends(get_store),
+):
+    """Recherche plein texte (et par montant) sur tout l'historique local."""
+    query = q.strip()
+    results: list[Line] = []
+    count = 0
+    if query:
+        txns = await load_transactions(client, months=settings.history_months, conn=conn)
+        accounts = await load_accounts(client, conn=conn)
+        names = {a.id: (a.name or f"#{a.id}") for a in accounts.accounts}
+        internal = await load_internal_ids(client, months=settings.history_months, conn=conn)
+        overrides = store.all_overrides(conn)
+
+        needle = query.upper()
+        # « 42,50 » ou « 42.50 » cherche aussi le montant exact (les deux sens).
+        amount = None
+        try:
+            amount = abs(Decimal(query.replace(",", ".").replace(" ", "")))
+        except ArithmeticError:
+            pass
+
+        def matches(t) -> bool:
+            text = f"{t.simplified_wording or ''} {t.wording or ''} {t.original_wording or ''}"
+            if needle in text.upper():
+                return True
+            return amount is not None and t.value is not None and abs(t.value) == amount
+
+        found = [t for t in txns if matches(t)]
+        found.sort(key=lambda t: t.date or date.min, reverse=True)
+        count = len(found)
+        results = [
+            Line(
+                txn=t,
+                account=names.get(t.id_account, "—"),
+                amount=t.value or Decimal(0),
+                is_internal=t.id in internal,
+                category=resolve_category_txn(t, overrides),
+            )
+            for t in found[:200]
+        ]
+
+    return templates.TemplateResponse(
+        request,
+        "recherche.html",
+        {
+            "request": request,
+            "active": None,
+            "q": query,
+            "results": results,
+            "count": count,
+            "truncated": count > 200,
+            "merchant_key": merchant_key,
+        },
     )

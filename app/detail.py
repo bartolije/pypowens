@@ -9,8 +9,8 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, Form, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from pypowens import PowensClient
 
@@ -31,6 +31,9 @@ _INVEST_TYPES = frozenset({"market", "pea", "lifeinsurance", "per"})
 
 _log = logging.getLogger(__name__)
 
+# Taille de page de l'onglet Transactions du détail de compte.
+_PAGE_SIZE = 100
+
 
 @router.get("/patrimoine/{account_id}", response_class=HTMLResponse)
 async def account_detail(
@@ -38,6 +41,7 @@ async def account_detail(
     account_id: int,
     period: str = "tout",
     tab: str = "apercu",
+    page: int = 1,
     client: PowensClient = Depends(get_client),  # noqa: B008
     settings: Settings = Depends(get_settings),  # noqa: B008
     conn: sqlite3.Connection = Depends(get_store),  # noqa: B008
@@ -150,11 +154,18 @@ async def account_detail(
     # ── Transactions tab ────────────────────────────────────────────
     transactions_by_day: list[dict] = []
     transaction_count = 0
+    total_pages = 1
+    page = max(1, page)
     if tab == "transactions":
         try:
             all_txns = await load_transactions(client, conn=conn)
             account_txns = [t for t in all_txns if t.id_account == account_id]
             account_txns.sort(key=lambda t: t.date or date.min, reverse=True)
+            transaction_count = len(account_txns)
+            # 24 mois rendus d'un bloc = des milliers de lignes DOM : paginer.
+            total_pages = max(1, -(-transaction_count // _PAGE_SIZE))
+            page = min(page, total_pages)
+            account_txns = account_txns[(page - 1) * _PAGE_SIZE : page * _PAGE_SIZE]
             overrides = store.all_overrides(conn)
             by_day: dict[date, list[dict]] = defaultdict(list)
             for txn in account_txns:
@@ -169,7 +180,6 @@ async def account_detail(
                     "label": day_label_fr(day_key),
                     "transactions": by_day[day_key],
                 })
-            transaction_count = len(account_txns)
         except Exception:
             _log.exception("Failed to load transactions for account %s", account_id)
 
@@ -213,8 +223,29 @@ async def account_detail(
             "period": period.lower(),
             "transactions_by_day": transactions_by_day,
             "transaction_count": transaction_count,
+            "page": page,
+            "total_pages": total_pages,
             "avg_balance": avg_balance,
             "min_balance": min_balance,
             "max_balance": max_balance,
         },
     )
+
+
+@router.post("/comptes/{account_id}/renommer")
+async def rename_account(
+    account_id: int,
+    nom: str = Form(default=""),
+    conn: sqlite3.Connection = Depends(get_store),  # noqa: B008
+) -> RedirectResponse:
+    """Renomme localement un compte (vide = retour au nom Powens).
+
+    Les noms Powens sont souvent indistinguables (trois « M BARTOLI JEREMIE ») ;
+    le renommage est local, appliqué à la lecture, et suit le compte partout —
+    tableaux, bandeau, snapshots et notes de périmètre.
+    """
+    from .data import clear_cache
+
+    store.set_account_alias(conn, account_id, nom)
+    clear_cache()
+    return RedirectResponse(f"/patrimoine/{account_id}", status_code=303)

@@ -205,3 +205,57 @@ def test_flagging_a_label_as_internal_excludes_it_everywhere(client):
 def test_the_category_form_offers_virement_interne(client):
     body = client.get("/transactions", params={"label": "NETFLIX.COM"}).text
     assert "Virement interne" in body
+
+
+# ----------------------------------------------------- recherche, fusion, renommage
+
+def test_search_finds_by_label_and_by_amount(client):
+    body = _text(client.get("/recherche", params={"q": "netflix"}).text)
+    assert "NETFLIX.COM" in body
+    # Par montant exact, virgule française acceptée, les deux sens.
+    body = _text(client.get("/recherche", params={"q": "13,49"}).text)
+    assert "NETFLIX.COM" in body
+    # Aucun résultat = dit clairement, pas une page vide.
+    assert "Aucun résultat" in _text(client.get("/recherche", params={"q": "zzzz"}).text)
+
+
+def test_merging_merchants_groups_them_everywhere(client, fake_client):
+    """Le libellé carte et le prélèvement du même marchand = deux clés → une."""
+    posted = client.post(
+        "/marchands/fusionner",
+        data={"source": "NETFLIX.COM", "cible": "NETFLIX"},
+        follow_redirects=False,
+    )
+    assert posted.status_code == 303
+    assert "label=NETFLIX" in posted.headers["location"]
+
+    # La clé fusionnée regroupe les opérations de la source.
+    body = _text(client.get("/transactions", params={"label": "NETFLIX"}).text)
+    assert "13,49" in body
+
+    # Défusion : cible vide.
+    client.post("/marchands/fusionner", data={"source": "NETFLIX.COM", "cible": ""})
+    import app.data
+    app.data.clear_cache()
+
+
+def test_renaming_an_account_applies_everywhere(client):
+    posted = client.post(
+        "/comptes/1/renommer", data={"nom": "Compte joint"}, follow_redirects=False
+    )
+    assert posted.status_code == 303
+    assert "Compte joint" in client.get("/patrimoine").text
+    assert "Compte joint" in client.get("/comptes").text
+    # Vide = retour au nom Powens.
+    client.post("/comptes/1/renommer", data={"nom": ""})
+    assert "Compte joint" not in client.get("/patrimoine").text
+
+
+def test_detail_transactions_tab_is_paginated(client):
+    body = client.get("/patrimoine/1", params={"tab": "transactions"}).text
+    # 31 opérations dans le jeu de test : une seule page, pas de pagination.
+    assert "page 1 /" not in body
+
+    # La navigation apparaît dès que le compte dépasse la taille de page (100).
+    from app.detail import _PAGE_SIZE
+    assert _PAGE_SIZE == 100

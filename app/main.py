@@ -22,6 +22,7 @@ from . import (
     accounts,
     analysis,
     detail,
+    enrich,
     frequency,
     imports,
     investments,
@@ -54,6 +55,9 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.settings = settings
     app.state.store = store.connect(settings.db_path)
+    # Les fusions de marchands vivent dans enrich (module pur) : les hydrater
+    # depuis le store au démarrage, puis à chaque édition (route /marchands).
+    enrich.set_merchant_aliases(store.merchant_aliases(app.state.store))
     try:
         app.state.client = await bootstrap_client(settings)
     except BaseException:
