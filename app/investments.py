@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import sqlite3
 from bisect import bisect_right
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Any
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -122,17 +124,14 @@ def _benchmark_overlay(
     for point in kept:
         i = bisect_right(days, point.day) - 1
         aligned.append(closes[i][1] if i >= 0 else None)
-    base_index = next(
-        (i for i, v in enumerate(aligned) if v is not None and kept[i].value), None
-    )
+    base_index = next((i for i, v in enumerate(aligned) if v is not None and kept[i].value), None)
     if base_index is None:
         return []
     start_value = kept[base_index].value
     base_close = aligned[base_index]
     assert base_close is not None  # garanti par la sélection de base_index
     return [
-        float(start_value * close / base_close) if close is not None else None
-        for close in aligned
+        float(start_value * close / base_close) if close is not None else None for close in aligned
     ]
 
 
@@ -181,9 +180,15 @@ async def performance_page(
     overrides = store.flow_overrides(conn)
     # Clôtures de l'indice de référence, archivées par le collecteur : la
     # comparaison se fait sans appel réseau (vide tant qu'il n'est pas passé).
-    benchmark_closes = store.benchmark_history(
-        conn, settings.benchmark_ticker, since=since
-    )
+    benchmark_closes = store.benchmark_history(conn, settings.benchmark_ticker, since=since)
+
+    # Une seule lecture de la table des valorisations, répartie par compte : la
+    # relire pour chaque compte multipliait le parcours de dizaines de milliers
+    # de lignes par le nombre de supports.
+    values_by_account: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    holder_ids = [a.id for a in holders if a.id is not None]
+    for value in store.investment_values(conn, account_ids=holder_ids):
+        values_by_account[value["account_id"]].append(value)
 
     cards: list[Card] = []
     for account in sorted(holders, key=lambda a: a.balance or Decimal(0), reverse=True):
@@ -201,10 +206,8 @@ async def performance_page(
         )
         unrealized = sum((r.diff or Decimal(0) for r in lines if not r.is_cash), Decimal(0))
 
-        values = store.investment_values(conn, account_id=account.id)
-        quantities = {
-            i.id: i.quantity for i in held if i.id is not None and i.quantity is not None
-        }
+        values = values_by_account.get(account.id or 0, [])
+        quantities = {i.id: i.quantity for i in held if i.id is not None and i.quantity is not None}
         valuations = {
             i.id: i.valuation for i in held if i.id is not None and i.valuation is not None
         }
@@ -215,9 +218,7 @@ async def performance_page(
             points=points,
             flows=flows,
             since=since,
-            coverage=perf.series_coverage(
-                values, valuations, account.balance, cash=cash
-            ),
+            coverage=perf.series_coverage(values, valuations, account.balance, cash=cash),
         )
         # Les flux affichés : ceux de la fenêtre, les plus récents d'abord.
         window_flows = [f for f in flows if since is None or f.day >= since]
@@ -230,9 +231,7 @@ async def performance_page(
                 cost=cost,
                 unrealized=unrealized,
                 performance=computed,
-                chart=_chart(
-                    computed.points, benchmark_closes, settings.benchmark_label
-                )
+                chart=_chart(computed.points, benchmark_closes, settings.benchmark_label)
                 if computed
                 else "",
                 points=len(points),

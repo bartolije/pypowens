@@ -559,3 +559,35 @@ def test_per_account_series_is_memoised_until_the_table_changes(conn):
     third = _per_account_series(conn, "EUR")
     assert third is not second
     assert third[1][1]["2026-06-02"] == Decimal("999")
+
+
+def test_investment_values_are_memoised_and_filtered_by_accounts(conn):
+    from datetime import date
+    from decimal import Decimal
+
+    from app.store import investment_values, save_investment_values
+
+    class _V:
+        def __init__(self, iid, day, value):
+            self.id_investment, self.vdate, self.unit_value = (
+                iid,
+                date.fromisoformat(day),
+                Decimal(value),
+            )
+
+    save_investment_values(
+        conn, [_V(1, "2026-06-01", "10"), _V(1, "2026-06-02", "11")], account_id=3
+    )
+    save_investment_values(conn, [_V(2, "2026-06-01", "5")], account_id=9)
+
+    both = investment_values(conn, account_ids=[3, 9])
+    assert [v["account_id"] for v in both] == [3, 9, 3]  # tri par jour puis titre
+    assert investment_values(conn, account_ids=[9, 3]) is both, "même clé, mémo"
+    only = investment_values(conn, account_ids=[3])
+    assert {v["account_id"] for v in only} == {3}
+    assert investment_values(conn, account_id=3) is only
+
+    save_investment_values(conn, [_V(1, "2026-06-02", "12")], account_id=3)  # remplacement
+    refreshed = investment_values(conn, account_ids=[3])
+    assert refreshed is not only
+    assert refreshed[-1]["unit_value"] == Decimal("12")

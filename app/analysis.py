@@ -15,7 +15,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from . import store
+from . import data, store
 from .data import load_internal_ids, load_spending_transactions
 from .deps import get_client, get_settings, get_store
 from .enrich import CONSUMPTION_TYPES, all_categories, resolve_category_txn
@@ -116,8 +116,7 @@ async def analysis(
 
     total_spend_all = sum((v for _, v in ordered), Decimal(0)) or Decimal(1)
     cat_rows = [
-        {"name": name, "total": val, "pct": float(val / total_spend_all * 100)}
-        for name, val in top
+        {"name": name, "total": val, "pct": float(val / total_spend_all * 100)} for name, val in top
     ]
     cat_donut = donut_chart([(name, float(val)) for name, val in top])
 
@@ -125,8 +124,13 @@ async def analysis(
     # The detector runs on the full history (a yearly series needs > 12 months),
     # then its transactions are matched against the window to split actual
     # spending exactly — no more "average minus estimate" clamped at zero.
-    recurring_items = detect_recurring(
-        txns, internal_ids=internal, kind="debit", allowed_types=CONSUMPTION_TYPES
+    # Mémorisé tant que le cache Powens n'a pas changé : la détection relit et
+    # regroupe tout l'historique (20 ms) à chaque affichage pour le même résultat.
+    recurring_items = data.derived(
+        ("analysis.recurring", settings.history_months, date.today()),
+        lambda: detect_recurring(
+            txns, internal_ids=internal, kind="debit", allowed_types=CONSUMPTION_TYPES
+        ),
     )
     recurring_ids = {tid for item in recurring_items for tid in item.txn_ids}
     recurring_spend = sum(

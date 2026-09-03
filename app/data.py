@@ -13,6 +13,7 @@ import logging
 import sqlite3
 import time
 from collections.abc import Awaitable, Callable
+from copy import deepcopy
 from dataclasses import replace
 from datetime import date, timedelta
 from typing import Any
@@ -145,12 +146,51 @@ def _get(key: str, ttl: float) -> Any:
 
 
 def _set(key: str, value: object) -> None:
+    global _generation
     _cache[key] = (time.monotonic(), value)
+    _generation += 1
 
 
 def clear_cache() -> None:
+    global _generation
     _cache.clear()
     _refreshing.clear()
+    _derived.clear()
+    _generation += 1
+
+
+# Génération du cache : incrémentée à chaque écriture et à chaque vidage. Tout
+# calcul qui ne dépend que du contenu du cache (et de paramètres explicites)
+# peut être mémorisé tant qu'elle n'a pas bougé — voir :func:`derived`.
+_generation = 0
+_derived: dict[tuple[Any, ...], tuple[int, object]] = {}
+_DERIVED_MAX = 64
+
+
+def generation() -> int:
+    return _generation
+
+
+def derived(key: tuple[Any, ...], compute: Callable[[], Any], *, copy: bool = False) -> Any:
+    """Mémo d'un calcul dérivé des données en cache, invalidé par la génération.
+
+    La détection des séries récurrentes relit et regroupe tout l'historique
+    (20 ms) à chaque affichage de /analyse et /abonnements, alors que ni
+    l'historique ni les réglages n'ont changé entre deux visites : toutes les
+    routes qui modifient quelque chose appellent ``clear_cache()``, donc la
+    génération suffit comme signature. ``copy=True`` rend une copie profonde
+    quand l'appelant annote les objets rendus.
+    """
+    hit = _derived.get(key)
+    if hit is not None and hit[0] == _generation:
+        value = hit[1]
+    else:
+        value = compute()
+        if len(_derived) >= _DERIVED_MAX:
+            for stale_key in [k for k, (gen, _) in _derived.items() if gen != _generation]:
+                del _derived[stale_key]
+        _derived[key] = (_generation, value)
+    return deepcopy(value) if copy else value
 
 
 def _min_date(months: int) -> date:

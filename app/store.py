@@ -398,6 +398,7 @@ def remap_account(conn: sqlite3.Connection, old_id: int, new_id: int) -> int:
     conn.execute("UPDATE account_alias SET account_id = ? WHERE account_id = ?", (new_id, old_id))
     conn.commit()
     _forget_series_cache()
+    _forget_values_cache()
     return moved
 
 
@@ -1009,26 +1010,57 @@ def save_investment_values(
     return len(rows)
 
 
+# Mémo des valorisations : /performance convertit des dizaines de milliers de
+# lignes (date + Decimal) à chaque affichage alors que la table ne bouge qu'au
+# passage du collecteur. Même principe que _series_cache : la clé résume l'état
+# de la table (INSERT OR REPLACE renouvelle le rowid), remap_account invalide.
+_values_cache: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
+
+
+def _forget_values_cache() -> None:
+    _values_cache.clear()
+
+
 def investment_values(
     conn: sqlite3.Connection,
     *,
     account_id: int | None = None,
+    account_ids: Iterable[int] | None = None,
     since: date | None = None,
 ) -> list[dict[str, Any]]:
-    """Valorisations archivées, les plus anciennes d'abord."""
+    """Valorisations archivées, les plus anciennes d'abord.
+
+    ``account_ids`` restreint à plusieurs comptes en une seule lecture (la page
+    performance) ; ``account_id`` en garde un seul. Le résultat est mémorisé
+    tant que la table ne change pas : ne pas le modifier.
+    """
+    wanted = tuple(
+        sorted(
+            {int(a) for a in (account_ids or ())}
+            | ({account_id} if account_id is not None else set())
+        )
+    )
+    state = conn.execute(
+        "SELECT COUNT(*), COALESCE(MAX(rowid), 0) FROM investment_value"
+    ).fetchone()
+    key = (id(conn), wanted, since, int(state[0]), int(state[1]))
+    hit = _values_cache.get(key)
+    if hit is not None:
+        return hit
+
     sql = (
         "SELECT investment_id, day, account_id, label, code, unit_value"
         " FROM investment_value WHERE 1 = 1"
     )
     params: list[Any] = []
-    if account_id is not None:
-        sql += " AND account_id = ?"
-        params.append(account_id)
+    if wanted:
+        sql += f" AND account_id IN ({','.join('?' * len(wanted))})"
+        params.extend(wanted)
     if since is not None:
         sql += " AND day >= ?"
         params.append(since.isoformat())
     sql += " ORDER BY day, investment_id"
-    return [
+    result = [
         {
             "investment_id": int(row["investment_id"]),
             "day": date.fromisoformat(row["day"]),
@@ -1039,6 +1071,10 @@ def investment_values(
         }
         for row in conn.execute(sql, params)
     ]
+    if len(_values_cache) >= 8:
+        _values_cache.clear()
+    _values_cache[key] = result
+    return result
 
 
 def investment_value_span(conn: sqlite3.Connection) -> tuple[date, date] | None:

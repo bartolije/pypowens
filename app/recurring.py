@@ -26,7 +26,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from pypowens import PowensClient
 
-from . import store
+from . import data, store
 from .config import Settings
 from .data import MAX_WINDOW_MONTHS, load_internal_ids, load_spending_transactions
 from .deps import get_client, get_settings, get_store
@@ -47,21 +47,21 @@ from .web import templates
 class RecurringItem:
     """A single detected recurring payment (or recurring income)."""
 
-    merchant: str            # human display name (Title Case of the merchant key)
-    key: str                 # normalized merchant key (from enrich.merchant_key)
-    category: str            # from enrich.categorize
-    periodicity: str         # FR label (see _BUCKETS)
-    period_months: float     # 0.25,1,2,3,4,6,12,24 (0 if Irrégulier)
-    amount: Decimal          # typical (median) amount, POSITIVE
-    monthly_equiv: Decimal   # amount / period_months (0 if Irrégulier)
+    merchant: str  # human display name (Title Case of the merchant key)
+    key: str  # normalized merchant key (from enrich.merchant_key)
+    category: str  # from enrich.categorize
+    periodicity: str  # FR label (see _BUCKETS)
+    period_months: float  # 0.25,1,2,3,4,6,12,24 (0 if Irrégulier)
+    amount: Decimal  # typical (median) amount, POSITIVE
+    monthly_equiv: Decimal  # amount / period_months (0 if Irrégulier)
     occurrences: int
     first_date: date
     last_date: date
-    next_date: date | None   # estimated next occurrence (last_date + interval)
-    confidence: float        # 0..1
-    variable: bool           # True if amount varies a lot (high dispersion)
-    rail: str = "mixte"      # "SEPA" (prélèvement), "carte", or "mixte"
-    spread: float = 0.0      # (max - min) / median amount — 0 when every charge is identical
+    next_date: date | None  # estimated next occurrence (last_date + interval)
+    confidence: float  # 0..1
+    variable: bool  # True if amount varies a lot (high dispersion)
+    rail: str = "mixte"  # "SEPA" (prélèvement), "carte", or "mixte"
+    spread: float = 0.0  # (max - min) / median amount — 0 when every charge is identical
     days_since_last: int = 0
     # Overdue by more than half a period: still listed (the contract may just be
     # late) but flagged, because a subscription that stopped being debited keeps
@@ -389,8 +389,7 @@ def is_subscription(item: RecurringItem, *, merchant_charges: int | None = None)
         return False
     if item.rail == "SEPA":
         return (
-            item.confidence >= _SEPA_MIN_CONFIDENCE
-            or item.occurrences >= _SEPA_CERTAIN_OCCURRENCES
+            item.confidence >= _SEPA_MIN_CONFIDENCE or item.occurrences >= _SEPA_CERTAIN_OCCURRENCES
         )
     if item.confidence < _CARD_MIN_CONFIDENCE or item.spread > _CARD_MAX_SPREAD:
         return False
@@ -514,19 +513,34 @@ async def recurring_page(  # noqa: PLR0913 — signature dictée par FastAPI
     internal = await load_internal_ids(client, months=months, conn=conn)
     if d_from or d_to:
         txns = [
-            t for t in txns
+            t
+            for t in txns
             if t.date and (not d_from or t.date >= d_from) and (not d_to or t.date <= d_to)
         ]
 
     # Apply stored manual categories before filtering: an override can move a series
     # in or out of the everyday-spending exclusion.
     overrides = store.all_overrides(conn)
+    # Mémorisé tant que le cache Powens n'a pas changé (les POST qui modifient
+    # imports ou catégories le vident) : la détection relisait tout
+    # l'historique à chaque visite. Copie profonde, les items étant annotés
+    # ci-dessous (flags, sparkline).
+    memo_key = ("recurring", months, d_from, d_to, tout, date.today())
     if tout:
-        items = detect_recurring(txns, internal_ids=internal, allowed_types=SUBSCRIPTION_TYPES)
-        for it in items:
-            it.category = resolve_category(it.key, overrides)
+
+        def _detect_all() -> list[RecurringItem]:
+            items = detect_recurring(txns, internal_ids=internal, allowed_types=SUBSCRIPTION_TYPES)
+            for it in items:
+                it.category = resolve_category(it.key, overrides)
+            return items
+
+        items = data.derived(memo_key, _detect_all, copy=True)
     else:
-        items = detect_subscriptions(txns, internal_ids=internal, overrides=overrides)
+        items = data.derived(
+            memo_key,
+            lambda: detect_subscriptions(txns, internal_ids=internal, overrides=overrides),
+            copy=True,
+        )
 
     # Diff against the previously known state to surface what is new or got more
     # expensive since the last visit — mais UNIQUEMENT depuis la vue de référence :
@@ -545,10 +559,7 @@ async def recurring_page(  # noqa: PLR0913 — signature dictée par FastAPI
         }
         for it in items
         if reference_view
-        and (
-            changes[store.series_key(it)]["new"]
-            or changes[store.series_key(it)]["increase_pct"]
-        )
+        and (changes[store.series_key(it)]["new"] or changes[store.series_key(it)]["increase_pct"])
     ]
     for it in items:
         # Attachés à l'item : un dict indexé par ``it.key`` (le seul marchand)
