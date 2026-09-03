@@ -167,6 +167,17 @@ pas la page d'accueil mais le dernier onglet.
 - **Détail** (`/transactions?label=…`) — les opérations derrière un libellé, leur
   évolution mensuelle, et la correction de catégorie (mémorisée localement).
 
+### Fraîcheur des données et latence
+
+Les données Powens sont mises en cache (comptes et connexions 2 min, historique
+5 min). Une entrée périmée est **servie immédiatement et rafraîchie en arrière-plan** :
+aucune page n'attend Powens après le préchauffage du démarrage. Au-delà d'une
+heure sans rafraîchissement réussi, le chargement redevient bloquant et l'erreur
+s'affiche. Les calculs dérivés (séries récurrentes, courbe de patrimoine,
+valorisations) sont mémorisés tant que ni le cache ni les tables locales ne
+changent. Les statiques sont versionnés et mis en cache un an ; les pages sont
+compressées et jamais stockées par le navigateur.
+
 ### Ce qui compte comme abonnement
 
 `detect_recurring()` repère toute série répétée — l'analyse en a besoin pour séparer

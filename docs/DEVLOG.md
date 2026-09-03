@@ -193,6 +193,49 @@ données déjà agrégées côté Powens — aucune synchro bancaire n'est forc�
 Pas d'hébergement distant : l'app n'a aucune authentification, et l'exposer voudrait dire
 sortir le token Powens et tous les soldes de la machine.
 
+## Latence : cache périmé servi, mémos, collecteur hors boucle (03/09/2026)
+
+Mesure en local (app réelle + faux client, 12 comptes, 5 300 opérations,
+22 000 soldes et 20 000 VL archivés — `pyp_perf.py` dans le scratch de la
+session) : les treize routes GET totalisaient 173 ms p50 à cache chaud, la
+première page 44 ms parse compris ; la lib parse 0,8 µs par transaction. Le code
+Python n'était donc pas le problème : le temps perçu venait du **réseau**.
+
+- **Où partaient les secondes** : à l'expiration d'un TTL (120 s comptes /
+  connexions, 300 s historique), la requête suivante rechargeait EN LIGNE —
+  deux secondes pour l'historique, toutes les cinq minutes, et le bandeau de
+  santé (toutes les pages) rechargeait comptes + connexions toutes les deux
+  minutes. Réponse : `data._cached` sert la valeur périmée et rafraîchit en
+  tâche de fond (une seule par clé, verrou partagé) ; au-delà de
+  `STALE_GRACE` (1 h) on redevient bloquant pour que Powens en panne se voie.
+  `ttl <= 0` recharge toujours (test `test_expired_cache_never_shrinks_the_window`).
+- **Collecteur dans le processus web** : `_collect_benchmark` (yfinance,
+  synchrone, plusieurs secondes), `store.backup` et `notify` (webhook 10 s max)
+  tournaient DANS la boucle d'événements toutes les 6 h → pages figées pendant
+  ce temps. Passés en `asyncio.to_thread` (connexion SQLite partagée,
+  `check_same_thread=False`, module sérialisé). Historiques de lignes demandés
+  quatre par quatre (sémaphore) au lieu d'un par un.
+- **Mémos** : `_per_account_series` (85 % du rendu de `/` et `/patrimoine`,
+  appelée deux fois par page) et `investment_values` mémorisées par état de
+  table (`COUNT(*)`, `MAX(rowid)` — `INSERT OR REPLACE` renouvelle le rowid ;
+  `remap_account` invalide explicitement ; la connexion et le fichier font
+  partie de la clé car les tests ouvrent une base par cas). `data.derived`
+  mémorise la détection récurrente par génération du cache (incrémentée à
+  chaque `_set` et `clear_cache`).
+- **HTTP** : gzip, `Cache-Control: immutable` sur `/static/*?v=`, `no-store`
+  sur les pages, `nosniff`/`X-Frame-Options`/`Referrer-Policy`, `/docs`
+  fermé.
+- Résultat local : 173 → 59 ms pour les treize routes ; `/` 33 → 5,
+  `/patrimoine` 35 → 8, `/performance` 15 → 5, `/abonnements` 12 → 3,
+  `/analyse` 17 → 10, `/comptes` 13 → 8 ms. Non mesurable ici : la disparition
+  des attentes réseau en croisière, qui est le vrai gain.
+
+Piège rencontré : lire TOUTES les VL en une fois (au lieu d'une lecture par
+compte via l'index) a d'abord RALENTI `/performance` (15 → 25 ms) — la
+conversion date + Decimal de lignes hors périmètre coûtait plus que les
+lectures indexées évitées. La bonne version restreint aux comptes porteurs
+(`account_ids`) ET mémorise.
+
 ## Endpoints confirmés live
 
 - `GET /users/me` ✅ · `GET /users/me/connections` ✅ · `GET /users/me/accounts` ✅

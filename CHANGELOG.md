@@ -6,6 +6,42 @@ All notable changes to this project. Format loosely based on
 
 ## [0.2.0] — unreleased
 
+### Performance du 03/09/2026 — plus jamais d'attente Powens sur une page
+
+Mesuré en local sur un jeu gonflé (12 comptes, 5 300 opérations, 22 000 soldes
+et 20 000 valorisations archivés), l'app réelle branchée sur un faux client :
+la somme des treize routes GET passe de 173 à 59 ms (p50, cache chaud). Mais
+l'essentiel se joue sur le réseau, que ce banc ne mesure pas : voir le premier
+point.
+
+#### Changed
+- **Cache « périmé servi, rafraîchi en fond »** (`data._cached`) : une entrée
+  dont le TTL était dépassé se rechargeait EN LIGNE — la page attendait Powens,
+  deux secondes pour l'historique des transactions toutes les cinq minutes, un
+  aller-retour pour comptes et connexions toutes les deux minutes (le bandeau
+  de santé les lit sur chaque page). La valeur périmée est désormais rendue
+  tout de suite et remplacée par une tâche de fond ; au-delà d'une heure de
+  péremption (`STALE_GRACE`) le chargement redevient bloquant, pour que Powens
+  indisponible finisse par se voir. `ttl <= 0` recharge toujours.
+- **Collecteur** : les historiques de lignes de titres sont demandés quatre par
+  quatre au lieu d'un par un ; copie de sûreté, yfinance (réseau synchrone) et
+  notification tournent dans un thread — la passe planifiée ne fige plus le
+  processus web.
+- **HTTP** : réponses compressées (gzip), statiques versionnés mis en cache un
+  an (`immutable`), pages HTML en `no-store`, en-têtes `nosniff`,
+  `X-Frame-Options`, `Referrer-Policy` ; documentation OpenAPI fermée.
+- **Store** : les séries de soldes (`_per_account_series`) et les
+  valorisations (`investment_values`) sont mémorisées tant que leur table ne
+  change pas (clé : nombre de lignes et plus grand rowid — `INSERT OR REPLACE`
+  en attribue un nouveau ; `remap_account` invalide). `/` et `/patrimoine`
+  passent de 33 à 5 ms, `/performance` de 15 à 5 ms.
+- **Calculs dérivés** (`data.derived`) : la détection des séries récurrentes
+  n'est refaite que quand le cache Powens change (toute écriture ou vidage
+  incrémente une génération). `/abonnements` : 12 → 3 ms, `/analyse` : 17 → 10 ms.
+- `/comptes` : le mois de chaque opération n'est plus calculé deux fois pour
+  toutes les opérations (13 → 8 ms).
+- Préchauffage et bandeau de santé demandent leurs ressources en parallèle.
+
 ### Déploiement du 13/08/2026 — l'app peut quitter le poste de travail
 
 Voir [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md). Rien ne change en local : toutes
