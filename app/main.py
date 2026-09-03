@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from pypowens import PowensAPIError, PowensAuthError, PowensClient, PowensRateLimitError
@@ -112,7 +113,15 @@ async def lifespan(app: FastAPI):
         app.state.store.close()
 
 
-app = FastAPI(title="Powens Finance", lifespan=lifespan)
+# Pas de documentation OpenAPI exposée : l'app est publiée derrière une simple
+# authentification Basic, et la carte de ses routes n'a rien à faire en ligne.
+app = FastAPI(
+    title="Powens Finance", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None
+)
+
+# Les pages portent des graphiques SVG inline (50 à 400 Ko) et la feuille
+# Tabler pèse 536 Ko : compressées, elles voyagent cinq à dix fois plus légères.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 # Hôtes loopback seulement ("testserver" est le TestClient). Un domaine hostile
 # résolvant vers 127.0.0.1 (DNS rebinding) devenait same-origin et pouvait LIRE
@@ -125,6 +134,32 @@ _PUBLISHED = auth_credentials() is not None or (
 ).strip().lower() in {"1", "true", "yes"}
 if not _PUBLISHED:
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=_LOCAL_HOSTS)
+
+
+# Un an, immuable : les statiques sont versionnés par ``?v=<mtime>`` (cf.
+# web._static_version), donc une nouvelle version change d'URL. Sans cet
+# en-tête, le navigateur revalidait chaque fichier à chaque page (une requête
+# conditionnelle par feuille de style, police et script).
+_STATIC_CACHE = "public, max-age=31536000, immutable"
+
+
+@app.middleware("http")
+async def _response_headers(request: Request, call_next):
+    """En-têtes de cache et de sécurité, posés sur toute réponse.
+
+    Les pages HTML portent des soldes : ``no-store`` évite qu'un navigateur
+    partagé les ressorte de son cache après déconnexion. Le reste est le
+    minimum qu'un scanner attend d'une application publiée.
+    """
+    response = await call_next(request)
+    if request.url.path.startswith("/static/") and "v" in request.query_params:
+        response.headers.setdefault("Cache-Control", _STATIC_CACHE)
+    elif response.headers.get("content-type", "").startswith("text/html"):
+        response.headers.setdefault("Cache-Control", "private, no-store")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    return response
 
 
 @app.middleware("http")
@@ -184,9 +219,7 @@ async def _health_banner(request: Request, call_next):
                     if await auto_sync_stuck_connections(client):
                         clear_cache()
             except Exception:  # noqa: BLE001 — bandeau best-effort, jamais bloquant
-                logging.getLogger(__name__).debug(
-                    "bandeau de santé indisponible", exc_info=True
-                )
+                logging.getLogger(__name__).debug("bandeau de santé indisponible", exc_info=True)
     return await call_next(request)
 
 
@@ -202,6 +235,7 @@ app.mount(
     StaticFiles(directory=str(Path(__file__).resolve().parent / "static")),
     name="static",
 )
+
 
 @app.get("/health", include_in_schema=False)
 async def health() -> Response:
@@ -415,9 +449,7 @@ async def reconnect(
       d'où la régénération ci-dessous quand elle est périmée ;
     * tous les autres : le Webview, comme pour une première connexion.
     """
-    connection = next(
-        (c for c in await load_connections(client) if c.id == connection_id), None
-    )
+    connection = next((c for c in await load_connections(client) if c.id == connection_id), None)
     if connection is not None and webauth.needs_webauth(connection):
         url = webauth.authorize_url(connection)
         if url is None or webauth.is_expired(connection):
