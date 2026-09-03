@@ -12,6 +12,7 @@ import asyncio
 import logging
 import sqlite3
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from datetime import date, timedelta
 from typing import Any
@@ -51,12 +52,83 @@ _cache: dict[str, tuple[float, object]] = {}
 # appelant attend le premier puis lit le cache.
 _locks: dict[str, asyncio.Lock] = {}
 
+# Servir périmé, rafraîchir en arrière-plan (stale-while-revalidate). Une entrée
+# dont le TTL est dépassé était rechargée EN LIGNE : la page attendait Powens —
+# deux secondes pour l'historique des transactions, toutes les cinq minutes,
+# et un aller-retour pour les comptes et connexions toutes les deux minutes
+# (le bandeau de santé les lit sur chaque page). Désormais la valeur périmée
+# est rendue tout de suite et une tâche de fond la remplace ; seule une entrée
+# périmée depuis plus de STALE_GRACE redevient un chargement bloquant, pour
+# que Powens indisponible finisse par se voir (page d'erreur) au lieu de
+# figer les chiffres indéfiniment.
+STALE_GRACE = 3600.0
+_refreshing: set[str] = set()
+_background: set[asyncio.Task[None]] = set()
+
 
 def _lock(key: str) -> asyncio.Lock:
     lock = _locks.get(key)
     if lock is None:
         lock = _locks[key] = asyncio.Lock()
     return lock
+
+
+def _refresh_in_background(
+    key: str, loader: Callable[[], Awaitable[Any]], after: Callable[[], None] | None
+) -> None:
+    """Lance UNE seule tâche de rafraîchissement pour ``key``."""
+    if key in _refreshing:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:  # hors boucle (script) : rien à planifier
+        return
+    _refreshing.add(key)
+
+    async def _run() -> None:
+        try:
+            async with _lock(key):
+                _set(key, await loader())
+                if after is not None:
+                    after()
+        except Exception:  # noqa: BLE001 — la valeur périmée reste servie
+            _log.warning("rafraîchissement de « %s » impossible — valeur périmée conservée", key)
+        finally:
+            _refreshing.discard(key)
+
+    task = loop.create_task(_run())
+    _background.add(task)
+    task.add_done_callback(_background.discard)
+
+
+async def _cached(
+    key: str,
+    ttl: float,
+    loader: Callable[[], Awaitable[Any]],
+    *,
+    after: Callable[[], None] | None = None,
+) -> Any:
+    """Valeur fraîche, sinon périmée-mais-servie (rafraîchie en fond), sinon chargée.
+
+    ``ttl <= 0`` signifie « toujours recharger » : pas de service périmé.
+    """
+    fresh = _get(key, ttl)
+    if fresh is not None:
+        return fresh
+    hit = _cache.get(key)
+    if ttl > 0 and hit is not None and (time.monotonic() - hit[0]) < ttl + STALE_GRACE:
+        _refresh_in_background(key, loader, after)
+        return hit[1]
+    async with _lock(key):
+        # Re-vérifier sous le verrou : une requête concurrente a pu remplir le cache.
+        fresh = _get(key, ttl)
+        if fresh is not None:
+            return fresh
+        value = await loader()
+        _set(key, value)
+        if after is not None:
+            after()
+        return value
 
 
 def _get(key: str, ttl: float) -> Any:
@@ -78,6 +150,7 @@ def _set(key: str, value: object) -> None:
 
 def clear_cache() -> None:
     _cache.clear()
+    _refreshing.clear()
 
 
 def _min_date(months: int) -> date:
@@ -96,14 +169,9 @@ async def load_accounts(
     Un compte importé rattaché à un compte Powens n'apparaît pas : il n'est plus un compte,
     seulement l'historique ancien de celui de Powens.
     """
-    cached = _get("accounts", ttl)
-    if cached is None:
-        async with _lock("accounts"):
-            cached = _get("accounts", ttl)
-            if cached is None:
-                cached = await client.list_accounts(include_disabled=False)
-                _set("accounts", cached)
-    data: AccountsList = cached
+    data: AccountsList = await _cached(
+        "accounts", ttl, lambda: client.list_accounts(include_disabled=False)
+    )
     if conn is None:
         return data
     extra = [Account.from_api(raw) for raw in store.imported_accounts(conn)]
@@ -111,10 +179,7 @@ async def load_accounts(
     # objets du cache, partagés entre requêtes), puis propagés partout — pages,
     # snapshots (record_snapshot lit .name) et notes de périmètre compris.
     aliases = store.account_aliases(conn)
-    accounts = [
-        replace(a, name=aliases[a.id]) if a.id in aliases else a
-        for a in data.accounts
-    ]
+    accounts = [replace(a, name=aliases[a.id]) if a.id in aliases else a for a in data.accounts]
     if not extra and not aliases:
         return data
     return AccountsList(
@@ -130,29 +195,17 @@ async def load_all_accounts(client: PowensClient, *, ttl: float = 300) -> Accoun
     Les pages de patrimoine continuent d'exclure les comptes désactivés ; ce
     loader existe précisément pour pouvoir DIRE qu'ils sont exclus.
     """
-    cached = _get("accounts_all", ttl)
-    if cached is not None:
-        return cached
-    async with _lock("accounts_all"):
-        cached = _get("accounts_all", ttl)
-        if cached is not None:
-            return cached
-        data = await client.list_accounts(include_disabled=True)
-        _set("accounts_all", data)
-        return data
+    result: AccountsList = await _cached(
+        "accounts_all", ttl, lambda: client.list_accounts(include_disabled=True)
+    )
+    return result
 
 
 async def load_connections(client: PowensClient, *, ttl: float = 120) -> list[Connection]:
-    cached = _get("connections", ttl)
-    if cached is not None:
-        return cached
-    async with _lock("connections"):
-        cached = _get("connections", ttl)
-        if cached is not None:
-            return cached
-        data = await client.list_connections(expand="connector,accounts")
-        _set("connections", data)
-        return data
+    result: list[Connection] = await _cached(
+        "connections", ttl, lambda: client.list_connections(expand="connector,accounts")
+    )
+    return result
 
 
 async def load_investments(client: PowensClient, *, ttl: float = 300) -> list[Investment]:
@@ -161,19 +214,15 @@ async def load_investments(client: PowensClient, *, ttl: float = 300) -> list[In
     Returns an empty list when the endpoint is unavailable on the app: the feature
     is a bonus on top of balances and must never break the recap page.
     """
-    cached = _get("investments", ttl)
-    if cached is not None:
-        return cached
-    async with _lock("investments"):
-        cached = _get("investments", ttl)
-        if cached is not None:
-            return cached
+
+    async def _load() -> list[Investment]:
         try:
-            data = await client.list_investments()
+            return await client.list_investments()
         except PowensAPIError:
-            data = []
-        _set("investments", data)
-        return data
+            return []
+
+    result: list[Investment] = await _cached("investments", ttl, _load)
+    return result
 
 
 async def _load_history(
@@ -182,25 +231,22 @@ async def _load_history(
     """Return ``(covered_months, transactions)`` for the single cached history.
 
     Fetches only when the cache is cold or covers a narrower window than asked for.
+    Une entrée périmée qui couvre la fenêtre est servie telle quelle et
+    rafraîchie en arrière-plan (voir :func:`_cached`).
     """
     cached: tuple[int, list[Transaction]] | None = _get(_TXN_KEY, ttl)
     if cached is not None and cached[0] >= months:
         return cached
 
-    async with _lock(_TXN_KEY):
-        # Re-vérifier sous le verrou : une requête concurrente a pu remplir le cache.
-        cached = _get(_TXN_KEY, ttl)
-        if cached is not None and cached[0] >= months:
-            return cached
-        # Ne jamais rétrécir la fenêtre : après expiration du TTL, une demande
-        # étroite (1 mois) écraserait l'entrée large (36 mois) et le prochain
-        # /analyse retéléchargerait tout l'historique.
-        stale = _cache.get(_TXN_KEY)
-        if stale is not None:
-            previous_months = stale[1][0]  # type: ignore[index]
-            months = max(months, previous_months)
+    # Ne jamais rétrécir la fenêtre : après expiration du TTL, une demande
+    # étroite (1 mois) écraserait l'entrée large (36 mois) et le prochain
+    # /analyse retéléchargerait tout l'historique.
+    stale = _cache.get(_TXN_KEY)
+    previous_months = stale[1][0] if stale is not None else 0  # type: ignore[index]
+    wanted = max(months, previous_months)
 
-        min_date = _min_date(months)
+    async def _fetch() -> tuple[int, list[Transaction]]:
+        min_date = _min_date(wanted)
         # ``coming`` transactions are forecast operations not yet debited: keeping
         # them would inflate the current month and create phantom recurring
         # occurrences.
@@ -209,17 +255,32 @@ async def _load_history(
             async for t in client.iter_transactions(min_date=min_date.isoformat(), limit=1000)
             if not t.coming
         ]
-        entry = (months, txns)
-        _set(_TXN_KEY, entry)
-        # A wider history invalidates the internal-transfer set computed on the old one.
+        return (wanted, txns)
+
+    def _drop_derived() -> None:
+        # A wider or fresher history invalidates the internal-transfer sets computed on it.
         _cache.pop(_INTERNAL_KEY, None)
         _cache.pop(_INTERNAL_KEY + "+imports", None)
-        return entry
+
+    if previous_months < months:
+        # Fenêtre plus large que tout ce qui est en cache : rien de servable,
+        # chargement en ligne (sous verrou, une seule fois).
+        async with _lock(_TXN_KEY):
+            cached = _get(_TXN_KEY, ttl)
+            if cached is not None and cached[0] >= months:
+                return cached
+            entry = await _fetch()
+            _set(_TXN_KEY, entry)
+            _drop_derived()
+            return entry
+
+    served: tuple[int, list[Transaction]] = await _cached(
+        _TXN_KEY, ttl, _fetch, after=_drop_derived
+    )
+    return served
 
 
-def _ceilings(
-    conn: sqlite3.Connection, powens_txns: list[Transaction]
-) -> dict[int, date]:
+def _ceilings(conn: sqlite3.Connection, powens_txns: list[Transaction]) -> dict[int, date]:
     """Par compte importé rattaché, la première date que le connecteur couvre.
 
     Prise sur les opérations Powens elles-mêmes plutôt que sur une date saisie : c'est la
@@ -237,9 +298,7 @@ def _ceilings(
         known = first.get(txn.id_account)
         if known is None or txn.date < known:
             first[txn.id_account] = txn.date
-    return {
-        db_id: first[powens_id] for db_id, powens_id in links.items() if powens_id in first
-    }
+    return {db_id: first[powens_id] for db_id, powens_id in links.items() if powens_id in first}
 
 
 def _imported(
@@ -335,13 +394,9 @@ async def load_internal_ids(
     # banques synchronisées à des dates différentes. La fraîcheur est garantie
     # par le clear_cache() du POST /categorie.
     if conn is not None:
-        flagged = {
-            k for k, cat in store.all_overrides(conn).items() if cat == INTERNAL_CATEGORY
-        }
+        flagged = {k for k, cat in store.all_overrides(conn).items() if cat == INTERNAL_CATEGORY}
         if flagged:
-            ids |= {
-                t.id for t in pool if t.id is not None and merchant_key(t) in flagged
-            }
+            ids |= {t.id for t in pool if t.id is not None and merchant_key(t) in flagged}
     _set(key, ids)
     return ids
 
@@ -358,14 +413,15 @@ async def warm_up(
     l'application de démarrer, la page se contentera de charger à froid.
     """
     try:
-        # Ordre choisi : les appels COURTS d'abord, pour que les pages qui n'en
-        # dépendent que d'eux soient prêtes tout de suite. L'historique des
-        # transactions prend deux secondes à lui seul ; le mettre en tête
-        # laissait /performance lent pendant tout ce temps, alors qu'il ne lui
-        # manquait que la liste des investissements.
-        await load_accounts(client, conn=conn)
-        await load_connections(client)
-        await load_investments(client)
+        # Les appels COURTS d'abord, et ensemble : les pages qui n'en dépendent
+        # que d'eux sont prêtes tout de suite. L'historique des transactions
+        # prend deux secondes à lui seul ; le mettre en tête laissait
+        # /performance lent pendant tout ce temps.
+        await asyncio.gather(
+            load_accounts(client, conn=conn),
+            load_connections(client),
+            load_investments(client),
+        )
         await load_transactions(client, months=months, conn=conn)
         await load_internal_ids(client, months=months, conn=conn)
         _log.info("cache préchauffé")
