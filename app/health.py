@@ -16,6 +16,7 @@ bandeau global :
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sqlite3
 from datetime import datetime, timedelta
@@ -61,9 +62,7 @@ async def auto_sync_stuck_connections(client: PowensClient) -> list[int]:
         # plus une relance, or il était exclu — une connexion tout juste établie
         # et sans next_try planifié serait restée vide indéfiniment.
         last_update = connection.last_update
-        if last_update is not None and (now - last_update) < timedelta(
-            hours=AUTO_SYNC_AFTER_HOURS
-        ):
+        if last_update is not None and (now - last_update) < timedelta(hours=AUTO_SYNC_AFTER_HOURS):
             continue
         next_try = connection.next_try
         if next_try is not None and next_try > now:
@@ -73,9 +72,7 @@ async def auto_sync_stuck_connections(client: PowensClient) -> list[int]:
             launched.append(connection.id)
             _log.info("connexion %s bloquée : synchronisation relancée", connection.id)
         except Exception:  # noqa: BLE001 — best-effort, ne bloque jamais une page
-            _log.warning(
-                "relance de la connexion %s impossible", connection.id, exc_info=True
-            )
+            _log.warning("relance de la connexion %s impossible", connection.id, exc_info=True)
     return launched
 
 
@@ -89,7 +86,11 @@ async def connection_alerts(
     ``action_url`` (lien, typiquement /reconnecter/{id}).
     """
     alerts: list[dict[str, Any]] = []
-    connections = await load_connections(client)
+    # Deux ressources indépendantes : les demander ensemble plutôt que l'une
+    # après l'autre (à cache froid, c'est un aller-retour Powens de gagné).
+    connections, all_accounts = await asyncio.gather(
+        load_connections(client), load_all_accounts(client)
+    )
     now = datetime.now()
     try:
         silent_after = get_settings().silent_after_days
@@ -109,9 +110,7 @@ async def connection_alerts(
                 {
                     "kind": "error",
                     "title": name,
-                    "detail": STATE_LABELS.get(state)
-                    or state
-                    or "Erreur signalée par la banque",
+                    "detail": STATE_LABELS.get(state) or state or "Erreur signalée par la banque",
                     "action_url": f"/reconnecter/{connection.id}" if needs_user else None,
                     "sync_id": None if needs_user else connection.id,
                     "action_label": "Reprendre" if needs_user else "Synchroniser",
@@ -153,7 +152,6 @@ async def connection_alerts(
     # après réparation de la connexion, le compte est RECRÉÉ DÉSACTIVÉ — sans le
     # bouton « Réintégrer » ci-dessous, rien dans l'UI ne permettait de le
     # faire revenir dans le total.
-    all_accounts = await load_all_accounts(client)
     excluded = [
         a
         for a in all_accounts.accounts
@@ -178,9 +176,7 @@ async def connection_alerts(
     return alerts
 
 
-async def _budget_overruns(
-    client: PowensClient, conn: sqlite3.Connection
-) -> list[dict[str, Any]]:
+async def _budget_overruns(client: PowensClient, conn: sqlite3.Connection) -> list[dict[str, Any]]:
     """Enveloppes dépassées ce mois-ci — seulement si l'historique est déjà chaud.
 
     Le bandeau tourne sur TOUTES les pages : déclencher le téléchargement complet

@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 
-from pypowens import PowensAPIError, PowensAuthError, PowensClient
+from pypowens import Investment, InvestmentValue, PowensAPIError, PowensAuthError, PowensClient
 
 from . import store
 from .config import Settings, get_settings
@@ -39,6 +39,9 @@ INVESTMENT_TYPES = frozenset({"market", "pea", "per", "lifeinsurance"})
 # Marge de sécurité lors du rattrapage : on redemande quelques jours déjà archivés, au
 # cas où une VL publiée en séance ait été corrigée depuis. L'écriture est idempotente.
 OVERLAP_DAYS = 3
+
+# Historiques de lignes de titres demandés en parallèle.
+HISTORY_CONCURRENCY = 4
 
 
 @dataclass
@@ -96,28 +99,39 @@ async def collect(
     if not holders:
         return report
 
-    investments = [i for i in await client.list_investments() if i.id_account in holders]
-    for inv in investments:
-        if inv.id is None or inv.id_account is None:
-            continue
+    investments = [
+        i
+        for i in await client.list_investments()
+        if i.id_account in holders and i.id is not None and i.id_account is not None
+    ]
+    since = report.since.isoformat() if report.since else None
+    # Une ligne = un appel à l'API : enchaînés, vingt lignes coûtaient vingt
+    # allers-retours (six secondes). Quelques appels en parallèle suffisent, le
+    # sémaphore évitant de déclencher la limitation de débit de Powens.
+    gate = asyncio.Semaphore(HISTORY_CONCURRENCY)
+
+    async def _history(inv: Investment) -> list[InvestmentValue] | None:
+        investment_id = inv.id
+        if investment_id is None:  # exclu par le filtre ci-dessus ; pour le typage
+            return None
+        async with gate:
+            try:
+                return await client.list_investment_history(investment_id, min_date=since)
+            except PowensAPIError:
+                # Une ligne sans historique (les liquidités, par exemple) ne doit pas
+                # interrompre la collecte des autres.
+                return None
+
+    histories = await asyncio.gather(*(_history(inv) for inv in investments))
+    for inv, values in zip(investments, histories, strict=True):
         report.lines += 1
-        try:
-            values = await client.list_investment_history(
-                inv.id,
-                min_date=report.since.isoformat() if report.since else None,
-            )
-        except PowensAPIError:
-            # Une ligne sans historique (les liquidités, par exemple) ne doit pas
-            # interrompre la collecte des autres.
-            report.skipped += 1
-            continue
         if not values:
             report.skipped += 1
             continue
         report.values += store.save_investment_values(
             conn,
             values,
-            account_id=inv.id_account,
+            account_id=inv.id_account,  # type: ignore[arg-type]
             label=inv.label,
             code=inv.code,
         )
@@ -174,7 +188,8 @@ async def _push_alerts(client: PowensClient, conn: sqlite3.Connection) -> None:
         if pending:
             lines.append(f"{pending} alerte(s) d'abonnement à examiner")
         if lines:
-            notify("Powens Finance", " · ".join(lines))
+            # osascript ou webhook : synchrones, jusqu'à dix secondes — hors boucle.
+            await asyncio.to_thread(notify, "Powens Finance", " · ".join(lines))
     except Exception:  # noqa: BLE001 — la notification ne casse jamais la collecte
         _log.warning("notification des alertes impossible", exc_info=True)
 
@@ -189,16 +204,23 @@ async def run_once(
     """
     # Copie de sûreté AVANT d'écrire : si ce passage tourne mal, l'état de la
     # veille reste récupérable dans .backups/.
+    # Déclenchée depuis le processus web (``scheduled``), cette passe partage la
+    # boucle d'événements avec les pages : la copie de la base et surtout
+    # yfinance (réseau synchrone, plusieurs secondes) tournent donc dans un
+    # thread, sans quoi chaque passage figeait l'application le temps du
+    # téléchargement. La connexion SQLite est ouverte en mode partagé
+    # (check_same_thread=False) et le module sérialise ses accès.
     try:
-        written = store.backup(conn, settings.db_path)
+        written = await asyncio.to_thread(store.backup, conn, settings.db_path)
         if written:
             _log.info("copie de sûreté écrite : %s", written)
     except (sqlite3.Error, OSError):
         _log.exception("copie de sûreté impossible — la collecte continue sans")
-    benchmark_count = _collect_benchmark(conn, settings)
+    benchmark_count = await asyncio.to_thread(_collect_benchmark, conn, settings)
     if benchmark_count:
-        _log.info("indice %s : %d clôture(s) archivée(s)", settings.benchmark_ticker,
-                  benchmark_count)
+        _log.info(
+            "indice %s : %d clôture(s) archivée(s)", settings.benchmark_ticker, benchmark_count
+        )
     try:
         report = await collect(client, conn, settings=settings)
     except PowensAuthError:
@@ -271,6 +293,7 @@ if __name__ == "__main__":
 
 __all__ = [
     "CollectReport",
+    "HISTORY_CONCURRENCY",
     "INVESTMENT_TYPES",
     "SPENDING_ACCOUNT_TYPES",
     "collect",

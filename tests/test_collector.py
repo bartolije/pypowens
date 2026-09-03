@@ -36,6 +36,7 @@ def _settings(**overrides) -> Settings:
 
 # ------------------------------------------------------------------ benchmark
 
+
 def test_benchmark_is_skipped_without_a_ticker(conn):
     assert collector._collect_benchmark(conn, _settings(benchmark_ticker="")) == 0
 
@@ -93,6 +94,7 @@ def test_benchmark_without_yfinance_is_a_noop(conn, monkeypatch):
 
 # -------------------------------------------------------------------- collect
 
+
 async def test_collect_reports_what_it_archived(fake_client, conn):
     report = await collector.collect(fake_client, conn, settings=_settings())
     assert report.accounts == 4  # le jeu de test
@@ -121,3 +123,43 @@ async def test_resume_point_uses_the_archived_span(fake_client, conn):
     assert resume is not None
     span = store.investment_value_span(conn)
     assert resume == span[1] - timedelta(days=collector.OVERLAP_DAYS)
+
+
+async def test_investment_histories_are_fetched_in_parallel(fake_client, conn, monkeypatch):
+    """Vingt lignes = vingt appels : enchaînés, ils coûtaient six secondes."""
+    import asyncio
+
+    from app import collector
+    from pypowens import Investment, InvestmentValue
+
+    async def six_lines(*args, **kwargs):
+        return [
+            Investment.from_api({"id": i, "id_account": 3, "label": f"L{i}", "code": f"FR{i:010d}"})
+            for i in range(1, 7)
+        ]
+
+    in_flight = {"now": 0, "max": 0}
+
+    async def history(investment_id, *args, **kwargs):
+        in_flight["now"] += 1
+        in_flight["max"] = max(in_flight["max"], in_flight["now"])
+        await asyncio.sleep(0)  # rend la main : les appels parallèles démarrent ici
+        in_flight["now"] -= 1
+        return [
+            InvestmentValue.from_api(
+                {
+                    "id": investment_id,
+                    "id_investment": investment_id,
+                    "vdate": "2026-06-14",
+                    "unitvalue": "10.00",
+                }
+            )
+        ]
+
+    monkeypatch.setattr(fake_client, "list_investments", six_lines)
+    monkeypatch.setattr(fake_client, "list_investment_history", history)
+
+    report = await collector.collect(fake_client, conn, settings=_settings())
+
+    assert report.lines == 6 and report.values == 6
+    assert in_flight["max"] == min(6, collector.HISTORY_CONCURRENCY)
