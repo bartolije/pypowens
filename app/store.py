@@ -376,9 +376,12 @@ def remap_account(conn: sqlite3.Connection, old_id: int, new_id: int) -> int:
         " AND day IN (SELECT day FROM balance_snapshot WHERE account_id = ?)",
         (old_id, new_id),
     )
-    moved = conn.execute(
-        "UPDATE balance_snapshot SET account_id = ? WHERE account_id = ?", (new_id, old_id)
-    ).rowcount or 0
+    moved = (
+        conn.execute(
+            "UPDATE balance_snapshot SET account_id = ? WHERE account_id = ?", (new_id, old_id)
+        ).rowcount
+        or 0
+    )
     conn.execute(
         "UPDATE investment_value SET account_id = ? WHERE account_id = ?", (new_id, old_id)
     )
@@ -392,10 +395,9 @@ def remap_account(conn: sqlite3.Connection, old_id: int, new_id: int) -> int:
         " AND EXISTS (SELECT 1 FROM account_alias WHERE account_id = ?)",
         (old_id, new_id),
     )
-    conn.execute(
-        "UPDATE account_alias SET account_id = ? WHERE account_id = ?", (new_id, old_id)
-    )
+    conn.execute("UPDATE account_alias SET account_id = ? WHERE account_id = ?", (new_id, old_id))
     conn.commit()
+    _forget_series_cache()
     return moved
 
 
@@ -533,13 +535,12 @@ def _subtract_months(d: date, months: int) -> date:
         month += 12
         year -= 1
     import calendar
+
     max_day = calendar.monthrange(year, month)[1]
     return date(year, month, min(d.day, max_day))
 
 
-def _downsample(
-    points: list[tuple[date, Decimal]], limit: int
-) -> list[tuple[date, Decimal]]:
+def _downsample(points: list[tuple[date, Decimal]], limit: int) -> list[tuple[date, Decimal]]:
     """Réduit à ``limit`` points répartis uniformément, premier et dernier gardés.
 
     Tronquer aux ``limit`` derniers jours (l'ancien ``points[-limit:]``) mentait
@@ -553,10 +554,39 @@ def _downsample(
     return [points[round(i * step)] for i in range(limit)]
 
 
-def _per_account_series(
-    conn: sqlite3.Connection, currency: str
-) -> tuple[list[str], dict[int, dict[str, Decimal]], dict[int, str]]:
-    """(jours archivés triés, {compte: {jour: solde}}, {compte: dernier nom})."""
+# Mémo de _per_account_series : la relecture de TOUT l'historique de soldes
+# (des milliers de lignes converties en Decimal) coûtait ~15 ms par appel, et
+# chaque page de synthèse l'appelait deux fois (courbe + notes de périmètre) —
+# 85 % du temps de rendu de / et /patrimoine. La clé résume l'état de la table :
+# nombre de lignes et plus grand rowid (INSERT OR REPLACE attribue un nouveau
+# rowid), donc tout ajout ou remplacement de solde invalide l'entrée ; les
+# UPDATE de remap_account l'invalident explicitement.
+_SeriesCache = tuple[list[str], dict[int, dict[str, Decimal]], dict[int, str]]
+_series_cache: dict[tuple[int, str, str, int, int], _SeriesCache] = {}
+
+
+def _series_cache_key(conn: sqlite3.Connection, currency: str) -> tuple[int, str, str, int, int]:
+    # La connexion et le fichier font partie de la clé : deux bases distinctes
+    # (les tests en ouvrent une par cas) peuvent avoir le même nombre de lignes.
+    database = str(conn.execute("PRAGMA database_list").fetchone()[2] or "")
+    row = conn.execute("SELECT COUNT(*), COALESCE(MAX(rowid), 0) FROM balance_snapshot").fetchone()
+    return (id(conn), database, currency.upper(), int(row[0]), int(row[1]))
+
+
+def _forget_series_cache() -> None:
+    _series_cache.clear()
+
+
+def _per_account_series(conn: sqlite3.Connection, currency: str) -> _SeriesCache:
+    """(jours archivés triés, {compte: {jour: solde}}, {compte: dernier nom}).
+
+    Mémorisé tant que la table n'a pas changé (voir ``_series_cache``). Les
+    structures rendues sont partagées entre appelants : ne pas les modifier.
+    """
+    key = _series_cache_key(conn, currency)
+    hit = _series_cache.get(key)
+    if hit is not None:
+        return hit
     per_account: dict[int, dict[str, Decimal]] = {}
     names: dict[int, str] = {}
     days_set: set[str] = set()
@@ -568,7 +598,10 @@ def _per_account_series(
         per_account.setdefault(row["account_id"], {})[row["day"]] = Decimal(row["balance"])
         names[row["account_id"]] = row["name"] or f"Compte #{row['account_id']}"
         days_set.add(row["day"])
-    return sorted(days_set), per_account, names
+    result: _SeriesCache = (sorted(days_set), per_account, names)
+    _series_cache.clear()  # une seule devise en pratique : ne jamais accumuler
+    _series_cache[key] = result
+    return result
 
 
 def net_worth_history(
@@ -633,9 +666,7 @@ def forget_perimeter_ack(conn: sqlite3.Connection, day: str) -> None:
     conn.commit()
 
 
-def perimeter_changes(
-    conn: sqlite3.Connection, *, currency: str = "EUR"
-) -> list[dict[str, Any]]:
+def perimeter_changes(conn: sqlite3.Connection, *, currency: str = "EUR") -> list[dict[str, Any]]:
     """Jours où le PÉRIMÈTRE des comptes archivés a durablement changé.
 
     Le comblement des trous (:func:`net_worth_history`) neutralise les absences
@@ -685,19 +716,13 @@ def account_balance_history(
     since: date | None = None,
 ) -> list[tuple[date, Decimal]]:
     """Daily balance for a single account, oldest first."""
-    sql = (
-        "SELECT day, balance FROM balance_snapshot"
-        " WHERE account_id = ? AND currency = ?"
-    )
+    sql = "SELECT day, balance FROM balance_snapshot WHERE account_id = ? AND currency = ?"
     params: list[object] = [account_id, currency.upper()]
     if since is not None:
         sql += " AND day >= ?"
         params.append(since.isoformat())
     cursor = conn.execute(sql + " ORDER BY day", params)
-    points = [
-        (date.fromisoformat(row["day"]), Decimal(row["balance"]))
-        for row in cursor
-    ]
+    points = [(date.fromisoformat(row["day"]), Decimal(row["balance"])) for row in cursor]
     return _downsample(points, limit)
 
 
@@ -749,8 +774,7 @@ def previous_net_worth(
     """
     before = before or date.today()
     row = conn.execute(
-        "SELECT day FROM balance_snapshot WHERE currency = ? AND day < ?"
-        " ORDER BY day DESC LIMIT 1",
+        "SELECT day FROM balance_snapshot WHERE currency = ? AND day < ? ORDER BY day DESC LIMIT 1",
         (currency.upper(), before.isoformat()),
     ).fetchone()
     if row is None:
@@ -793,8 +817,7 @@ def clear_override(conn: sqlite3.Connection, merchant_key: str) -> None:
 def pending_subscription_alerts(conn: sqlite3.Connection) -> int:
     """Alertes « nouveau / hausse » pas encore acquittées (pour la notification)."""
     row = conn.execute(
-        "SELECT COUNT(*) AS n FROM series_state"
-        " WHERE alert_kind IS NOT NULL AND acknowledged = 0"
+        "SELECT COUNT(*) AS n FROM series_state WHERE alert_kind IS NOT NULL AND acknowledged = 0"
     ).fetchone()
     return int(row["n"])
 
@@ -886,9 +909,7 @@ def set_merchant_alias(conn: sqlite3.Connection, from_key: str, to_key: str) -> 
             (from_key, to_key),
         )
         # Rediriger les fusions qui pointaient sur from_key : jamais de chaîne.
-        conn.execute(
-            "UPDATE merchant_alias SET to_key = ? WHERE to_key = ?", (to_key, from_key)
-        )
+        conn.execute("UPDATE merchant_alias SET to_key = ? WHERE to_key = ?", (to_key, from_key))
     conn.commit()
 
 
@@ -935,8 +956,7 @@ def set_flow_override(conn: sqlite3.Connection, transaction_id: int, kind: str) 
         conn.execute("DELETE FROM flow_override WHERE transaction_id = ?", (transaction_id,))
     else:
         conn.execute(
-            "INSERT OR REPLACE INTO flow_override (transaction_id, kind, updated)"
-            " VALUES (?, ?, ?)",
+            "INSERT OR REPLACE INTO flow_override (transaction_id, kind, updated) VALUES (?, ?, ?)",
             (transaction_id, kind, date.today().isoformat()),
         )
     conn.commit()
@@ -1031,6 +1051,7 @@ def investment_value_span(conn: sqlite3.Connection) -> tuple[date, date] | None:
 
 # ---------------------------------------------------------- imported statements
 
+
 # Les ids Powens sont des entiers positifs. Un compte importé est exposé à l'app avec
 # l'opposé de son id en base, et ses opérations avec des ids négatifs distincts, pour
 # qu'aucune collision ne soit possible entre les deux sources.
@@ -1076,9 +1097,7 @@ def link_imported_account(
         (powens_account_id, db_id),
     )
     if powens_account_id is not None:
-        conn.execute(
-            "DELETE FROM balance_snapshot WHERE account_id = ?", (account_id(db_id),)
-        )
+        conn.execute("DELETE FROM balance_snapshot WHERE account_id = ?", (account_id(db_id),))
     conn.commit()
 
 
@@ -1087,8 +1106,7 @@ def imported_links(conn: sqlite3.Connection) -> dict[int, int]:
     return {
         int(row["id"]): int(row["powens_account_id"])
         for row in conn.execute(
-            "SELECT id, powens_account_id FROM imported_account"
-            " WHERE powens_account_id IS NOT NULL"
+            "SELECT id, powens_account_id FROM imported_account WHERE powens_account_id IS NOT NULL"
         )
     }
 
@@ -1340,8 +1358,7 @@ def sync_series(
 def acknowledge_alerts(conn: sqlite3.Connection) -> int:
     """Acquitte toutes les alertes en attente ; retourne le nombre acquitté."""
     cursor = conn.execute(
-        "UPDATE series_state SET acknowledged = 1 WHERE alert_kind IS NOT NULL"
-        " AND acknowledged = 0"
+        "UPDATE series_state SET acknowledged = 1 WHERE alert_kind IS NOT NULL AND acknowledged = 0"
     )
     conn.commit()
     return cursor.rowcount or 0

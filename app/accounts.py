@@ -166,24 +166,25 @@ async def accounts_page(
     # Default to the current month, but fall back to the last month that actually
     # has operations: on the 1st, or right after a sync that lags, the current month
     # is empty and an empty landing page reads as "the app is broken".
+    # Une seule passe sur l'historique : le mois de chaque opération était
+    # recalculé deux fois pour toutes les opérations (dix mille appels par page).
+    by_month: dict[str, list[Transaction]] = {}
+    for t in txns:
+        if t.id_account in current_ids and t.value:
+            by_month.setdefault(month_key(t.date), []).append(t)
+
     if mois in valid:
         month = mois
     else:
-        present = {
-            month_key(t.date) for t in txns if t.id_account in current_ids and t.value
-        } & valid
+        present = set(by_month) & valid
         month = options[0][0]
         if month not in present and present:
             month = max(present)
 
     month_rows = []
-    for t in txns:
-        if t.id_account not in current_ids or not t.value or month_key(t.date) != month:
-            continue
+    for t in by_month.get(month, []):
         category = resolve_category_txn(t, overrides)
-        label, detail = split_wording(
-            t.simplified_wording or t.wording or t.original_wording or ""
-        )
+        label, detail = split_wording(t.simplified_wording or t.wording or t.original_wording or "")
         initials, color, ink = account_bank.get(t.id_account, ("", "#8a8a8a", "#ffffff"))
         rail_emoji, rail_label = rail(t.type)
         month_rows.append(

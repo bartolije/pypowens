@@ -38,6 +38,7 @@ def conn(tmp_path):
 
 # --------------------------------------------------------------- balance history
 
+
 def test_snapshot_is_idempotent_per_day(conn):
     accounts = [Acc(1, balance=Decimal("100")), Acc(2, balance=Decimal("50"))]
     today = date(2026, 7, 25)
@@ -83,6 +84,7 @@ def test_previous_net_worth_is_none_on_first_run(conn):
 
 # ------------------------------------------------------------------- overrides
 
+
 def test_override_roundtrip(conn):
     store.set_override(conn, "mon marchand", "Sport")
     assert store.all_overrides(conn) == {"MON MARCHAND": "Sport"}
@@ -98,6 +100,7 @@ def test_resolve_category_prefers_override():
 
 
 # -------------------------------------------------------------- series tracking
+
 
 def test_first_run_flags_nothing_as_new(conn):
     """Everything is unknown on day one — flagging it all would be noise."""
@@ -166,6 +169,7 @@ def test_periodicity_change_is_a_distinct_series(conn):
 
 # ------------------------------------------------------------------- backup
 
+
 def test_backup_writes_a_dated_copy_with_data(conn, tmp_path):
     day = date(2026, 8, 1)
     store.record_snapshot(conn, [Acc(1, balance=Decimal("100"))], day=day)
@@ -199,6 +203,7 @@ def test_backup_rotation_keeps_most_recent(conn, tmp_path):
 
 # ------------------------------------------------------------- history windows
 
+
 def test_net_worth_history_tout_keeps_the_origin(conn):
     """« TOUT » doit partir du premier jour archivé, pas des 180 derniers.
 
@@ -211,8 +216,8 @@ def test_net_worth_history_tout_keeps_the_origin(conn):
             conn, [Acc(1, balance=Decimal(offset))], day=start + timedelta(days=offset)
         )
     history = store.net_worth_history(conn)
-    assert len(history) <= 180                        # borné pour le SVG
-    assert history[0] == (start, Decimal(0))          # l'origine est conservée
+    assert len(history) <= 180  # borné pour le SVG
+    assert history[0] == (start, Decimal(0))  # l'origine est conservée
     assert history[-1] == (start + timedelta(days=399), Decimal(399))
 
 
@@ -238,6 +243,7 @@ def test_nan_balance_cannot_poison_the_history():
 
 
 # ------------------------------------------------------- alertes persistantes
+
 
 def _sync(conn, *series):
     return store.sync_series(conn, list(series))
@@ -293,6 +299,7 @@ def test_acknowledged_increase_does_not_retrigger_without_change(conn):
 
 # ------------------------------------------------- trous et périmètre de comptes
 
+
 def _snap(conn, day, *accounts):
     store.record_snapshot(conn, list(accounts), day=day)
 
@@ -303,14 +310,21 @@ def test_temporary_absence_is_filled_with_last_known_balance(conn):
     d = date(2026, 8, 1)
     loan = Acc(2, name="Prêt", type="loan", balance=Decimal("-1000"))
     _snap(conn, d, Acc(1), loan)
-    _snap(conn, d + timedelta(days=1), Acc(1))                      # prêt absent
-    _snap(conn, d + timedelta(days=2), Acc(1))                      # toujours absent
-    _snap(conn, d + timedelta(days=3), Acc(1), Acc(2, name="Prêt", type="loan",
-                                                    balance=Decimal("-990")))
+    _snap(conn, d + timedelta(days=1), Acc(1))  # prêt absent
+    _snap(conn, d + timedelta(days=2), Acc(1))  # toujours absent
+    _snap(
+        conn,
+        d + timedelta(days=3),
+        Acc(1),
+        Acc(2, name="Prêt", type="loan", balance=Decimal("-990")),
+    )
     history = store.net_worth_history(conn)
     # 100 - 1000 = -900 partout : l'absence des jours 2-3 est comblée à -1000.
     assert [v for _, v in history] == [
-        Decimal("-900"), Decimal("-900"), Decimal("-900"), Decimal("-890")
+        Decimal("-900"),
+        Decimal("-900"),
+        Decimal("-900"),
+        Decimal("-890"),
     ]
 
 
@@ -327,8 +341,12 @@ def test_perimeter_changes_flags_durable_entries_and_exits(conn):
     d = date(2026, 8, 1)
     _snap(conn, d, Acc(1, name="Courant"))
     # Le compte 2 ENTRE le 2, le compte 1 SORT après le 2 (effet visible le 3).
-    _snap(conn, d + timedelta(days=1), Acc(1, name="Courant"),
-          Acc(2, name="Livret", balance=Decimal("50")))
+    _snap(
+        conn,
+        d + timedelta(days=1),
+        Acc(1, name="Courant"),
+        Acc(2, name="Livret", balance=Decimal("50")),
+    )
     _snap(conn, d + timedelta(days=2), Acc(2, name="Livret", balance=Decimal("50")))
 
     changes = store.perimeter_changes(conn)
@@ -349,17 +367,19 @@ def test_an_acknowledged_perimeter_change_stops_being_reported(conn):
     """
     d = date(2026, 8, 1)
     _snap(conn, d, Acc(1, name="Courant"))
-    _snap(conn, d + timedelta(days=1), Acc(1, name="Courant"),
-          Acc(2, name="Livret", balance=Decimal("50")))
+    _snap(
+        conn,
+        d + timedelta(days=1),
+        Acc(1, name="Courant"),
+        Acc(2, name="Livret", balance=Decimal("50")),
+    )
 
     assert len(store.perimeter_changes(conn)) == 1
     store.acknowledge_perimeter(conn, d + timedelta(days=1), "Livret")
     assert store.perimeter_changes(conn) == []
 
     # Le solde archivé, lui, n'a pas bougé d'un centime : la courbe est intacte.
-    assert [v for _, v in store.net_worth_history(conn)] == [
-        Decimal("100"), Decimal("150")
-    ]
+    assert [v for _, v in store.net_worth_history(conn)] == [Decimal("100"), Decimal("150")]
 
     store.forget_perimeter_ack(conn, (d + timedelta(days=1)).isoformat())
     assert len(store.perimeter_changes(conn)) == 1
@@ -376,12 +396,11 @@ def test_temporary_absence_is_not_a_perimeter_change(conn):
 
 # ------------------------------------------------------------------- budgets
 
+
 def test_budget_roundtrip_and_removal(conn):
     store.set_budget(conn, "Restauration", Decimal("300"))
     store.set_budget(conn, "Carburant", Decimal("120.50"))
-    assert store.budgets(conn) == {
-        "Restauration": Decimal("300"), "Carburant": Decimal("120.50")
-    }
+    assert store.budgets(conn) == {"Restauration": Decimal("300"), "Carburant": Decimal("120.50")}
     store.set_budget(conn, "Restauration", Decimal("350"))  # écrasement
     assert store.budgets(conn)["Restauration"] == Decimal("350")
     store.set_budget(conn, "Carburant", None)  # retrait
@@ -390,6 +409,7 @@ def test_budget_roundtrip_and_removal(conn):
 
 
 # ------------------------------------------------------------------ benchmark
+
 
 def test_benchmark_roundtrip_and_resume_point(conn):
     d = date(2026, 8, 1)
@@ -416,11 +436,13 @@ def test_pending_subscription_alerts_counts_unacknowledged(conn):
 
 # ------------------------------------- identité stable / renumérotage Powens
 
+
 class _Acc:
     """Compte avec sa payload brute, comme Account.from_api en produit une."""
 
-    def __init__(self, account_id, name, *, iban=None, connection=8, balance="-100",
-                 type="loan", number=None):
+    def __init__(
+        self, account_id, name, *, iban=None, connection=8, balance="-100", type="loan", number=None
+    ):
         self.id = account_id
         self.name = name
         self.type = type
@@ -460,9 +482,11 @@ def test_renumbering_is_detected_and_history_is_reattached(conn):
     assert remapped == [(20, 28)]
 
     # L'historique du 01/08 porte désormais le nouvel id : un seul compte.
-    rows = list(conn.execute(
-        "SELECT day, account_id FROM balance_snapshot WHERE name LIKE 'PRET%' ORDER BY day"
-    ))
+    rows = list(
+        conn.execute(
+            "SELECT day, account_id FROM balance_snapshot WHERE name LIKE 'PRET%' ORDER BY day"
+        )
+    )
     assert [(r["day"], r["account_id"]) for r in rows] == [("2026-08-01", 28)]
 
     # Et le trou du 02/08 est comblé : plus de faux changement de périmètre.
@@ -476,18 +500,19 @@ def test_remap_moves_every_table_that_references_the_account(conn):
         vdate = date(2026, 8, 1)
         unit_value = Decimal("10")
 
-    store.save_investment_values(
-        conn, [_Value()], account_id=20, label="ETF", code="FR0000"
-    )
+    store.save_investment_values(conn, [_Value()], account_id=20, label="ETF", code="FR0000")
     db_id = store.upsert_imported_account(conn, "Relevé CCF")
     store.link_imported_account(conn, db_id, 20)
     store.set_account_alias(conn, 20, "Mon prêt")
 
     store.remap_account(conn, 20, 28)
 
-    assert conn.execute(
-        "SELECT COUNT(*) n FROM investment_value WHERE account_id = 28"
-    ).fetchone()["n"] == 1
+    assert (
+        conn.execute("SELECT COUNT(*) n FROM investment_value WHERE account_id = 28").fetchone()[
+            "n"
+        ]
+        == 1
+    )
     assert store.imported_links(conn) == {db_id: 28}
     assert store.account_aliases(conn) == {28: "Mon prêt"}
 
@@ -499,6 +524,38 @@ def test_ambiguous_signature_is_never_used_to_merge(conn):
     twin_b = _Acc(31, "COMPTE", connection=9)
     assert store.sync_account_identities(conn, [twin_a, twin_b]) == []
     # Rien n'est mémorisé : la signature ambiguë n'identifie personne.
-    assert conn.execute(
-        "SELECT COUNT(*) n FROM account_identity WHERE signature = 'conn:9|COMPTE'"
-    ).fetchone()["n"] == 0
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) n FROM account_identity WHERE signature = 'conn:9|COMPTE'"
+        ).fetchone()["n"]
+        == 0
+    )
+
+
+def test_per_account_series_is_memoised_until_the_table_changes(conn):
+    """Deux lectures de la même table ne relisent pas les milliers de lignes ;
+    un nouveau solde (ou un remplacement, nouveau rowid) invalide le mémo."""
+    from datetime import date
+    from decimal import Decimal
+
+    from app.store import _per_account_series, record_snapshot
+
+    class _Acc:
+        def __init__(self, i, balance):
+            self.id, self.name, self.type, self.currency = i, f"C{i}", "checking", "EUR"
+            self.balance = Decimal(balance)
+
+    record_snapshot(conn, [_Acc(1, "100"), _Acc(2, "50")], day=date(2026, 6, 1))
+    first = _per_account_series(conn, "EUR")
+    assert _per_account_series(conn, "EUR") is first
+
+    record_snapshot(conn, [_Acc(1, "110"), _Acc(2, "50")], day=date(2026, 6, 2))
+    second = _per_account_series(conn, "EUR")
+    assert second is not first
+    assert second[0] == ["2026-06-01", "2026-06-02"]
+
+    # Remplacement d'un solde du même jour : la ligne change de rowid → relecture
+    record_snapshot(conn, [_Acc(1, "999"), _Acc(2, "50")], day=date(2026, 6, 2))
+    third = _per_account_series(conn, "EUR")
+    assert third is not second
+    assert third[1][1]["2026-06-02"] == Decimal("999")
