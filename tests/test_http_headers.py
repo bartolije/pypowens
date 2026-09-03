@@ -29,3 +29,16 @@ def test_pages_are_gzipped_when_the_browser_accepts_it(client):
 def test_openapi_documentation_is_not_exposed(client):
     for path in ("/docs", "/redoc", "/openapi.json"):
         assert client.get(path).status_code == 404, path
+
+
+def test_the_health_probe_never_touches_powens(client, monkeypatch):
+    """La sonde de l'hébergeur passe toutes les 30 s : elle ne doit pas coûter un
+    appel Powens (bandeau de santé) ni figurer parmi les pages à bandeau."""
+    import app.main as main
+
+    async def _boom(*args, **kwargs):
+        raise AssertionError("connection_alerts appelé depuis /health")
+
+    monkeypatch.setattr(main, "connection_alerts", _boom)
+    assert client.get("/health").text == "ok"
+    assert client.get("/favicon.ico", follow_redirects=False).status_code == 301

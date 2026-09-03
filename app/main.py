@@ -200,8 +200,11 @@ async def _health_banner(request: Request, call_next):
     Les loaders sont cachés (TTL 120/300 s) — coût nul en croisière.
     """
     request.state.health_alerts = []
+    # /health et /favicon.ico ne rendent pas le layout : y calculer le bandeau
+    # déclenchait des appels Powens à chaque sonde de l'hébergeur (toutes les
+    # 30 s), à cache froid comme après chaque redéploiement.
     if request.method == "GET" and not request.url.path.startswith(
-        ("/static", "/export", "/callback")
+        ("/static", "/export", "/callback", "/health", "/favicon.ico")
     ):
         client = getattr(request.app.state, "client", None)
         conn = getattr(request.app.state, "store", None)
