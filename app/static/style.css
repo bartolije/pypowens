@@ -707,3 +707,94 @@ form.alert-action { margin: 0; }
   .topbar { padding: 0 16px; }
   .col-8, .col-4, .col-6 { flex: 0 0 100%; }
 }
+
+/* ── Page de connexion ────────────────────────────────────────────────────── */
+/* Page autonome : pas de barre latérale, une carte centrée. `body` est en flex
+   ligne pour le reste de l'app, d'où la redéfinition ici. */
+.login-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  /* Halo ambré très dilué : la page est sinon un aplat noir sans repère. */
+  background:
+    radial-gradient(80rem 40rem at 50% -10rem, rgba(232, 168, 56, 0.10), transparent 70%),
+    var(--bg-page);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 24rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 32px 28px;
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.login-brand svg { color: var(--accent); flex: none; }
+
+.login-intro {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  margin-top: 6px;
+}
+
+.login-error {
+  margin-top: 20px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--red-bg);
+  border: 1px solid rgba(231, 76, 60, 0.35);
+  color: #f29d94;
+  font-size: 0.8125rem;
+}
+
+.login-form { display: flex; flex-direction: column; gap: 16px; margin-top: 24px; }
+.login-field { display: flex; flex-direction: column; gap: 6px; }
+.login-field label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+.login-field input {
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.login-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+.login-field input:focus-visible { outline: none; }
+
+.login-submit {
+  width: 100%;
+  justify-content: center;
+  padding: 10px 12px;
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+/* Déconnexion : un bouton, mais qui doit se lire comme les liens voisins. */
+.sidebar-logout {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}

@@ -100,10 +100,26 @@ attendue plutôt que d'échouer obscurément (`app/main.py::_redirect_uri_check`
 
 ## Le mot de passe
 
-Basic Auth n'oppose rien à la force brute : tout repose sur l'entropie du mot de
-passe. `app/auth.py` verrouille un client après 10 échecs pendant 5 minutes, ce
-qui ralentit une attaque sans la rendre impossible. Prenez une valeur tirée au
-sort, jamais un mot de passe réutilisé ailleurs :
+`APP_AUTH_USER` / `APP_AUTH_PASSWORD` ouvrent la **page de connexion**
+(`/connexion`) : un vrai formulaire, que les gestionnaires de mots de passe
+remplissent, et qui pose un cookie de session signé (HMAC-SHA256, sept jours,
+`HttpOnly`, `SameSite=Lax`, `Secure` dès que le proxy annonce HTTPS). La fenêtre
+système du HTTP Basic n'apparaît plus : le défi `WWW-Authenticate` n'est jamais
+envoyé à un navigateur.
+
+L'en-tête `Authorization: Basic` reste **accepté** pour les scripts et `curl`
+(c'est ainsi que `scripts/backup-prod.sh` récupère la base) — accepté, mais plus
+jamais réclamé.
+
+Rien de neuf à poser chez l'hébergeur : la clé de signature des sessions est
+dérivée des identifiants. Conséquence utile, changer le mot de passe déconnecte
+partout. Pour garder les sessions ouvertes malgré un changement de mot de passe,
+poser `APP_SESSION_SECRET` (valeur tirée au sort, jamais partagée).
+
+Tout repose sur l'entropie du mot de passe : `app/auth.py` verrouille un client
+après 10 échecs pendant 5 minutes, ce qui ralentit une attaque sans la rendre
+impossible. Prenez une valeur tirée au sort, jamais un mot de passe réutilisé
+ailleurs :
 
 ```bash
 openssl rand -base64 24

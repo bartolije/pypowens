@@ -35,6 +35,7 @@ from . import (
     frequency,
     imports,
     investments,
+    login,
     recap,
     recurring,
     settings_page,
@@ -234,7 +235,7 @@ async def _health_banner(request: Request, call_next):
 # à l'envers de leur ordre d'ajout. Un visiteur sans identifiants doit être
 # éconduit avant que le bandeau de santé n'aille interroger Powens et la base
 # pour lui.
-app.middleware("http")(auth.basic_auth)
+app.middleware("http")(auth.require_login)
 
 
 app.mount(
@@ -248,7 +249,7 @@ app.mount(
 async def health() -> Response:
     """Sonde de l'hébergeur : dit que l'app est vivante, et rien d'autre.
 
-    Seule route hors authentification (cf. ``auth._EXEMPT_PATHS``) : le contrôle
+    Hors authentification (cf. ``auth._EXEMPT_PATHS``) : le contrôle
     de mise en ligne s'exécute sans identifiants et prendrait un 401 pour une
     panne, refusant de basculer le trafic sur un déploiement pourtant sain.
     """
@@ -296,6 +297,7 @@ async def favicon() -> Response:
     return RedirectResponse("/static/favicon.svg", status_code=301)
 
 
+app.include_router(login.router)
 app.include_router(synthese.router)
 app.include_router(accounts.router)
 app.include_router(connections.router)

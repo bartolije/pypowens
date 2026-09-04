@@ -255,6 +255,21 @@ persistant compris, est dans [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md). Voir
 > alimentés sur toutes les apps, la catégorisation est faite localement
 > (mots-clés + overrides) et l'analyse repose sur les transactions.
 
+### Connexion
+
+Sans `APP_AUTH_USER` / `APP_AUTH_PASSWORD`, l'app ne demande rien : c'est l'usage
+local, sur la loopback. Dès que ces deux variables existent, tout passe par
+`/connexion` — un formulaire classique (remplissable par un gestionnaire de mots
+de passe) qui pose un cookie de session signé HMAC-SHA256, valable sept jours,
+`HttpOnly` / `SameSite=Lax`, `Secure` dès que la requête arrive en HTTPS. Un
+bouton « Déconnexion » ferme la session ; dix échecs verrouillent le client cinq
+minutes.
+
+Un en-tête `Authorization: Basic` reste accepté pour les scripts et `curl`, mais
+n'est plus jamais réclamé : le navigateur ne voit donc plus la fenêtre système.
+La clé de signature est dérivée des identifiants, sauf si `APP_SESSION_SECRET`
+est posée — sans elle, changer le mot de passe déconnecte partout.
+
 ### Sauvegarde hors site
 
 `.powens_finance.db` est la seule copie au monde de l'historique des soldes :

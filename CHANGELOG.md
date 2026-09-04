@@ -6,6 +6,32 @@ All notable changes to this project. Format loosely based on
 
 ## [0.2.0] — unreleased
 
+### 04/09/2026 — une vraie page de connexion à la place du HTTP Basic
+
+#### Added
+- **`/connexion`** : formulaire classique (`username` / `current-password`, avec
+  les `autocomplete` et les `label` qu'attendent les gestionnaires de mots de
+  passe — la fenêtre système du Basic, elle, ne se laissait pas remplir), qui
+  pose un **cookie de session signé** HMAC-SHA256 (sept jours, `HttpOnly`,
+  `SameSite=Lax`, `Secure` dès que le proxy annonce HTTPS). Signature écrite sur
+  la bibliothèque standard : pas de dépendance de plus dans l'image.
+- **Bouton « Déconnexion »** dans la barre latérale : Basic n'en offrait aucun.
+- `APP_SESSION_SECRET`, optionnelle : à défaut, la clé est dérivée des
+  identifiants, ce qui évite une variable de plus et fait de tout changement de
+  mot de passe une déconnexion générale.
+
+#### Changed
+- Un navigateur ne reçoit **plus jamais** le défi `WWW-Authenticate` (c'est lui
+  qui ouvre la fenêtre système) : il est redirigé vers la page de connexion, et
+  ramené ensuite sur la page qu'il demandait. Les requêtes htmx reçoivent un
+  `HX-Redirect`.
+- `Authorization: Basic` reste **accepté** pour les scripts et `curl`
+  (`scripts/backup-prod.sh` continue de tirer la base sans changement), et
+  déclenche toujours le verrouillage après dix échecs — désormais partagé avec
+  le formulaire.
+- Les statiques (feuille de style, police, icône) sont servis sans
+  authentification, faute de quoi la page de connexion s'afficherait nue.
+
 ### 04/09/2026 — la réintégration d'un compte devient permanente, et rapide
 
 #### Added

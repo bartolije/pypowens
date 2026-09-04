@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connexion · Powens Finance</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v={{ static_v }}">
+  <link rel="stylesheet" href="/static/vendor/fonts.css?v={{ static_v }}">
+  <link rel="stylesheet" href="/static/style.css?v={{ static_v }}">
+</head>
+<body class="login-body">
+  <main class="login-card">
+    <div class="login-brand">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+      <span>Powens Finance</span>
+    </div>
+    <p class="login-intro">Comptes, patrimoine et abonnements — accès privé.</p>
+
+    {% if error %}
+    <p class="login-error" role="alert">{{ error }}</p>
+    {% endif %}
+
+    {# Un vrai formulaire, avec les noms et les autocomplete que les
+       gestionnaires de mots de passe reconnaissent : la fenêtre système du
+       HTTP Basic, elle, ne se laissait pas remplir. #}
+    <form method="post" action="/connexion" class="login-form">
+      <input type="hidden" name="suite" value="{{ suite }}">
+      <div class="login-field">
+        <label for="username">Identifiant</label>
+        <input type="text" id="username" name="username" autocomplete="username"
+               autocapitalize="none" autocorrect="off" spellcheck="false" required autofocus>
+      </div>
+      <div class="login-field">
+        <label for="password">Mot de passe</label>
+        <input type="password" id="password" name="password"
+               autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn btn-primary login-submit">Se connecter</button>
+    </form>
+  </main>
+</body>
+</html>
