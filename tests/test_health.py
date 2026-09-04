@@ -147,12 +147,14 @@ def test_reactivating_the_account_clears_the_alert(client, fake_client):
 
 # ---------------------------------------------------------- synchro d'ouverture
 
+
 def test_stuck_connection_is_auto_synced_on_page_load(client, fake_client):
     """Saine, >24 h sans synchro, aucun next_try : Powens ne repassera jamais
     seul (le cas Trade Republic, figée deux semaines). Ouvrir l'app relance."""
     fake_client._connections[0]["last_update"] = "2026-06-10 06:00:00"  # 5 j avant
     _reset(fake_client)
     import app.main
+
     app.main.app.state.auto_sync_at = None
 
     client.get("/comptes")
@@ -173,6 +175,7 @@ def test_connection_in_error_is_never_auto_synced(client, fake_client):
     fake_client._connections[0]["state"] = "webauthRequired"
     _reset(fake_client)
     import app.main
+
     app.main.app.state.auto_sync_at = None
 
     client.get("/comptes")
@@ -189,6 +192,7 @@ def test_planned_next_try_is_not_doubled(client, fake_client):
     fake_client._connections[0]["next_try"] = "2026-06-15 23:00:00"  # ce soir
     _reset(fake_client)
     import app.main
+
     app.main.app.state.auto_sync_at = None
 
     client.get("/comptes")
@@ -200,6 +204,7 @@ def test_planned_next_try_is_not_doubled(client, fake_client):
 
 
 # ------------------------------------------------------------- alertes budget
+
 
 def test_overrun_budget_shows_in_the_banner(client, fake_client):
     """Enveloppe 10 €, dépense 42 € ce mois-ci → alerte sur TOUTES les pages."""
@@ -226,4 +231,99 @@ def test_overrun_budget_shows_in_the_banner(client, fake_client):
 
     client.post("/budgets", data={"categorie": "Streaming / Médias", "montant": ""})
     fake_client._txns.pop()
+    _reset(fake_client)
+
+
+# ----------------------------------------------------- réintégration permanente
+
+
+def _disabled_loan(account_id: int) -> dict:
+    return {
+        "id": account_id,
+        "id_connection": 1,
+        "name": "PRET IMMO MODULABLE",
+        "type": "loan",
+        "balance": "-255954.00",
+        "currency": {"id": "EUR"},
+        "disabled": "2026-06-01 09:59:27",
+    }
+
+
+def test_reactivation_pins_the_account_and_keeps_the_history_cache(client, fake_client):
+    """Réintégrer épingle l'identité stable du compte et n'efface plus tout le
+    cache : l'historique reste servi (périmé, rafraîchi en fond)."""
+    import app.data as data
+    from app import store as st
+
+    fake_client._disabled_accounts.append(_disabled_loan(29))
+    _reset(fake_client)
+    client.get("/analyse")  # chauffe l'historique des transactions
+    assert data._TXN_KEY in data._cache
+
+    response = client.post("/comptes/29/reactiver", follow_redirects=False)
+    assert response.status_code == 303
+
+    assert data._TXN_KEY in data._cache, "l'historique n'est pas jeté"
+    assert data._TXN_KEY in data._stale_marks, "… mais déclaré périmé"
+    assert "accounts" not in data._cache, "les listes de comptes sont rechargées"
+
+    conn = client.app.state.store
+    assert st.pinned_accounts(conn) == {"conn:1|PRET IMMO MODULABLE": "PRET IMMO MODULABLE"}
+
+    body = client.get("/reglages").text
+    assert "PRET IMMO MODULABLE" in body and 'value="epingle"' in body
+    client.post(
+        "/reglages/oublier",
+        data={"quoi": "epingle", "label": "conn:1|PRET IMMO MODULABLE"},
+        follow_redirects=False,
+    )
+    assert st.pinned_accounts(conn) == {}
+
+    fake_client._disabled_accounts.clear()
+    _reset(fake_client)
+
+
+def test_pinned_account_comes_back_by_itself(client, fake_client):
+    """Powens redésactive (ou recrée sous un autre id) : l'épingle le réintègre
+    pendant le calcul du bandeau, sans clic."""
+    from app import health
+    from app import store as st
+
+    health.reset_reactivation_throttle()
+    st.pin_account(client.app.state.store, "conn:1|PRET IMMO MODULABLE", "PRET IMMO MODULABLE")
+    fake_client._disabled_accounts.append(_disabled_loan(31))  # nouvel id après recréation
+    _reset(fake_client)
+
+    body = _text(client.get("/comptes").text)
+    assert "exclu du patrimoine" not in body
+    assert "disabled" not in fake_client._disabled_accounts[0], "le PUT a été rejoué"
+
+    fake_client._disabled_accounts.clear()
+    st.unpin_account(client.app.state.store, "conn:1|PRET IMMO MODULABLE")
+    _reset(fake_client)
+
+
+def test_auto_reactivation_is_throttled_when_powens_refuses(client, fake_client, monkeypatch):
+    from app import health
+    from app import store as st
+
+    health.reset_reactivation_throttle()
+    st.pin_account(client.app.state.store, "conn:1|PRET IMMO MODULABLE", "PRET IMMO MODULABLE")
+    fake_client._disabled_accounts.append(_disabled_loan(32))
+    _reset(fake_client)
+    calls = {"n": 0}
+
+    async def refuse(*args, **kwargs):
+        calls["n"] += 1
+        raise RuntimeError("Powens refuse")
+
+    monkeypatch.setattr(fake_client, "update_account", refuse)
+    first = _text(client.get("/comptes").text)
+    second = _text(client.get("/comptes").text)
+    assert calls["n"] == 1, "une seule tentative par heure"
+    assert "exclu du patrimoine" in first and "exclu du patrimoine" in second, "le bouton reste"
+
+    fake_client._disabled_accounts.clear()
+    st.unpin_account(client.app.state.store, "conn:1|PRET IMMO MODULABLE")
+    health.reset_reactivation_throttle()
     _reset(fake_client)

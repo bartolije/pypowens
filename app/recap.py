@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 from datetime import date
 from decimal import Decimal
@@ -27,8 +28,15 @@ router = APIRouter()
 # Connection states that only the user can clear, by going back through the bank's
 # own authentication in the Webview. Retrying the sync on these is pointless.
 USER_ACTION_STATES = frozenset(
-    {"webauthRequired", "SCARequired", "additionalInformationNeeded", "wrongpass",
-     "actionNeeded", "decoupled", "validating"}
+    {
+        "webauthRequired",
+        "SCARequired",
+        "additionalInformationNeeded",
+        "wrongpass",
+        "actionNeeded",
+        "decoupled",
+        "validating",
+    }
 )
 
 # Readable equivalents of the states Powens reports. Without this the page prints
@@ -49,7 +57,6 @@ STATE_LABELS = {
 }
 
 
-
 def _currency_of(account: Account, default: str) -> str:
     return (account.currency or default).upper()
 
@@ -66,8 +73,9 @@ async def recap(
     settings: Settings = Depends(get_settings),  # noqa: B008
     conn: sqlite3.Connection = Depends(get_store),  # noqa: B008
 ):
-    accounts_list = await load_accounts(client, conn=conn)
-    connections = await load_connections(client)
+    accounts_list, connections = await asyncio.gather(
+        load_accounts(client, conn=conn), load_connections(client)
+    )
 
     # Net worth can only sum accounts sharing one currency (no FX rates here).
     # Accounts in another currency are listed apart and excluded from the total.
@@ -134,7 +142,8 @@ async def recap(
         filtered_families: list[dict[str, Any]] = []
         for family in families:
             matching = [
-                acc for acc in family["accounts"]
+                acc
+                for acc in family["accounts"]
                 if account_to_connection.get(acc.id) == institution_filter
             ]
             if matching:
@@ -193,7 +202,6 @@ async def recap(
         compact=True,
     )
 
-
     # Record today's balances (au plus une fois par jour — le collecteur reste la
     # référence), then measure the variation against the first day of the window.
     store.ensure_snapshot(conn, accounts_list.accounts, default_currency=base_currency)
@@ -244,9 +252,7 @@ async def recap(
     isins = [str(row["code"]) for row in invest_rows if row.get("code")]
     if isins:
         try:
-            classification = await classify_investments(
-                isins, conn, settings.openfigi_api_key
-            )
+            classification = await classify_investments(isins, conn, settings.openfigi_api_key)
         except Exception:
             classification = {}
         if classification:
@@ -265,14 +271,10 @@ async def recap(
                 sector_agg[sector] = sector_agg.get(sector, 0.0) + val
                 country_agg[country] = country_agg.get(country, 0.0) + val
             if sector_agg:
-                sector_items = sorted(
-                    sector_agg.items(), key=lambda x: x[1], reverse=True
-                )
+                sector_items = sorted(sector_agg.items(), key=lambda x: x[1], reverse=True)
                 sector_treemap = treemap(sector_items, unit=symbol)
             if country_agg:
-                country_items = sorted(
-                    country_agg.items(), key=lambda x: x[1], reverse=True
-                )
+                country_items = sorted(country_agg.items(), key=lambda x: x[1], reverse=True)
                 country_treemap = treemap(country_items, unit=symbol)
 
     # A healthy Powens connection has no state and no error message. States that name
@@ -288,8 +290,10 @@ async def recap(
         state = connection.state or ""
         # Never the raw error_message: on a webauth connector it is the bank's whole
         # authorize URL, ``state`` token included.
-        message = STATE_LABELS.get(state) or state or (
-            "Erreur signalée par la banque" if connection.error_message else ""
+        message = (
+            STATE_LABELS.get(state)
+            or state
+            or ("Erreur signalée par la banque" if connection.error_message else "")
         )
         conns.append(
             {

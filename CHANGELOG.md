@@ -6,6 +6,23 @@ All notable changes to this project. Format loosely based on
 
 ## [0.2.0] — unreleased
 
+### 04/09/2026 — la réintégration d'un compte devient permanente, et rapide
+
+#### Added
+- **Épingle de réintégration** (`account_pin`) : le bouton « Réintégrer » du
+  bandeau épingle l'identité STABLE du compte (IBAN, sinon connexion + nom —
+  pas son id, que Powens régénère). Dès que le bandeau voit un compte désactivé
+  dont l'identité est épinglée, il le réintègre tout seul (au plus une tentative
+  par heure si Powens refuse). La page Réglages liste les épingles et permet de
+  les oublier.
+
+#### Changed
+- Réintégrer ne vide plus TOUT le cache : les listes de comptes sont rechargées,
+  l'historique et les investissements sont servis tels quels et rafraîchis en
+  fond (`data.invalidate` / `data.expire`). La page suivante attendait quatre à
+  cinq secondes de rechargements Powens enchaînés.
+- `/patrimoine` demande comptes et connexions en parallèle.
+
 ### Performance du 03/09/2026 — plus jamais d'attente Powens sur une page
 
 Mesuré en local sur un jeu gonflé (12 comptes, 5 300 opérations, 22 000 soldes

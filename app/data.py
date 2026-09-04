@@ -64,6 +64,9 @@ _locks: dict[str, asyncio.Lock] = {}
 # figer les chiffres indéfiniment.
 STALE_GRACE = 3600.0
 _refreshing: set[str] = set()
+# Entrées déclarées périmées d'office (voir expire()) : servies telles quelles
+# et rafraîchies en fond au prochain accès, quel que soit leur âge.
+_stale_marks: set[str] = set()
 _background: set[asyncio.Task[None]] = set()
 
 
@@ -117,7 +120,11 @@ async def _cached(
     if fresh is not None:
         return fresh
     hit = _cache.get(key)
-    if ttl > 0 and hit is not None and (time.monotonic() - hit[0]) < ttl + STALE_GRACE:
+    if (
+        ttl > 0
+        and hit is not None
+        and (key in _stale_marks or (time.monotonic() - hit[0]) < ttl + STALE_GRACE)
+    ):
         _refresh_in_background(key, loader, after)
         return hit[1]
     async with _lock(key):
@@ -140,7 +147,7 @@ def _get(key: str, ttl: float) -> Any:
     chaque lecture pour zéro sécurité gagnée.
     """
     hit = _cache.get(key)
-    if hit and (time.monotonic() - hit[0]) < ttl:
+    if hit and key not in _stale_marks and (time.monotonic() - hit[0]) < ttl:
         return hit[1]
     return None
 
@@ -148,6 +155,35 @@ def _get(key: str, ttl: float) -> Any:
 def _set(key: str, value: object) -> None:
     global _generation
     _cache[key] = (time.monotonic(), value)
+    _stale_marks.discard(key)
+    _generation += 1
+
+
+def invalidate(*keys: str) -> None:
+    """Retire des entrées : le prochain accès les recharge en ligne.
+
+    Pour ce qui doit être exact tout de suite après une action — la liste des
+    comptes après une réintégration, par exemple.
+    """
+    global _generation
+    for key in keys:
+        _cache.pop(key, None)
+        _stale_marks.discard(key)
+    _generation += 1
+
+
+def expire(*keys: str) -> None:
+    """Déclare des entrées périmées sans les retirer : servies telles quelles au
+    prochain accès et rafraîchies en arrière-plan.
+
+    Vider tout le cache après chaque action (« Réintégrer », « Synchroniser »)
+    faisait repayer l'historique complet — deux secondes — à la page suivante,
+    alors qu'il n'a la plupart du temps pas changé.
+    """
+    global _generation
+    for key in keys:
+        if key in _cache:
+            _stale_marks.add(key)
     _generation += 1
 
 
@@ -155,6 +191,7 @@ def clear_cache() -> None:
     global _generation
     _cache.clear()
     _refreshing.clear()
+    _stale_marks.clear()
     _derived.clear()
     _generation += 1
 

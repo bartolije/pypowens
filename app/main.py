@@ -7,6 +7,7 @@ import asyncio
 import logging
 import os
 import secrets
+import sqlite3
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -40,8 +41,8 @@ from . import (
     webauth,
 )
 from .config import Settings, apply_overrides, auth_credentials, get_settings
-from .data import clear_cache, load_connections, warm_up
-from .deps import get_client
+from .data import clear_cache, expire, invalidate, load_all_accounts, load_connections, warm_up
+from .deps import get_client, get_store
 from .deps import get_settings as settings_dep
 from .health import auto_sync_stuck_connections, connection_alerts
 from .state import bootstrap_client, persist_token, try_renew
@@ -629,13 +630,25 @@ async def synchronize(
 async def reactivate_account(
     account_id: int,
     client: PowensClient = Depends(get_client),
+    conn: sqlite3.Connection = Depends(get_store),
 ) -> RedirectResponse:
-    """Réintègre un compte désactivé côté Powens dans le patrimoine.
+    """Réintègre un compte désactivé côté Powens dans le patrimoine — durablement.
 
     Après la réparation d'une connexion, Powens peut RECRÉER un compte à l'état
     désactivé : son solde sort de tous les agrégats et rien dans le Webview ne
-    le réactive. C'est le bouton « Réintégrer » du bandeau de santé.
+    le réactive. C'est le bouton « Réintégrer » du bandeau de santé. Le compte
+    est aussi ÉPINGLÉ par son identité stable : s'il est de nouveau désactivé
+    (ou recréé sous un autre id), le bandeau le réintègre tout seul.
     """
     await client.update_account(account_id, disabled=False)
-    clear_cache()
+    known = await load_all_accounts(client)
+    account = next((a for a in known.accounts if a.id == account_id), None)
+    signature = store.account_signature(account) if account is not None else None
+    if signature is not None:
+        store.pin_account(conn, signature, account.name if account else None)
+    # Invalidation ciblée : les listes de comptes doivent être exactes tout de
+    # suite ; l'historique et les investissements sont servis tels quels et
+    # rafraîchis en fond. Vider tout faisait attendre quatre à cinq secondes.
+    invalidate("accounts", "accounts_all", "connections")
+    expire("transactions", "investments")
     return RedirectResponse("/patrimoine?reactivated=1", status_code=303)

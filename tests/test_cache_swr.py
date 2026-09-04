@@ -174,3 +174,20 @@ async def test_warm_up_fills_every_cache(fake_client):
         data._cache
     )
     data.clear_cache()
+
+
+async def test_expire_serves_stale_then_refreshes_while_invalidate_reloads(fake_client):
+    data.clear_cache()
+    calls = _count(fake_client, "list_connections")
+    first = await data.load_connections(fake_client, ttl=120)
+
+    data.expire("connections")
+    assert await data.load_connections(fake_client, ttl=120) is first, "servi périmé"
+    await _settle()
+    assert calls["n"] == 2
+    assert "connections" not in data._stale_marks
+
+    data.invalidate("connections")
+    assert "connections" not in data._cache
+    await data.load_connections(fake_client, ttl=120)
+    assert calls["n"] == 3

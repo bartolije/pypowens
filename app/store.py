@@ -108,6 +108,17 @@ CREATE TABLE IF NOT EXISTS budget (
     updated  TEXT NOT NULL
 );
 
+-- Comptes à garder dans le périmètre quoi qu'en dise Powens. Après une panne de
+-- connexion, Powens recrée parfois un compte à l'état DÉSACTIVÉ (le prêt du
+-- 02/08) : le bouton « Réintégrer » le remettait, mais il fallait recommencer à
+-- chaque rechute. L'épingle porte l'identité STABLE du compte (IBAN, sinon
+-- connexion + nom — voir account_signature), pas son id, que Powens régénère.
+CREATE TABLE IF NOT EXISTS account_pin (
+    signature TEXT PRIMARY KEY,
+    name      TEXT,
+    updated   TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS series_state (
     series_key    TEXT PRIMARY KEY,       -- merchant key + periodicity
     merchant      TEXT NOT NULL,
@@ -455,6 +466,30 @@ def sync_account_identities(
         )
     conn.commit()
     return remapped
+
+
+# ------------------------------------------------------- comptes épinglés
+
+
+def pinned_accounts(conn: sqlite3.Connection) -> dict[str, str]:
+    """``{signature: nom}`` des comptes à réintégrer d'office s'ils sont désactivés."""
+    return {
+        row["signature"]: (row["name"] or "")
+        for row in conn.execute("SELECT signature, name FROM account_pin")
+    }
+
+
+def pin_account(conn: sqlite3.Connection, signature: str, name: str | None) -> None:
+    conn.execute(
+        "INSERT OR REPLACE INTO account_pin (signature, name, updated) VALUES (?, ?, ?)",
+        (signature, name or "", date.today().isoformat()),
+    )
+    conn.commit()
+
+
+def unpin_account(conn: sqlite3.Connection, signature: str) -> None:
+    conn.execute("DELETE FROM account_pin WHERE signature = ?", (signature,))
+    conn.commit()
 
 
 # ------------------------------------------------------------ balance history

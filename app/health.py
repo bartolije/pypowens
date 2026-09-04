@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import sqlite3
+import time
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -157,6 +158,8 @@ async def connection_alerts(
         for a in all_accounts.accounts
         if a.raw.get("disabled") and not a.raw.get("deleted") and a.balance
     ]
+    if conn is not None and excluded:
+        excluded = await _reactivate_pinned(client, conn, excluded)
     for account in excluded:
         alerts.append(
             {
@@ -174,6 +177,66 @@ async def connection_alerts(
     if conn is not None:
         alerts.extend(await _budget_overruns(client, conn))
     return alerts
+
+
+# Un compte épinglé que Powens refuse de réactiver n'est retenté qu'une fois
+# par heure : le bandeau tourne sur toutes les pages, sans cette borne chaque
+# affichage relancerait le PUT.
+AUTO_REACTIVATE_EVERY = 3600
+_reactivation_attempts: dict[str, float] = {}
+
+
+def reset_reactivation_throttle() -> None:
+    _reactivation_attempts.clear()
+
+
+async def _reactivate_pinned(
+    client: PowensClient, conn: sqlite3.Connection, excluded: list[Any]
+) -> list[Any]:
+    """Réintègre d'office les comptes désactivés dont l'identité est épinglée.
+
+    C'est le bouton « Réintégrer » rendu permanent : une fois cliqué, l'épingle
+    (voir ``store.pin_account``) fait revenir le compte dans le total à chaque
+    rechute, sous son nouvel id s'il a été recréé. Retourne les comptes qui
+    restent exclus, donc à afficher dans le bandeau.
+    """
+    pinned = store.pinned_accounts(conn)
+    if not pinned:
+        return excluded
+    still_excluded: list[Any] = []
+    now = time.monotonic()
+    reactivated = False
+    for account in excluded:
+        signature = store.account_signature(account)
+        if signature is None or signature not in pinned or account.id is None:
+            still_excluded.append(account)
+            continue
+        last = _reactivation_attempts.get(signature)
+        if last is not None and now - last < AUTO_REACTIVATE_EVERY:
+            still_excluded.append(account)
+            continue
+        _reactivation_attempts[signature] = now
+        try:
+            await client.update_account(account.id, disabled=False)
+        except Exception:  # noqa: BLE001 — best-effort, le bandeau garde le bouton
+            _log.warning(
+                "réintégration automatique du compte %s (%s) refusée",
+                account.id,
+                account.name,
+                exc_info=True,
+            )
+            still_excluded.append(account)
+            continue
+        reactivated = True
+        _log.info(
+            "compte « %s » (id %s) réintégré automatiquement : épinglé", account.name, account.id
+        )
+    if reactivated:
+        # Les listes de comptes changent tout de suite ; le reste (historique,
+        # investissements) n'a pas bougé et se rafraîchit en fond.
+        data.invalidate("accounts", "accounts_all", "connections")
+        data.expire("transactions", "investments")
+    return still_excluded
 
 
 async def _budget_overruns(client: PowensClient, conn: sqlite3.Connection) -> list[dict[str, Any]]:
