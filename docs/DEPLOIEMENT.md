@@ -159,3 +159,21 @@ Chez soi, le plus sobre reste de ne rien publier du tout : un réseau privé
 (Tailscale, Cloudflare Tunnel) donne l'accès depuis le téléphone sans exposer
 quoi que ce soit — l'authentification reste alors une seconde barrière, pas la
 seule.
+
+
+## Sauvegarde hors du volume
+
+Le volume est la seule copie de l'historique. Un redéploiement ne le touche pas
+(`.dockerignore` exclut la base, le schéma n'a que des `CREATE TABLE IF NOT
+EXISTS` et des `ADD COLUMN`), mais un volume perdu ou un compte fermé perdrait
+tout. Depuis le 04/09/2026, `GET /sauvegarde.db` (authentifié) rend une copie
+cohérente ; `scripts/backup-prod.sh` la tire sur le poste de travail chaque jour
+(launchd : `scripts/fr.jbartoli.powens-backup.plist`). Première exécution à la
+main pour vérifier :
+
+```bash
+PYPOWENS_URL=https://finance.jbartoli.fr APP_AUTH_USER=… APP_AUTH_PASSWORD=… scripts/backup-prod.sh
+```
+
+La sortie annonce le nombre de soldes archivés et le dernier jour : ce sont les
+deux chiffres à comparer avec ce que montre `/connexions`.

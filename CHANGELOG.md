@@ -16,6 +16,12 @@ All notable changes to this project. Format loosely based on
   par heure si Powens refuse). La page Réglages liste les épingles et permet de
   les oublier.
 
+- **Sauvegarde hors site** : `GET /sauvegarde.db` (authentifié) rend une copie
+  cohérente de la base ; `scripts/backup-prod.sh` la télécharge, vérifie son
+  intégrité et garde 90 jours ; `scripts/fr.jbartoli.powens-backup.plist` pour
+  l'automatiser sur un Mac. L'historique des soldes n'existait que sur le
+  volume de l'hébergeur, copies quotidiennes comprises.
+
 #### Changed
 - Réintégrer ne vide plus TOUT le cache : les listes de comptes sont rechargées,
   l'historique et les investissements sont servis tels quels et rafraîchis en

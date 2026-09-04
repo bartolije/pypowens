@@ -255,6 +255,17 @@ persistant compris, est dans [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md). Voir
 > alimentés sur toutes les apps, la catégorisation est faite localement
 > (mots-clés + overrides) et l'analyse repose sur les transactions.
 
+### Sauvegarde hors site
+
+`.powens_finance.db` est la seule copie au monde de l'historique des soldes :
+Powens ne répond qu'au présent, et les copies quotidiennes du collecteur
+(`.backups/`) vivent sur le même disque ou le même volume. La route
+authentifiée `GET /sauvegarde.db` rend une copie cohérente (API de sauvegarde
+en ligne de SQLite) ; `scripts/backup-prod.sh` la télécharge, vérifie son
+intégrité et garde 90 jours dans `~/Backups/pypowens`. Pour l'automatiser sur
+un Mac : `scripts/fr.jbartoli.powens-backup.plist` (launchd, 7 h 30), avec les
+identifiants dans `~/.config/pypowens/backup.env`.
+
 ## Roadmap
 
 - Webhooks payload models.

@@ -8,14 +8,17 @@ import logging
 import os
 import secrets
 import sqlite3
+import tempfile
 import time
 from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, Request, Response
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -250,6 +253,41 @@ async def health() -> Response:
     panne, refusant de basculer le trafic sur un déploiement pourtant sain.
     """
     return PlainTextResponse("ok")
+
+
+@app.get("/sauvegarde.db", include_in_schema=False)
+async def download_backup(
+    conn: sqlite3.Connection = Depends(get_store),
+) -> Response:
+    """Copie cohérente de la base locale, à télécharger.
+
+    L'historique des soldes n'existe nulle part ailleurs que dans cette base
+    (Powens ne répond qu'au présent), et les copies quotidiennes du collecteur
+    restent sur le même volume : perdre le volume perdrait tout. Cette route
+    permet de sortir une copie ailleurs — `scripts/backup-prod.sh` la tire
+    chaque jour sur le poste de travail. Copie par l'API de sauvegarde en ligne
+    de SQLite (cohérente même pendant des écritures), jamais par lecture du
+    fichier ; protégée par l'authentification comme toute autre page.
+    """
+    handle = tempfile.NamedTemporaryFile(prefix="powens-finance-", suffix=".db", delete=False)
+    handle.close()
+
+    def _copy() -> None:
+        destination = sqlite3.connect(handle.name)
+        try:
+            with destination:
+                conn.backup(destination)
+        finally:
+            destination.close()
+
+    await asyncio.to_thread(_copy)
+    return FileResponse(
+        handle.name,
+        media_type="application/vnd.sqlite3",
+        filename=f"powens_finance-{date.today():%Y-%m-%d}.db",
+        headers={"Cache-Control": "private, no-store"},
+        background=BackgroundTask(os.unlink, handle.name),
+    )
 
 
 @app.get("/favicon.ico", include_in_schema=False)
