@@ -221,6 +221,16 @@ async def run_once(
         _log.info(
             "indice %s : %d clôture(s) archivée(s)", settings.benchmark_ticker, benchmark_count
         )
+    # Comptes épinglés que Powens aurait désactivés depuis le dernier passage :
+    # les réintégrer AVANT le relevé, sinon le solde du jour leur manquerait.
+    try:
+        from .health import reactivate_pinned_accounts  # import tardif (module routes)
+
+        restored = await reactivate_pinned_accounts(client, conn)
+        if restored:
+            _log.info("%d compte(s) épinglé(s) réintégré(s) avant le relevé", restored)
+    except Exception:  # noqa: BLE001 — best-effort, la collecte continue
+        _log.warning("réintégration des comptes épinglés impossible", exc_info=True)
     try:
         report = await collect(client, conn, settings=settings)
     except PowensAuthError:

@@ -94,6 +94,29 @@
    "Aucun — le bouton « Réintégrer » du bandeau épingle le compte : s'il est de nouveau désactivé côté Powens, il revient seul dans le total.",
    ["Identité stable", "Compte"]) }}
 
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Épingler un compte</h3></div>
+  <div class="card-body">
+    <p class="text-secondary small" style="margin-top: 0;">
+      Un compte épinglé revient seul dans le total si Powens le désactive ou le recrée
+      (cas du prêt immobilier). Choisir le compte, y compris s'il est désactivé en ce moment :
+      il est alors réintégré immédiatement.
+    </p>
+    {% if pinnable %}
+    <form method="post" action="/reglages/epingler" style="display: flex; gap: .5rem; flex-wrap: wrap; align-items: center;">
+      <select name="signature" aria-label="Compte à épingler" style="min-width: 18rem;">
+        {% for signature, label in pinnable %}
+        <option value="{{ signature }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn btn-primary">Épingler</button>
+    </form>
+    {% else %}
+    <span class="text-secondary">Tous les comptes connus sont déjà épinglés, ou Powens n'a pas répondu.</span>
+    {% endif %}
+  </div>
+</div>
+
 {{ remembered("Budgets", budgets, "budget",
    "Aucune enveloppe — elles se posent depuis la page Analyse.",
    ["Catégorie", "Enveloppe"]) }}

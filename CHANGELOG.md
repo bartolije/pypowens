@@ -22,6 +22,11 @@ All notable changes to this project. Format loosely based on
   l'automatiser sur un Mac. L'historique des soldes n'existait que sur le
   volume de l'hébergeur, copies quotidiennes comprises.
 
+- **Épingler depuis Réglages** sans attendre une désactivation (liste des comptes
+  connus, désactivés compris — réintégration immédiate le cas échéant), et
+  réintégration des comptes épinglés au DÉBUT de chaque passe du collecteur,
+  avant le relevé des soldes.
+
 #### Changed
 - Réintégrer ne vide plus TOUT le cache : les listes de comptes sont rechargées,
   l'historique et les investissements sont servis tels quels et rafraîchis en

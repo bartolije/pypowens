@@ -153,11 +153,7 @@ async def connection_alerts(
     # après réparation de la connexion, le compte est RECRÉÉ DÉSACTIVÉ — sans le
     # bouton « Réintégrer » ci-dessous, rien dans l'UI ne permettait de le
     # faire revenir dans le total.
-    excluded = [
-        a
-        for a in all_accounts.accounts
-        if a.raw.get("disabled") and not a.raw.get("deleted") and a.balance
-    ]
+    excluded = _excluded_accounts(all_accounts.accounts)
     if conn is not None and excluded:
         excluded = await _reactivate_pinned(client, conn, excluded)
     for account in excluded:
@@ -237,6 +233,25 @@ async def _reactivate_pinned(
         data.invalidate("accounts", "accounts_all", "connections")
         data.expire("transactions", "investments")
     return still_excluded
+
+
+def _excluded_accounts(accounts: list[Any]) -> list[Any]:
+    """Comptes désactivés côté Powens mais porteurs d'un solde (hors fantômes supprimés)."""
+    return [a for a in accounts if a.raw.get("disabled") and not a.raw.get("deleted") and a.balance]
+
+
+async def reactivate_pinned_accounts(client: PowensClient, conn: sqlite3.Connection) -> int:
+    """Réintègre les comptes épinglés désactivés, hors bandeau — retourne le nombre réintégré.
+
+    Appelée au début de chaque passe du collecteur : sans elle, un compte que
+    Powens a désactivé dans la nuit manquerait au relevé du jour, et ne
+    reviendrait qu'à la prochaine visite d'une page.
+    """
+    if not store.pinned_accounts(conn):
+        return 0
+    excluded = _excluded_accounts((await load_all_accounts(client)).accounts)
+    remaining = await _reactivate_pinned(client, conn, excluded)
+    return len(excluded) - len(remaining)
 
 
 async def _budget_overruns(client: PowensClient, conn: sqlite3.Connection) -> list[dict[str, Any]]:

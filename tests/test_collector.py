@@ -163,3 +163,36 @@ async def test_investment_histories_are_fetched_in_parallel(fake_client, conn, m
 
     assert report.lines == 6 and report.values == 6
     assert in_flight["max"] == min(6, collector.HISTORY_CONCURRENCY)
+
+
+async def test_run_once_reactivates_pinned_accounts_before_the_snapshot(
+    fake_client, conn, monkeypatch
+):
+    """Un compte épinglé désactivé dans la nuit doit revenir AVANT le relevé du
+    jour, sinon son solde manque à la courbe jusqu'à la prochaine visite."""
+    import app.data
+    from app import collector, health, store
+
+    monkeypatch.setenv("APP_NOTIFY", "0")
+    monkeypatch.setattr(collector, "_collect_benchmark", lambda *args, **kwargs: 0)
+    health.reset_reactivation_throttle()
+    app.data.clear_cache()
+    store.pin_account(conn, "conn:1|PRET IMMO MODULABLE", "PRET IMMO MODULABLE")
+    fake_client._disabled_accounts.append(
+        {
+            "id": 41,
+            "id_connection": 1,
+            "name": "PRET IMMO MODULABLE",
+            "type": "loan",
+            "balance": "-255954.00",
+            "currency": {"id": "EUR"},
+            "disabled": "2026-06-14 02:00:00",
+        }
+    )
+
+    await collector.run_once(fake_client, conn, _settings())
+
+    assert "disabled" not in fake_client._disabled_accounts[0]
+    fake_client._disabled_accounts.clear()
+    health.reset_reactivation_throttle()
+    app.data.clear_cache()

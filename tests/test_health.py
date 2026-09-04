@@ -327,3 +327,36 @@ def test_auto_reactivation_is_throttled_when_powens_refuses(client, fake_client,
     st.unpin_account(client.app.state.store, "conn:1|PRET IMMO MODULABLE")
     health.reset_reactivation_throttle()
     _reset(fake_client)
+
+
+def test_settings_can_pin_an_account_before_any_incident(client, fake_client):
+    """Sans attendre que Powens le désactive : la liste propose tous les comptes
+    connus (désactivés compris) et l'épingle réintègre tout de suite si besoin."""
+    from app import health
+    from app import store as st
+
+    health.reset_reactivation_throttle()
+    fake_client._disabled_accounts.append(_disabled_loan(40))
+    _reset(fake_client)
+
+    body = client.get("/reglages").text
+    assert "PRET IMMO MODULABLE (loan) — désactivé" in body
+    assert 'value="conn:1|PRET IMMO MODULABLE"' in body
+
+    response = client.post(
+        "/reglages/epingler",
+        data={"signature": "conn:1|PRET IMMO MODULABLE"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    conn = client.app.state.store
+    assert st.pinned_accounts(conn) == {"conn:1|PRET IMMO MODULABLE": "PRET IMMO MODULABLE"}
+    assert "disabled" not in fake_client._disabled_accounts[0], "réintégré dans la foulée"
+    body = client.get("/reglages").text
+    assert '<option value="conn:1|PRET IMMO MODULABLE"' not in body, "plus proposé une fois épinglé"
+    assert "PRET IMMO MODULABLE" in body, "… mais listé parmi les épingles"
+
+    fake_client._disabled_accounts.clear()
+    st.unpin_account(conn, "conn:1|PRET IMMO MODULABLE")
+    health.reset_reactivation_throttle()
+    _reset(fake_client)
