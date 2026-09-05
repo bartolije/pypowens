@@ -10,11 +10,11 @@
   {# Police auto-hébergée : chaque affichage notifiait Google (IP, UA, Referer). #}
   <link rel="stylesheet" href="/static/vendor/fonts.css?v={{ static_v }}">
   <link rel="stylesheet" href="/static/style.css?v={{ static_v }}">
-  <script>
-    if (localStorage.getItem("pf-hide") !== "0") {
-      document.documentElement.classList.add("hide-amounts");
-    }
-  </script>
+  {# Dans un FICHIER, et chargé sans ``defer`` : la politique de sécurité de
+     contenu interdit tout script inline (script-src 'self'), et le masquage des
+     montants doit s'appliquer avant le premier rendu — différé, les montants
+     apparaîtraient le temps d'un battement de paupières. #}
+  <script src="/static/boot.js?v={{ static_v }}"></script>
 </head>
 <body>
   <a class="skip-link" href="#contenu">Aller au contenu</a>

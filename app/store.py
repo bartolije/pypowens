@@ -195,6 +195,15 @@ CREATE TABLE IF NOT EXISTS imported_transaction (
     imported    TEXT    NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_imported_day ON imported_transaction (day);
+
+-- Ancrage SERVEUR de l'authentification : génération de sessions valides, et
+-- dernier pas de temps TOTP consommé. Ces deux valeurs vivent en base et non en
+-- mémoire parce qu'un redémarrage ne doit RIEN rouvrir : une session révoquée
+-- resterait révoquée, un code à six chiffres déjà utilisé ne resservirait pas.
+CREATE TABLE IF NOT EXISTS app_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 
@@ -336,6 +345,59 @@ def set_setting(conn: sqlite3.Connection, key: str, value: str | None) -> None:
             (key, str(value).strip(), date.today().isoformat()),
         )
     conn.commit()
+
+
+# ------------------------------------------------------------ authentification
+
+
+SESSION_EPOCH_KEY = "session_epoch"
+TOTP_COUNTER_KEY = "mfa_last_counter"
+
+
+def session_epoch(conn: sqlite3.Connection) -> int:
+    """Génération courante des sessions.
+
+    Chaque cookie porte la génération sous laquelle il a été émis et n'est
+    accepté que tant qu'elle correspond. Incrémenter ce compteur (cf.
+    :func:`revoke_sessions`) rend d'un coup inutilisable TOUT cookie émis avant
+    — c'est ce qui fait d'une déconnexion une vraie révocation, et permet de
+    couper un cookie volé sans changer le mot de passe.
+    """
+    row = conn.execute("SELECT value FROM app_meta WHERE key = ?", (SESSION_EPOCH_KEY,)).fetchone()
+    return int(row["value"]) if row else 0
+
+
+def revoke_sessions(conn: sqlite3.Connection) -> int:
+    """Ferme toutes les sessions ouvertes ; retourne la nouvelle génération."""
+    conn.execute(
+        "INSERT INTO app_meta (key, value) VALUES (?, '1') "
+        "ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1",
+        (SESSION_EPOCH_KEY,),
+    )
+    conn.commit()
+    return session_epoch(conn)
+
+
+def claim_totp_counter(conn: sqlite3.Connection, counter: int) -> bool:
+    """Consomme un pas de temps TOTP ; ``False`` s'il avait déjà servi.
+
+    Un code à six chiffres reste valide une demi-minute : intercepté (épaule,
+    hameçonnage, journal de proxy), il ouvrirait une seconde session dans cette
+    fenêtre. Le pas consommé est donc mémorisé, et un pas antérieur ou égal est
+    refusé.
+
+    L'écriture est CONDITIONNELLE, en une seule instruction : deux requêtes
+    portant le même code et arrivant ensemble ne peuvent pas passer toutes les
+    deux le contrôle, ce qu'un « lire puis écrire » laisserait faire.
+    """
+    cursor = conn.execute(
+        "INSERT INTO app_meta (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value "
+        "  WHERE CAST(app_meta.value AS INTEGER) < CAST(excluded.value AS INTEGER)",
+        (TOTP_COUNTER_KEY, str(counter)),
+    )
+    conn.commit()
+    return cursor.rowcount > 0
 
 
 # --------------------------------------------------- identité stable des comptes

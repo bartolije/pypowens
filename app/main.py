@@ -64,6 +64,13 @@ async def lifespan(app: FastAPI):
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s"
     )
+    # AVANT tout le reste : une graine de signature devinable rendrait le cookie
+    # de session forgeable, donc l'authentification et le second facteur
+    # inutiles. Mieux vaut un démarrage qui échoue en le disant qu'une app
+    # bancaire ouverte à qui devine trois caractères.
+    auth.check_configuration()
+    for warning in auth.startup_warnings():
+        logging.getLogger(__name__).warning("%s", warning)
     settings = get_settings()
     app.state.settings = settings
     app.state.store = store.connect(settings.db_path)
@@ -147,6 +154,19 @@ if not _PUBLISHED:
 # conditionnelle par feuille de style, police et script).
 _STATIC_CACHE = "public, max-age=31536000, immutable"
 
+# Rien n'est chargé d'ailleurs que d'ici : polices, htmx et Tabler sont
+# auto-hébergés (cf. app/static/vendor). La politique peut donc être stricte, ce
+# qui limite les dégâts d'une injection : un script étranger ne s'exécute pas, un
+# formulaire ne poste pas ailleurs, et la page ne s'affiche dans aucune iframe.
+# ``style-src 'unsafe-inline'`` reste nécessaire : les barres et jauges portent
+# leur largeur en attribut ``style``. Aucun ``script`` inline en revanche — le
+# masquage des montants vit dans /static/boot.js pour cette raison.
+_CSP = (
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; "
+    "frame-ancestors 'none'; base-uri 'self'; object-src 'none'"
+)
+
 
 @app.middleware("http")
 async def _response_headers(request: Request, call_next):
@@ -164,33 +184,60 @@ async def _response_headers(request: Request, call_next):
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "same-origin")
+    response.headers.setdefault("Content-Security-Policy", _CSP)
+    # Deux ans, sous-domaines compris : une fois l'en-tête vu, le navigateur
+    # refuse de repasser en HTTP clair — donc plus de premier aller
+    # interceptable, où le cookie de session partirait en clair. Ignoré par les
+    # navigateurs sur une origine non sécurisée : sans effet en local.
+    response.headers.setdefault("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
     return response
 
 
-@app.middleware("http")
-async def _reject_cross_site_posts(request: Request, call_next):
-    """Refuse les POST issus d'une autre origine (CSRF sans cookie ni token).
+# Méthodes sans effet de bord : jamais bloquées par le contrôle d'origine, sans
+# quoi une simple navigation venue d'un lien externe échouerait.
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 
-    Les 5 POST de l'app (catégorie, import, suppression, rattachement, synchro)
-    n'ont aucune protection propre. En local, n'importe quelle page ouverte dans
-    le navigateur pouvait soumettre un formulaire vers http://127.0.0.1:8000/… ;
-    publiée, l'app n'est pas mieux lotie, car le navigateur rejoue de lui-même
-    les identifiants Basic sur une requête partie d'un autre site — s'y fier
-    comme protection serait une erreur. Le contrôle vaut donc dans les deux cas,
-    et n'accepte qu'une origine : celle de la page elle-même. Les navigateurs
-    modernes joignent toujours ``Origin`` aux POST cross-site ; une requête sans
-    Origin (curl, tests) est locale par construction.
+
+def _request_hosts(request: Request) -> set[str]:
+    """Hôtes que cette requête vise légitimement (Host, et l'hôte transmis)."""
+    hosts = {h for h in (request.url.hostname,) if h}
+    for header in ("host", "x-forwarded-host"):
+        value = request.headers.get(header) or ""
+        if value:
+            # Le port ne compte pas : une page servie sur :8000 poste sur :8000.
+            hosts.add(urlsplit(f"//{value.split(',')[0].strip()}").hostname or "")
+    if not _PUBLISHED:
+        # En local, on tape indifféremment localhost ou 127.0.0.1 : les traiter
+        # comme une même origine évite un 403 incompréhensible au développement.
+        hosts |= set(_LOCAL_HOSTS)
+    return {h.lower() for h in hosts if h}
+
+
+async def _reject_cross_site_requests(request: Request, call_next):
+    """Refuse toute requête MUTANTE issue d'une autre origine (anti-CSRF).
+
+    Les POST de l'app (catégorie, import, suppression, rattachement, synchro,
+    connexion, déconnexion) n'ont pas de jeton anti-CSRF propre. En local,
+    n'importe quelle page ouverte dans le navigateur pouvait soumettre un
+    formulaire vers http://127.0.0.1:8000/… ; publiée, l'app n'est pas mieux
+    lotie — le cookie de session est ``SameSite=Lax``, ce qui laisse justement
+    passer les POST issus d'une navigation de premier niveau (la fenêtre
+    « Lax+POST » de Chrome), et le navigateur rejouerait de lui-même un Basic.
+
+    Le contrôle porte sur ``Origin`` seul, jamais sur ``Referer`` : celui-ci est
+    légitimement absent ou réécrit (modes privés, proxys), il produirait donc
+    des refus faux. C'est sans conséquence : un navigateur joint TOUJOURS
+    ``Origin`` à une requête cross-site, et une requête sans Origin (curl, un
+    script, les tests) n'est pas déclenchée par une page piégée.
     """
-    if request.method == "POST":
-        origin = request.headers.get("origin") or request.headers.get("referer")
-        if origin:
-            host = urlsplit(origin).hostname
-            if host not in _LOCAL_HOSTS and host != request.url.hostname:
-                return PlainTextResponse(
-                    "Requête cross-site refusée : cette application n'accepte que "
-                    "les formulaires émis par ses propres pages.",
-                    status_code=403,
-                )
+    if request.method not in _SAFE_METHODS:
+        origin = request.headers.get("origin")
+        if origin and (urlsplit(origin).hostname or "").lower() not in _request_hosts(request):
+            return PlainTextResponse(
+                "Requête cross-site refusée : cette application n'accepte que "
+                "les formulaires émis par ses propres pages.",
+                status_code=403,
+            )
     return await call_next(request)
 
 
@@ -231,11 +278,17 @@ async def _health_banner(request: Request, call_next):
     return await call_next(request)
 
 
-# Déclaré en DERNIER, donc exécuté en PREMIER : Starlette empile les middlewares
-# à l'envers de leur ordre d'ajout. Un visiteur sans identifiants doit être
-# éconduit avant que le bandeau de santé n'aille interroger Powens et la base
-# pour lui.
+# Déclarés en DERNIER, donc exécutés en PREMIER : Starlette empile les
+# middlewares à l'envers de leur ordre d'ajout. Un visiteur sans identifiants
+# doit être éconduit avant que le bandeau de santé n'aille interroger Powens et
+# la base pour lui.
 app.middleware("http")(auth.require_login)
+# Et le contrôle d'origine passe avant l'authentification elle-même : une
+# requête émise par un autre site n'a pas à être refusée « parce que la session
+# manque » (un 303 vers la page de connexion, indistinguable d'une visite
+# ordinaire), mais parce qu'elle vient d'ailleurs — et le dire coûte deux
+# comparaisons de chaînes, sans toucher ni à la base ni au réseau.
+app.middleware("http")(_reject_cross_site_requests)
 
 
 app.mount(

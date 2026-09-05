@@ -51,6 +51,15 @@ def _isolated_env(monkeypatch, tmp_path):
         "APP_ALLOW_REMOTE",
         "APP_HISTORY_MONTHS",
         "APP_BASE_CURRENCY",
+        # L'authentification aussi : sans cette purge, poser APP_TOTP_SECRET ou
+        # APP_AUTH_USER dans le .env du poste changeait le comportement de la
+        # suite (second facteur exigé, hôtes non filtrés) — un rouge inexplicable.
+        "APP_AUTH_USER",
+        "APP_AUTH_PASSWORD",
+        "APP_SESSION_SECRET",
+        "APP_SESSION_MAX_AGE_HOURS",
+        "APP_TOTP_SECRET",
+        "APP_API_TOKEN",
     ):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("POWENS_DOMAIN", "test-sandbox")

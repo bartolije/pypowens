@@ -35,6 +35,18 @@
         <input type="password" id="password" name="password"
                autocomplete="current-password" required>
       </div>
+      {# Le champ n'apparaît que si un second facteur est configuré : sans lui,
+         un champ vide et obligatoire fermerait la porte à double tour.
+         ``one-time-code`` est ce qui décide ProtonPass à proposer le code. #}
+      {% if mfa %}
+      <div class="login-field">
+        <label for="code">Code d'authentification</label>
+        <input type="text" id="code" name="code" autocomplete="one-time-code"
+               inputmode="numeric" pattern="[0-9 ]*" maxlength="9"
+               placeholder="123456" autocapitalize="none" autocorrect="off"
+               spellcheck="false" required>
+      </div>
+      {% endif %}
       <button type="submit" class="btn btn-primary login-submit">Se connecter</button>
     </form>
   </main>

@@ -260,15 +260,31 @@ persistant compris, est dans [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md). Voir
 Sans `APP_AUTH_USER` / `APP_AUTH_PASSWORD`, l'app ne demande rien : c'est l'usage
 local, sur la loopback. Dès que ces deux variables existent, tout passe par
 `/connexion` — un formulaire classique (remplissable par un gestionnaire de mots
-de passe) qui pose un cookie de session signé HMAC-SHA256, valable sept jours,
-`HttpOnly` / `SameSite=Lax`, `Secure` dès que la requête arrive en HTTPS. Un
-bouton « Déconnexion » ferme la session ; dix échecs verrouillent le client cinq
-minutes.
+de passe) qui pose un cookie de session signé HMAC-SHA256, valable 24 heures,
+`HttpOnly` / `SameSite=Lax`, `Secure` dès que la requête arrive en HTTPS.
 
-Un en-tête `Authorization: Basic` reste accepté pour les scripts et `curl`, mais
-n'est plus jamais réclamé : le navigateur ne voit donc plus la fenêtre système.
-La clé de signature est dérivée des identifiants, sauf si `APP_SESSION_SECRET`
-est posée — sans elle, changer le mot de passe déconnecte partout.
+Ce que ferme chaque pièce du dispositif :
+
+| Pièce | Ce qu'elle empêche |
+|---|---|
+| Cookie signé, jamais chiffré, durée dans la signature | Se déclarer connecté, ou prolonger sa session |
+| **Génération de session** en base (`app_meta`) | Qu'une déconnexion soit cosmétique : tout cookie émis avant redevient inutilisable, cookie volé compris |
+| **Second facteur TOTP** (`APP_TOTP_SECRET`, facultatif) | Qu'un mot de passe fuité suffise. Un code ne sert **qu'une fois** (pas de temps mémorisé) |
+| **`APP_API_TOKEN`** | Que les scripts obligent à laisser une entrée à un seul facteur — dès que le MFA est actif, `Basic` + mot de passe est refusé |
+| Plancher d'entropie sur la graine de signature | Qu'une clé devinable permette de **forger** un cookie, donc d'entrer sans jamais voir le second facteur |
+| Frein par client (10 échecs / 5 min) **et** par compte (40 / 30 min) | Une force brute, y compris répartie sur des centaines d'adresses ou déguisée par un `X-Forwarded-For` forgé |
+| Contrôle d'`Origin` sur toute méthode mutante | Qu'un autre site poste dans l'app (y compris un login CSRF), là où `SameSite=Lax` laisse passer |
+| CSP `script-src 'self'`, HSTS deux ans | Qu'un script étranger s'exécute, et qu'un premier aller reparte en HTTP clair |
+
+Enrôler le second facteur : `uv run python scripts/setup_mfa.py --env`
+(ou `--railway`) — le script affiche l'URI `otpauth://` à coller dans ProtonPass
+et génère le jeton des scripts. `--disable` revient en arrière.
+
+Un en-tête `Authorization: Basic` reste accepté pour les scripts et `curl` tant
+que le MFA n'est pas activé, mais n'est plus jamais réclamé : le navigateur ne
+voit donc plus la fenêtre système. La clé de signature est dérivée des
+identifiants, sauf si `APP_SESSION_SECRET` est posée — sans elle, changer le mot
+de passe déconnecte partout.
 
 ### Sauvegarde hors site
 
@@ -279,7 +295,8 @@ authentifiée `GET /sauvegarde.db` rend une copie cohérente (API de sauvegarde
 en ligne de SQLite) ; `scripts/backup-prod.sh` la télécharge, vérifie son
 intégrité et garde 90 jours dans `~/Backups/pypowens`. Pour l'automatiser sur
 un Mac : `scripts/fr.jbartoli.powens-backup.plist` (launchd, 7 h 30), avec les
-identifiants dans `~/.config/pypowens/backup.env`.
+identifiants dans `~/.config/pypowens/backup.env` — `APP_API_TOKEN` de
+préférence, seul accepté quand le second facteur est actif.
 
 ## Roadmap
 

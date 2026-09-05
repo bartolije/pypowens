@@ -25,6 +25,7 @@ def _text(html: str) -> str:
 
 # ------------------------------------------------------------------ dates en français
 
+
 def test_day_names_are_french_whatever_the_locale():
     """``strftime("%A")`` suit la locale du processus, « C » sur un serveur nu."""
     assert day_label_fr(date(2026, 3, 31)) == "mardi 31/03"
@@ -35,11 +36,14 @@ def test_day_names_are_french_whatever_the_locale():
 def test_the_history_never_shows_an_english_day(client):
     body = _text(client.get("/comptes").text)
     assert not any(day in body for day in DAYS_EN), body[:200]
-    assert any(day in body for day in ("lundi", "mardi", "mercredi", "jeudi",
-                                       "vendredi", "samedi", "dimanche"))
+    assert any(
+        day in body
+        for day in ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
+    )
 
 
 # ------------------------------------------------------ what the page must not show
+
 
 def test_home_shows_current_accounts_not_net_worth(client):
     body = _text(client.get("/comptes").text)
@@ -80,11 +84,19 @@ def test_nav_puts_accounts_first_and_patrimoine_last(client):
 def test_amounts_are_masked_until_opted_out(client):
     """Masking is the default: only an explicit "0" reveals the figures."""
     body = client.get("/comptes").text
-    assert 'localStorage.getItem("pf-hide") !== "0"' in body
-    assert "hide-amounts" in body
+    # Le masquage vit dans /static/boot.js (la politique de sécurité de contenu
+    # interdit les scripts inline) et doit être chargé SANS ``defer``, sinon les
+    # montants s'affichent le temps d'un battement de paupières.
+    assert '<script src="/static/boot.js' in body
+    assert "defer" not in body.split("boot.js")[1].split(">")[0]
+
+    script = client.get("/static/boot.js").text
+    assert 'localStorage.getItem("pf-hide") !== "0"' in script
+    assert "hide-amounts" in script
 
 
 # ------------------------------------------------------------------ history by date
+
 
 def test_history_groups_by_day_and_totals_the_day(client):
     body = _text(client.get("/comptes").text)
@@ -121,6 +133,7 @@ def test_category_filter_narrows_the_table_only(client):
 
 # --------------------------------------------------------------- grouping helper
 
+
 def _row(day: date, amount: str, *, internal: bool = False) -> Row:
     class _Txn:
         date = day
@@ -142,9 +155,7 @@ def _row(day: date, amount: str, *, internal: bool = False) -> Row:
 
 
 def test_group_by_day_is_most_recent_first():
-    days = group_by_day(
-        [_row(date(2026, 6, 1), "-10"), _row(date(2026, 6, 3), "-20")]
-    )
+    days = group_by_day([_row(date(2026, 6, 1), "-10"), _row(date(2026, 6, 3), "-20")])
     assert [d.day.day for d in days] == [3, 1]
 
 
@@ -165,6 +176,7 @@ def test_group_by_day_lists_internal_transfers_without_counting_them():
 
 # --------------------------------------------------------------- connect flow
 
+
 def test_connect_opens_the_full_bank_list_by_default(client):
     response = client.get("/connect", follow_redirects=False)
     assert response.status_code == 307
@@ -175,9 +187,7 @@ def test_connect_opens_the_full_bank_list_by_default(client):
 
 def test_connect_can_target_one_connector(client):
     """Adding a second, already-known bank should not require scrolling a list."""
-    response = client.get(
-        "/connect", params={"connector_id": 2663}, follow_redirects=False
-    )
+    response = client.get("/connect", params={"connector_id": 2663}, follow_redirects=False)
     assert response.status_code == 307
     assert "2663" in response.headers["location"]
 
@@ -203,6 +213,7 @@ def test_connect_refuses_to_start_with_an_unlisted_redirect_uri(client, fake_cli
 
 def test_connect_proceeds_when_the_config_cannot_be_read(client, fake_client, monkeypatch):
     """The preflight is a diagnostic: it must never be what blocks the flow."""
+
     async def boom(*args, **kwargs):
         raise PowensAPIError(500, code="boom")
 
@@ -213,6 +224,7 @@ def test_connect_proceeds_when_the_config_cannot_be_read(client, fake_client, mo
 
 
 # ------------------------------------------------- debt vs assets on /patrimoine
+
 
 def _with_loan(fake_client):
     """Add a mortgage account, as connecting a bank loan does."""
@@ -270,6 +282,7 @@ def test_debt_is_excluded_from_the_repartition(client, fake_client):
 
 
 # ----------------------------------------------------------------- reconnect flow
+
 
 def test_connection_awaiting_the_user_offers_reconnect_not_sync(client, fake_client):
     fake_client._connections[0]["state"] = "webauthRequired"

@@ -6,6 +6,87 @@ All notable changes to this project. Format loosely based on
 
 ## [0.2.0] — unreleased
 
+### 04/09/2026 — second facteur, sessions révocables, freins non contournables
+
+Six durcissements de l'authentification, portés de l'audit mené sur
+`suivi-location` et vérifiés ici en lançant l'app en local (parcours complet en
+`curl`, y compris les contournements). L'enjeu : cette app donne accès à
+l'ensemble des comptes bancaires, le mot de passe seul ne suffit pas.
+
+#### Added
+- **Second facteur TOTP** (`app/totp.py`), activé par `APP_TOTP_SECRET` (base32,
+  vide = inchangé). RFC 6238 sans dépendance nouvelle, SHA1 6 chiffres / 30 s,
+  vérifié sur les **six vecteurs de test de la RFC** — donc interopérable avec
+  ProtonPass, Google Authenticator, Aegis. Le champ « Code d'authentification »
+  n'apparaît que si le MFA est actif, en `autocomplete="one-time-code"`.
+  - **anti-rejeu** : le pas de temps consommé est mémorisé (`app_meta`, écriture
+    conditionnelle en une instruction, donc pas de course), un code ne sert
+    qu'une fois dans sa fenêtre de trente secondes ;
+  - **fail-closed** : un secret illisible refuse toutes les connexions (WARNING
+    au démarrage) au lieu de lever une 500 ; sans base, le rejeu étant
+    invérifiable, la connexion est refusée aussi ;
+  - message d'erreur identique pour un mot de passe faux et un code faux : les
+    distinguer dirait à l'attaquant qu'il ne reste que six chiffres à trouver.
+- **`APP_API_TOKEN`** : porte des appels non interactifs (`Authorization:
+  Bearer`, ou en place du mot de passe dans un `curl -u`). Nécessaire dès que le
+  MFA est actif, puisqu'un script ne peut pas produire de code.
+- **`app_meta`** : ancrage serveur de l'authentification (génération de session,
+  compteur TOTP), en base pour qu'un redémarrage ne rouvre rien.
+- **`scripts/setup_mfa.py`** : génère le secret, affiche l'URI `otpauth://`, et
+  pose les trois variables dans `.env` et/ou sur Railway (`--disable` pour
+  revenir en arrière, `--token-only`, `--garder-clef-session`).
+- **Frein par compte** (40 échecs / 30 min, toutes adresses confondues) en plus
+  du frein par client : une force brute répartie sur des centaines d'adresses ne
+  déclenche jamais le premier seuil, mais bien celui-ci.
+- **HSTS** (deux ans, sous-domaines) et **CSP** stricte (`script-src 'self'` —
+  rien n'est chargé d'ailleurs, polices et htmx étant auto-hébergés).
+- `APP_SESSION_MAX_AGE_HOURS`, pour assouplir sciemment la durée de session.
+
+#### Fixed
+- **Le frein anti-force-brute se contournait par un en-tête.** `_client_key`
+  prenait l'entrée **gauche** de `X-Forwarded-For`, que le client écrit
+  lui-même : la changer à chaque requête repartait de zéro, et le frein ne
+  freinait rien. Priorité désormais à `CF-Connecting-IP` (posé par Cloudflare,
+  qui écrase ce que le client envoie), repli sur la **dernière** entrée du XFF
+  (celle du relais), puis la socket.
+- **La déconnexion était cosmétique** : elle oubliait le cookie côté navigateur,
+  mais le jeton restait valable pour qui en détenait une copie. Le cookie porte
+  maintenant la génération sous laquelle il a été émis ; la déconnexion
+  l'incrémente et invalide d'un coup tout cookie antérieur — sans rotation du
+  mot de passe. Durée de session ramenée de 7 jours à 24 heures.
+- **Un mot de passe devinable rendait tout le reste inutile** : c'est lui qui
+  sert de graine à la signature des cookies, donc le forcer hors ligne permettait
+  d'en **forger** un et d'entrer sans jamais voir le second facteur. Plancher
+  imposé au démarrage (24 caractères, 8 distincts) sur la graine réellement
+  utilisée — `APP_SESSION_SECRET` si elle est posée, le mot de passe sinon.
+- **Le contrôle anti-CSRF ne couvrait que `POST`** et s'exécutait *après*
+  l'authentification (un refus cross-site ressortait en 303 vers la page de
+  connexion, indistinguable d'une visite ordinaire). Il porte désormais sur
+  toute méthode mutante, passe **avant** l'authentification, et compare la seule
+  en-tête `Origin` (le `Referer`, légitimement absent ou réécrit, produisait des
+  refus faux).
+- Le masquage des montants quittait le HTML pour `static/boot.js` : un `<script>`
+  inline était le dernier obstacle à une CSP sans `unsafe-inline` sur les scripts.
+
+#### Changed
+- `Authorization: Basic` avec le mot de passe n'est **plus accepté** quand le MFA
+  est actif : l'accepter aurait rendu le second facteur décoratif, puisqu'il
+  n'est demandé qu'au formulaire. Le 401 nomme `APP_API_TOKEN` — sans quoi la
+  panne se lit « 401 » et rien d'autre.
+- `scripts/backup-prod.sh` préfère `APP_API_TOKEN` et avertit quand il retombe
+  sur le mot de passe.
+
+#### Tests
+- `tests/test_totp.py` (29) : les six vecteurs de la RFC, la tolérance d'un pas,
+  les formats refusés, un secret recopié salement.
+- `tests/test_mfa.py` (21) : les deux facteurs, le rejeu, le fail-closed, et
+  surtout les portes de service (Basic refusé, jeton accepté sous ses deux
+  formes, jeton court ignoré, jeton qui n'ouvre pas de session).
+- `tests/test_security_hardening.py` (31) : chaque test nomme la faille qu'il
+  ferme — XFF forgé, attaque répartie, cookie rejoué après déconnexion, graine
+  faible, login CSRF, en-têtes.
+- Suite complète : 544 → **625 verts**.
+
 ### 04/09/2026 — une vraie page de connexion à la place du HTTP Basic
 
 #### Added

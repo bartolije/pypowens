@@ -254,6 +254,36 @@ Powens (<https://console.powens.com/>) — rien n'est recopié ici :
   chiffrer des données sensibles (transferts/paiements). **Non requise** pour
   l'agrégation en lecture.
 
+## Authentification durcie (04/09/2026)
+
+Six points, portés de l'audit mené sur `suivi-location` puis vérifiés ici en
+lançant l'app en local (parcours `curl` complet, contournements compris). À
+connaître avant de toucher à `app/auth.py` :
+
+1. **Le frein se contournait par un en-tête.** `X-Forwarded-For` est une liste à
+   laquelle chaque relais ajoute une entrée à DROITE : la première est celle du
+   client, donc forgeable. Lire `CF-Connecting-IP` d'abord (Cloudflare l'écrase),
+   sinon la dernière entrée du XFF, sinon la socket.
+2. **Second frein par compte** (40 / 30 min) : une attaque répartie sur mille
+   adresses ne déclenche jamais le frein par adresse.
+3. **Le cookie porte une génération** (`app_meta.session_epoch`) : la
+   déconnexion l'incrémente, ce qui invalide tout cookie antérieur. Sans cela,
+   se déconnecter n'était qu'un oubli côté navigateur. Session : 24 h.
+4. **Le mot de passe est aussi la graine de signature** (à défaut de
+   `APP_SESSION_SECRET`) : devinable, il permet de FORGER un cookie, donc
+   d'entrer sans jamais voir le second facteur. D'où un plancher au démarrage,
+   et `setup_mfa.py` qui pose une `APP_SESSION_SECRET` dédiée pour découpler.
+5. **Le MFA aurait été décoratif sans fermer le Basic** : le second facteur n'est
+   demandé qu'au formulaire, donc `curl -u user:motdepasse` l'aurait contourné.
+   D'où `APP_API_TOKEN`, la seule porte à un facteur qui subsiste — pour les
+   scripts, qui ne peuvent pas produire de code.
+6. **Anti-CSRF** : sur toute méthode mutante, AVANT l'authentification (sinon un
+   refus cross-site ressort en 303 vers la page de connexion, indistinguable
+   d'une visite), et sur `Origin` seul (`Referer` est légitimement absent).
+
+Piège de mise en service : activer le MFA sans poser `APP_API_TOKEN` casse
+`scripts/backup-prod.sh` (401 explicite). Le démarrage l'annonce en `WARNING`.
+
 ## Sécurité / secrets
 
 - `.env` (dont `POWENS_ACCESS_TOKEN`), `.powens_state.json` et

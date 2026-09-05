@@ -1,4 +1,4 @@
-"""Page de connexion : le formulaire, la session, la déconnexion.
+"""Page de connexion : le formulaire, les deux facteurs, la déconnexion.
 
 Séparé de ``auth`` (qui porte le middleware) pour que ce module puisse importer
 les gabarits sans que l'authentification dépende de Jinja.
@@ -41,7 +41,13 @@ def _page(request: Request, *, suite: str, error: str | None = None, status: int
     return templates.TemplateResponse(
         request,
         "login.html",
-        {"request": request, "active": None, "suite": suite, "error": error},
+        {
+            "request": request,
+            "active": None,
+            "suite": suite,
+            "error": error,
+            "mfa": auth.mfa_enabled(),
+        },
         status_code=status,
     )
 
@@ -59,6 +65,7 @@ async def login_submit(
     request: Request,
     username: str = Form(default=""),
     password: str = Form(default=""),
+    code: str = Form(default=""),
     suite: str = Form(default=""),
 ) -> Response:
     expected = auth_credentials()
@@ -66,7 +73,7 @@ async def login_submit(
         return RedirectResponse("/", status_code=303)
 
     key = auth._client_key(request)
-    delay = auth.retry_after(key)
+    delay = auth.retry_after(key) or auth.account_retry_after(username)
     if delay:
         minutes = max(1, round(delay / 60))
         return _page(
@@ -76,13 +83,26 @@ async def login_submit(
             status=429,
         )
 
-    if not auth.credentials_match((username, password), expected):
+    mfa = auth.mfa_enabled()
+    password_ok = auth.credentials_match((username, password), expected)
+    # Deux facteurs INDÉPENDANTS : les deux doivent passer. Un code faux compte
+    # comme un échec de connexion, donc six chiffres ne se devinent pas plus
+    # librement qu'un mot de passe ne se force.
+    second_factor_ok = (
+        auth.verify_totp(getattr(request.app.state, "store", None), code) if mfa else True
+    )
+
+    if not (password_ok and second_factor_ok):
         auth.record_failure(key)
-        # Un message unique : dire lequel des deux champs est faux dirait à un
-        # attaquant que l'identifiant, lui, est bon.
-        return _page(request, suite=suite, error="Identifiants incorrects.", status=401)
+        auth.record_account_failure(username)
+        # Un message unique : dire lequel des champs est faux dirait à un
+        # attaquant que le mot de passe, lui, est bon — et qu'il ne reste que
+        # six chiffres à trouver.
+        error = "Identifiants ou code incorrects." if mfa else "Identifiants incorrects."
+        return _page(request, suite=suite, error=error, status=401)
 
     auth.clear_failures(key)
+    auth.clear_account_failures(username)
     response = RedirectResponse(_target(suite), status_code=303)
     auth.start_session(response, request, expected[0])
     return response
@@ -92,5 +112,7 @@ async def login_submit(
 async def logout(request: Request) -> Response:
     """Ferme la session. En POST : un GET serait déclenchable par une image."""
     response = RedirectResponse(auth.LOGIN_PATH, status_code=303)
-    auth.end_session(response)
+    # Avec la requête : la déconnexion révoque le jeton côté serveur, elle ne se
+    # contente pas de l'oublier côté navigateur.
+    auth.end_session(response, request)
     return response

@@ -108,6 +108,57 @@ def auth_credentials() -> tuple[str, str] | None:
     return (user, password) if user and password else None
 
 
+def totp_secret() -> str:
+    """Secret TOTP du second facteur (base32). Vide = MFA désactivé."""
+    return (os.environ.get("APP_TOTP_SECRET") or "").strip()
+
+
+def api_token() -> str:
+    """Jeton des appels non interactifs (sauvegarde, supervision). Vide = aucun.
+
+    Un script ne peut pas produire de code TOTP : sans porte qui lui soit
+    propre, activer le MFA reviendrait soit à casser ``scripts/backup-prod.sh``,
+    soit à laisser ouverte une entrée à un seul facteur — donc à décorer le MFA
+    plutôt qu'à s'en servir. Ce jeton est cette porte : il n'ouvre rien d'autre
+    que ce que le mot de passe ouvrait, mais il se révoque seul, sans toucher au
+    mot de passe ni au second facteur.
+    """
+    return (os.environ.get("APP_API_TOKEN") or "").strip()
+
+
+# Un secret de signature devinable se force hors ligne : qui le trouve FORGE un
+# cookie de session valide, donc entre sans mot de passe et sans jamais voir le
+# second facteur (il n'est demandé qu'au formulaire). D'où un plancher, et non
+# un simple « non vide ».
+_MIN_SECRET_LENGTH = 24
+_MIN_SECRET_VARIETY = 8
+
+
+def session_secret_error() -> str | None:
+    """Pourquoi le secret de signature des sessions est trop faible, ou ``None``.
+
+    Deux cas, selon ce qui sert de graine (cf. ``auth._session_key``) :
+    ``APP_SESSION_SECRET`` quand elle est posée, sinon le mot de passe lui-même.
+    Le message nomme donc la variable réellement en cause.
+    """
+    explicit = (os.environ.get("APP_SESSION_SECRET") or "").strip()
+    variable, value = "APP_SESSION_SECRET", explicit
+    if not explicit:
+        credentials = auth_credentials()
+        if credentials is None:
+            return None  # usage local sans authentification : rien à signer
+        variable, value = "APP_AUTH_PASSWORD", credentials[1]
+    if len(value) < _MIN_SECRET_LENGTH or len(set(value)) < _MIN_SECRET_VARIETY:
+        return (
+            f"{variable} est trop faible pour signer les sessions "
+            f"({len(value)} caractères, {len(set(value))} distincts ; au moins "
+            f"{_MIN_SECRET_LENGTH} et {_MIN_SECRET_VARIETY} attendus) : un cookie "
+            "de session serait forgeable. Générer avec "
+            '`python3 -c "import secrets; print(secrets.token_urlsafe(32))"`.'
+        )
+    return None
+
+
 def _check_host(host: str) -> str:
     """Refuse to serve bank data on a non-loopback interface without opting in.
 
@@ -134,9 +185,7 @@ def _check_host(host: str) -> str:
 def get_settings() -> Settings:
     domain = os.environ.get("POWENS_DOMAIN")
     if not domain:
-        raise RuntimeError(
-            "POWENS_DOMAIN is not set. Copy .env.example to .env and fill it in."
-        )
+        raise RuntimeError("POWENS_DOMAIN is not set. Copy .env.example to .env and fill it in.")
     return Settings(
         domain=domain,
         client_id=os.environ.get("POWENS_CLIENT_ID") or None,
@@ -153,9 +202,7 @@ def get_settings() -> Settings:
         silent_after_days=max(1, int(os.environ.get("APP_SILENT_DAYS", "3"))),
         benchmark_ticker=(os.environ.get("APP_BENCHMARK_TICKER") or "IWDA.AS").strip(),
         benchmark_label=(os.environ.get("APP_BENCHMARK_LABEL") or "MSCI World (IWDA)").strip(),
-        collect_every_hours=max(
-            0.0, float(os.environ.get("APP_COLLECT_EVERY_HOURS") or "0")
-        ),
+        collect_every_hours=max(0.0, float(os.environ.get("APP_COLLECT_EVERY_HOURS") or "0")),
     )
 
 

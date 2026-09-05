@@ -44,6 +44,8 @@ railway variable set OPENFIGI_API_KEY --stdin        # facultatif
 railway variable set APP_HOST=0.0.0.0                # écouter hors loopback
 railway variable set APP_AUTH_USER=<identifiant>
 railway variable set APP_AUTH_PASSWORD --stdin       # cf. « Le mot de passe » plus bas
+railway variable set APP_TOTP_SECRET --stdin         # second facteur, cf. setup_mfa.py
+railway variable set APP_API_TOKEN --stdin           # porte des scripts (sauvegarde)
 railway variable set APP_COLLECT_EVERY_HOURS=12
 ```
 
@@ -108,22 +110,87 @@ système du HTTP Basic n'apparaît plus : le défi `WWW-Authenticate` n'est jama
 envoyé à un navigateur.
 
 L'en-tête `Authorization: Basic` reste **accepté** pour les scripts et `curl`
-(c'est ainsi que `scripts/backup-prod.sh` récupère la base) — accepté, mais plus
-jamais réclamé.
+tant que le second facteur n'est pas activé — accepté, mais plus jamais réclamé.
+Au-delà, c'est `APP_API_TOKEN` qui prend le relais (voir plus bas).
 
 Rien de neuf à poser chez l'hébergeur : la clé de signature des sessions est
 dérivée des identifiants. Conséquence utile, changer le mot de passe déconnecte
 partout. Pour garder les sessions ouvertes malgré un changement de mot de passe,
 poser `APP_SESSION_SECRET` (valeur tirée au sort, jamais partagée).
 
-Tout repose sur l'entropie du mot de passe : `app/auth.py` verrouille un client
-après 10 échecs pendant 5 minutes, ce qui ralentit une attaque sans la rendre
-impossible. Prenez une valeur tirée au sort, jamais un mot de passe réutilisé
+Ce mot de passe est donc **deux choses à la fois** : ce qu'on tape, et la graine
+qui signe les cookies. Une valeur devinable ne se contente pas de laisser entrer
+par la porte — elle permet de FORGER un cookie de session, donc d'entrer sans
+mot de passe et sans jamais voir le second facteur (il n'est demandé qu'au
+formulaire). L'app **refuse de démarrer** en dessous de 24 caractères ou de 8
+caractères distincts. Prenez une valeur tirée au sort, jamais réutilisée
 ailleurs :
 
 ```bash
 openssl rand -base64 24
 ```
+
+Le frein reste utile pour ce qui passe par la porte : 10 échecs verrouillent un
+client 5 minutes, et 40 échecs sur le même compte le verrouillent une demi-heure
+quelle que soit l'adresse d'origine — une attaque répartie sur mille adresses ne
+déclenche jamais le premier seuil, mais bien le second.
+
+## Le second facteur (MFA)
+
+Un code à six chiffres en plus du mot de passe, sur le modèle de n'importe quel
+authenticator (TOTP, RFC 6238). Facultatif : sans `APP_TOTP_SECRET`, rien ne
+change.
+
+```bash
+uv run python scripts/setup_mfa.py --railway   # génère, enrôle, pose, déploie
+```
+
+Le script affiche le secret et une URI `otpauth://` à coller dans ProtonPass
+(nouvel élément « Authentification à deux facteurs »), **et** un
+`APP_API_TOKEN`, **et** un `APP_SESSION_SECRET`. Vérifiez qu'un code s'affiche
+dans ProtonPass avant de fermer la fenêtre.
+
+Cette clé de signature générée est ce qui évite de devoir changer le mot de
+passe : sans elle, c'est lui qui signe les cookies, et l'app refuserait de
+démarrer s'il est en dessous du plancher (voir plus haut). Les sessions ouvertes
+se ferment au déploiement — c'est le seul effet visible.
+
+Deux points à connaître avant d'activer :
+
+* **les appels non interactifs basculent sur le jeton.** Un script ne peut pas
+  produire de code : dès que le second facteur est actif, `Authorization: Basic`
+  avec le mot de passe est refusé (sinon un simple `curl -u` contournerait tout
+  le mécanisme). Reportez `APP_API_TOKEN` dans
+  `~/.config/pypowens/backup.env` — `scripts/backup-prod.sh` le préfère
+  automatiquement. Une copie de sauvegarde qui échoue en 401 en disant
+  « utiliser APP_API_TOKEN », c'est cette variable qui manque ;
+* **la perte de l'authenticator ferme la porte.** Le secret n'existe que dans
+  ProtonPass et dans la variable Railway : gardez-en une copie là où vous gardez
+  vos mots de passe. À défaut, `railway variable set APP_TOTP_SECRET --stdin`
+  (valeur vide) ou `scripts/setup_mfa.py --disable --railway` rouvre l'accès —
+  l'accès Railway est alors le vrai facteur de secours.
+
+Un code n'est utilisable **qu'une fois** : le pas de temps consommé est mémorisé
+en base (`app_meta`), donc un code intercepté ne resservira pas dans sa fenêtre
+de trente secondes. Un secret illisible refuse toutes les connexions plutôt que
+d'ouvrir : le démarrage l'annonce en `WARNING`.
+
+## Révoquer un accès
+
+La déconnexion incrémente une génération de session stockée en base, ce qui rend
+inutilisable **tout** cookie émis avant elle. Un téléphone perdu, un cookie
+recopié depuis un journal de proxy : se déconnecter suffit, sans changer le mot
+de passe ni attendre les 24 heures d'expiration. Pour couper à distance sans
+navigateur :
+
+```bash
+railway ssh -- sqlite3 /data/.powens_finance.db \
+  "INSERT INTO app_meta (key, value) VALUES ('session_epoch', '1')
+   ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1;"
+```
+
+Et pour couper la porte des scripts sans toucher au reste :
+`railway variable set APP_API_TOKEN=` (valeur vide).
 
 ## La collecte
 
