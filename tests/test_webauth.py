@@ -56,6 +56,7 @@ def test_needs_webauth_only_for_that_state():
 
 # ------------------------------------------------------------------- route
 
+
 def test_reconnect_never_sends_a_webauth_connector_to_the_webview(client, fake_client):
     """Le test de non-régression du bug Sumeria : le Webview Powens ne mène
     nulle part pour ces connecteurs, quel que soit l'appareil."""
@@ -116,6 +117,7 @@ def test_a_classic_connector_still_goes_through_the_webview(client, fake_client)
 
 # ------------------------------------------------- parcours réservé au mobile
 
+
 def test_mobile_detection():
     assert webauth.is_mobile("Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X)") is True
     assert webauth.is_mobile("Mozilla/5.0 (Linux; Android 14) Mobile Safari") is True
@@ -147,9 +149,9 @@ def test_desktop_gets_the_qr_page_instead_of_a_dead_end(client, fake_client):
         follow_redirects=False,
     )
     assert response.status_code == 200
-    assert "<svg" in response.text                    # le QR à scanner
+    assert "<svg" in response.text  # le QR à scanner
     assert "sur votre téléphone" in response.text
-    assert "lydia-app.com" in response.text           # le lien reste proposé
+    assert "lydia-app.com" in response.text  # le lien reste proposé
 
     fake_client._connections[0].update({"state": None, "error_message": None})
     fake_client._connections[0].pop("expire", None)

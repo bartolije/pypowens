@@ -41,16 +41,17 @@ class Txn:
 
 # ---------------------------------------------------------------- clean_wording
 
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
-        ("ENSEIGNE\\LA-VILLE\\ FR", "ENSEIGNE"),          # card format: city dropped
-        ("ENSEIGNE CB*8409", "ENSEIGNE"),                  # card format: CB suffix
-        ("PRLV SEPA FOURNISSEUR", "FOURNISSEUR"),          # SEPA prefix stripped
-        ("ASSUREUR CONTRAT 12345678", "ASSUREUR"),         # reference cut
-        ("OPERATEUR RUM ABC-99", "OPERATEUR"),             # RUM and rest cut
-        ("SOCIETE Numero de client : 4455", "SOCIETE"),    # "Numero ..." cut
-        ("REFECTOIRE DU COIN", "REFECTOIRE DU COIN"),      # not a reference keyword
+        ("ENSEIGNE\\LA-VILLE\\ FR", "ENSEIGNE"),  # card format: city dropped
+        ("ENSEIGNE CB*8409", "ENSEIGNE"),  # card format: CB suffix
+        ("PRLV SEPA FOURNISSEUR", "FOURNISSEUR"),  # SEPA prefix stripped
+        ("ASSUREUR CONTRAT 12345678", "ASSUREUR"),  # reference cut
+        ("OPERATEUR RUM ABC-99", "OPERATEUR"),  # RUM and rest cut
+        ("SOCIETE Numero de client : 4455", "SOCIETE"),  # "Numero ..." cut
+        ("REFECTOIRE DU COIN", "REFECTOIRE DU COIN"),  # not a reference keyword
     ],
 )
 def test_clean_wording_strips_noise(raw, expected):
@@ -62,6 +63,7 @@ def test_clean_wording_handles_empty():
 
 
 # ----------------------------------------------------------------- merchant_key
+
 
 def test_merchant_key_is_stable_across_wording_variants():
     """The same merchant billed twice with different references groups as one."""
@@ -99,6 +101,7 @@ def test_merchant_key_never_empty():
 
 # ------------------------------------------------------------------- categorize
 
+
 def test_categorize_first_matching_rule_wins():
     assert categorize("CARREFOUR CITY") == "Alimentation"
     assert categorize("NETFLIX.COM") == "Streaming / Médias"
@@ -111,9 +114,7 @@ def test_categorize_is_case_insensitive():
 
 def test_local_rules_are_loaded_and_take_precedence(tmp_path):
     path = tmp_path / "categories.local.json"
-    path.write_text(
-        json.dumps({"_comment": "ignored", "Sport": ["CARREFOUR"]}), encoding="utf-8"
-    )
+    path.write_text(json.dumps({"_comment": "ignored", "Sport": ["CARREFOUR"]}), encoding="utf-8")
     rules = load_local_rules(path)
     assert rules == [("Sport", ("CARREFOUR",))]
     # Local first, then the generic table: the local label wins.
@@ -135,6 +136,7 @@ def test_resolve_category_uses_override_then_rules():
 
 # ------------------------------------------------- expense-type taxonomy
 
+
 def test_utility_wins_over_the_fuel_station_of_the_same_brand():
     """Rule order is load-bearing: TotalEnergies is energy, "TOTAL" is a pump."""
     assert categorize("TOTALENERGIES ELECTRICITE") == "Énergie / Eau"
@@ -142,7 +144,7 @@ def test_utility_wins_over_the_fuel_station_of_the_same_brand():
 
 
 def test_supermarket_fuel_pumps_are_fuel_not_groceries():
-    """"DAC" marks a supermarket fuel dispenser on French statements."""
+    """ "DAC" marks a supermarket fuel dispenser on French statements."""
     assert categorize("DAC AUCHAN CARBU") == "Carburant"
     assert categorize("CARREFOUR DAC VL") == "Carburant"
     assert categorize("CARREFOUR CITY") == "Alimentation"
@@ -164,9 +166,7 @@ def test_bank_fees_have_their_own_type():
 
 def test_taxes_match_on_the_truncated_merchant_key():
     """Keywords are matched against a 3-token merchant key, not the full wording."""
-    key = merchant_key(
-        Txn(simplified_wording="DIRECTION GENERALE DES FINANCES PUBLIQUES 1234567")
-    )
+    key = merchant_key(Txn(simplified_wording="DIRECTION GENERALE DES FINANCES PUBLIQUES 1234567"))
     assert categorize(key) == "Impôts & taxes"
 
 
@@ -201,12 +201,25 @@ def test_everyday_categories_exist_in_the_taxonomy():
 
 # -------------------------------------------------------- internal transfers
 
+
 def _pair(day: date, amount: str, gap_days: int = 0) -> list[Txn]:
     return [
-        Txn(id=1, id_account=1, type="transfer", value=Decimal(f"-{amount}"), date=day,
-            wording="Virement"),
-        Txn(id=2, id_account=2, type="transfer", value=Decimal(amount),
-            date=day + timedelta(days=gap_days), wording="Virement"),
+        Txn(
+            id=1,
+            id_account=1,
+            type="transfer",
+            value=Decimal(f"-{amount}"),
+            date=day,
+            wording="Virement",
+        ),
+        Txn(
+            id=2,
+            id_account=2,
+            type="transfer",
+            value=Decimal(amount),
+            date=day + timedelta(days=gap_days),
+            wording="Virement",
+        ),
     ]
 
 
@@ -237,31 +250,50 @@ def test_same_account_is_not_a_mirror():
 def test_wording_heuristic_catches_lone_savings_move():
     """The mirror leg may sit outside the window; the wording still gives it away."""
     txns = [
-        Txn(id=9, id_account=1, type="transfer", value=Decimal("-300"),
-            date=date(2026, 7, 1), wording="EPGN - Livret"),
+        Txn(
+            id=9,
+            id_account=1,
+            type="transfer",
+            value=Decimal("-300"),
+            date=date(2026, 7, 1),
+            wording="EPGN - Livret",
+        ),
     ]
     assert internal_transfer_ids(txns) == {9}
 
 
 def test_card_payments_are_never_internal():
     txns = [
-        Txn(id=1, id_account=1, type="card", value=Decimal("-500"), date=date(2026, 7, 1),
-            wording="ENSEIGNE"),
-        Txn(id=2, id_account=2, type="card", value=Decimal("500"), date=date(2026, 7, 1),
-            wording="ENSEIGNE"),
+        Txn(
+            id=1,
+            id_account=1,
+            type="card",
+            value=Decimal("-500"),
+            date=date(2026, 7, 1),
+            wording="ENSEIGNE",
+        ),
+        Txn(
+            id=2,
+            id_account=2,
+            type="card",
+            value=Decimal("500"),
+            date=date(2026, 7, 1),
+            wording="ENSEIGNE",
+        ),
     ]
     assert internal_transfer_ids(txns) == set()
 
 
 # ------------------------------------------------- mots-clés courts ambigus
 
+
 @pytest.mark.parametrize(
     ("wording", "not_category"),
     [
-        ("STATIONNEMENT VILLE", "Carburant"),        # "STATION" ⊄ STATIONNEMENT
-        ("TRANSPORTS DUPONT", "Sport / Loisirs"),    # "SPORT" ⊄ TRANSPORTS
-        ("FREELANCE JEAN", "Télécom / Internet"),    # "FREE" ⊄ FREELANCE
-        ("MENUISERIE ENIX", "Énergie / Eau"),        # "ENI" ⊄ MENUISERIE/ENIX
+        ("STATIONNEMENT VILLE", "Carburant"),  # "STATION" ⊄ STATIONNEMENT
+        ("TRANSPORTS DUPONT", "Sport / Loisirs"),  # "SPORT" ⊄ TRANSPORTS
+        ("FREELANCE JEAN", "Télécom / Internet"),  # "FREE" ⊄ FREELANCE
+        ("MENUISERIE ENIX", "Énergie / Eau"),  # "ENI" ⊄ MENUISERIE/ENIX
     ],
 )
 def test_short_keywords_no_longer_match_inside_words(wording, not_category):
@@ -280,6 +312,7 @@ def test_short_keywords_still_match_as_whole_words(wording, category):
 
 
 # ------------------------------- coupes de libellé (cas réels de relevés)
+
 
 @pytest.mark.parametrize(
     ("raw", "expected"),

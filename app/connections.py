@@ -135,9 +135,7 @@ async def connections_page(
             # sur un timedelta, et un « aujourd'hui » faux à l'écran. L'humain
             # compte les jours au changement de date, pas au bout de 24 h.
             age_days=(
-                (today - connection.last_update.date()).days
-                if connection.last_update
-                else None
+                (today - connection.last_update.date()).days if connection.last_update else None
             ),
             next_try=connection.next_try,
             never_synced=connection.last_update is None,
@@ -176,23 +174,14 @@ async def connections_page(
     if statut == "erreur":
         cards = [c for c in cards if not c.ok]
     elif statut == "muette":
-        cards = [
-            c for c in cards
-            if c.ok and (c.age_days or 0) > settings.silent_after_days
-        ]
+        cards = [c for c in cards if c.ok and (c.age_days or 0) > settings.silent_after_days]
 
     imported = store.imported_summary(conn)
-    orphans = [
-        a for a in accounts if not any(a.id_connection == c.id for c in connections)
-    ]
+    orphans = [a for a in accounts if not any(a.id_connection == c.id for c in connections)]
 
     # HTMX ne réclame que le fragment : filtrer ou synchroniser ne recharge
     # plus la page entière (en-tête, barre, bandeau et tous leurs calculs).
-    template = (
-        "_connections_list.html"
-        if request.headers.get("HX-Request")
-        else "connections.html"
-    )
+    template = "_connections_list.html" if request.headers.get("HX-Request") else "connections.html"
     return templates.TemplateResponse(
         request,
         template,

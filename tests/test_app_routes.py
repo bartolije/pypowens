@@ -13,6 +13,7 @@ def _text(html: str) -> str:
 
 # ------------------------------------------------------------------- smoke
 
+
 def test_all_pages_render(client):
     for path in ("/", "/comptes", "/recurrences", "/abonnements", "/analyse", "/patrimoine"):
         response = client.get(path)
@@ -21,6 +22,7 @@ def test_all_pages_render(client):
 
 
 # --------------------------------------------------------- recap / currencies
+
 
 def test_net_worth_excludes_foreign_currency(client):
     """The USD account must not be added to a EUR net worth."""
@@ -38,6 +40,7 @@ def test_foreign_account_listed_with_its_own_currency(client):
 
 
 # ------------------------------------------------------------------ analyse
+
 
 def test_analysis_states_its_period(client):
     body = _text(client.get("/analyse").text)
@@ -84,6 +87,7 @@ def test_internal_transfer_excluded_from_spending(client):
 
 # -------------------------------------------------------------- abonnements
 
+
 def test_subscription_detected(client):
     body = _text(client.get("/abonnements").text)
     assert "Netflix" in body
@@ -106,8 +110,10 @@ def test_perimeter_change_is_explained_under_the_chart(client):
     store.record_snapshot(conn, [Acc(1, name="Courant", balance=Decimal("100"))], day=d)
     store.record_snapshot(
         conn,
-        [Acc(1, name="Courant", balance=Decimal("100")),
-         Acc(99, name="NOUVELLE BANQUE", balance=Decimal("5000"))],
+        [
+            Acc(1, name="Courant", balance=Decimal("100")),
+            Acc(99, name="NOUVELLE BANQUE", balance=Decimal("5000")),
+        ],
         day=d + timedelta(days=1),
     )
     app.data.clear_cache()
@@ -121,6 +127,7 @@ def test_perimeter_change_is_explained_under_the_chart(client):
 
 
 # ------------------------------------------------------------------- budgets
+
 
 def test_budget_can_be_set_followed_and_removed(client):
     """Le critère de la roadmap : je fixe une enveloppe et je vois où j'en suis."""

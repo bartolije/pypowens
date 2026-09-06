@@ -105,9 +105,7 @@ async def import_statement(
             status_code=400,
         )
 
-    db_id = store.upsert_imported_account(
-        conn, libelle, type=type_compte, currency=devise
-    )
+    db_id = store.upsert_imported_account(conn, libelle, type=type_compte, currency=devise)
     try:
         parsed = parse_statement(payload, account_id=store.account_id(db_id))
     except ImportError_ as exc:

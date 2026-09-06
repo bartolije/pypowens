@@ -102,6 +102,7 @@ def test_page_is_reachable_from_the_navigation(client):
 
 # ------------------------------------- connexion jamais synchronisée
 
+
 def test_a_never_synced_connection_is_not_shown_as_healthy(client, fake_client):
     """Une connexion tout juste établie n'est ni en erreur ni synchronisée :
     un ✓ vert y était trompeur, et « jamais » n'est pas une bonne nouvelle."""
@@ -115,7 +116,7 @@ def test_a_never_synced_connection_is_not_shown_as_healthy(client, fake_client):
     assert "sync-pending" in body
     assert "sync-ok" not in body
     # La carte est dépliée : c'est ce qu'on vient regarder.
-    assert "<details class=\"card mb-3 connection-card\" open>" in body
+    assert '<details class="card mb-3 connection-card" open>' in body
 
     fake_client._connections[0]["last_update"] = "2026-07-01 06:00:00"
     app.data.clear_cache()
@@ -150,6 +151,7 @@ def test_a_never_synced_connection_is_auto_relaunched(client, fake_client):
 
 
 # ------------------------------------- âge en jours calendaires
+
 
 def test_age_counts_calendar_days_not_24h_slices(client, fake_client):
     """Une synchro d'hier 20 h, lue aujourd'hui à 15 h, fait 18 h d'écart : un
@@ -196,6 +198,7 @@ def test_the_badge_is_a_state_and_the_button_is_an_action(client):
 
 # ------------------------------------- refus de synchronisation
 
+
 def test_a_refused_sync_says_so_instead_of_doing_nothing(client, fake_client):
     """Powens répond 409 « Can't force synchronization » quand la connexion
     vient d'être rafraîchie. Le bouton semblait alors ne rien faire."""
@@ -209,16 +212,12 @@ def test_a_refused_sync_says_so_instead_of_doing_nothing(client, fake_client):
     original = fake_client.update_connection
     fake_client.update_connection = refuse
     try:
-        body = _text(
-            client.post("/connexions/1/synchroniser", headers={"HX-Request": "true"}).text
-        )
+        body = _text(client.post("/connexions/1/synchroniser", headers={"HX-Request": "true"}).text)
         assert "refuse une synchronisation forcée" in body
     finally:
         fake_client.update_connection = original
 
 
 def test_a_successful_sync_shows_no_alarm(client, fake_client):
-    body = _text(
-        client.post("/connexions/1/synchroniser", headers={"HX-Request": "true"}).text
-    )
+    body = _text(client.post("/connexions/1/synchroniser", headers={"HX-Request": "true"}).text)
     assert "refuse une synchronisation" not in body

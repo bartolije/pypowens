@@ -33,6 +33,7 @@ def conn(tmp_path):
 
 # ------------------------------------------------------------- fonctions pures
 
+
 @pytest.mark.parametrize(
     ("isin", "expected"),
     [
@@ -49,10 +50,10 @@ def test_country_from_isin(isin, expected):
 @pytest.mark.parametrize(
     ("ticker", "exch", "expected"),
     [
-        ("AI", "PA", "AI.PA"),        # Euronext Paris
-        ("ASML", "AS", "ASML.AS"),    # Amsterdam
-        ("AAPL", "US", "AAPL"),       # place US : pas de suffixe
-        ("XYZ", "??", "XYZ"),         # place inconnue : ticker inchangé
+        ("AI", "PA", "AI.PA"),  # Euronext Paris
+        ("ASML", "AS", "ASML.AS"),  # Amsterdam
+        ("AAPL", "US", "AAPL"),  # place US : pas de suffixe
+        ("XYZ", "??", "XYZ"),  # place inconnue : ticker inchangé
     ],
 )
 def test_yahoo_ticker_suffixes(ticker, exch, expected):
@@ -60,6 +61,7 @@ def test_yahoo_ticker_suffixes(ticker, exch, expected):
 
 
 # -------------------------------------------------------------------- cache
+
 
 def test_cache_roundtrip_and_30_day_expiry(conn):
     _save_cache(conn, "FR0000120073", {"sector": "Industrials", "country": "France"})
@@ -80,21 +82,21 @@ async def test_classify_returns_cache_without_api_key(conn):
 
 # ------------------------------------------------------------------ OpenFIGI
 
+
 @respx.mock
 async def test_openfigi_shorter_response_does_not_crash(conn):
     """OpenFIGI peut renvoyer moins de résultats que d'ISINs demandés."""
     respx.post("https://api.openfigi.com/v3/mapping").mock(
         return_value=httpx.Response(200, json=[{"data": []}])  # 1 réponse pour 2 ISINs
     )
-    result = await classify_investments(
-        ["FR0000120073", "US0378331005"], conn, "test-key"
-    )
+    result = await classify_investments(["FR0000120073", "US0378331005"], conn, "test-key")
     # Dégradé mais jamais cassé : fallback pays par préfixe ISIN.
     assert result["FR0000120073"]["country"] == "France"
     assert result["US0378331005"]["country"] == "États-Unis"
 
 
 # ------------------------------------------------------------- traduction FR
+
 
 def test_sectors_and_countries_come_out_in_french(conn):
     from app.classify import translate_classification

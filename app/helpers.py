@@ -13,8 +13,16 @@ from decimal import Decimal
 
 # Colour-blind-friendly categorical palette (used across charts for consistency).
 PALETTE = [
-    "#635bff", "#0ca678", "#f28e2b", "#e15759", "#7c8bff",
-    "#12b886", "#f59f00", "#ff8787", "#9775fa", "#868e96",
+    "#635bff",
+    "#0ca678",
+    "#f28e2b",
+    "#e15759",
+    "#7c8bff",
+    "#12b886",
+    "#f59f00",
+    "#ff8787",
+    "#9775fa",
+    "#868e96",
 ]
 
 Number = int | float | Decimal | None
@@ -64,8 +72,18 @@ def month_key(d: date | None) -> str:
 
 def month_label_fr(key: str) -> str:
     months = [
-        "janv.", "févr.", "mars", "avr.", "mai", "juin",
-        "juil.", "août", "sept.", "oct.", "nov.", "déc.",
+        "janv.",
+        "févr.",
+        "mars",
+        "avr.",
+        "mai",
+        "juin",
+        "juil.",
+        "août",
+        "sept.",
+        "oct.",
+        "nov.",
+        "déc.",
     ]
     try:
         y, m = key.split("-")
@@ -116,7 +134,7 @@ def bar_chart(
             f'<rect x="{label_w}" y="{y}" width="{w}" height="{bar_height}" '
             f'rx="3" fill="{color}"><title>{_e(label)}: {value:,.2f} {unit}</title></rect>'
             f'<text x="{label_w + w + 6}" y="{y + bar_height * 0.7}" class="cv amount">'
-            f'{value:,.0f} {unit}</text>'
+            f"{value:,.0f} {unit}</text>"
         )
     height = len(items) * (bar_height + gap)
     return (
@@ -265,9 +283,7 @@ def line_chart(
     if bench:
         # Les None ne surviennent qu'en tête (avant la première clôture
         # archivée) : une seule polyligne des points datés suffit.
-        bench_points = [
-            f"{_x(i):.1f},{_y(v):.1f}" for i, v in enumerate(bench) if v is not None
-        ]
+        bench_points = [f"{_x(i):.1f},{_y(v):.1f}" for i, v in enumerate(bench) if v is not None]
         if len(bench_points) >= 2:
             bench_svg = (
                 f'<polyline points="{" ".join(bench_points)}" fill="none" '
@@ -361,7 +377,7 @@ def donut_chart(
         segments.append(
             f'<path d="M {cx} {cy} L {x1:.2f} {y1:.2f} '
             f'A {r} {r} 0 {large} 1 {x2:.2f} {y2:.2f} Z" fill="{color}">'
-            f'<title>{_e(label)}: {value:,.2f} {unit} ({frac * 100:.0f}%)</title></path>'
+            f"<title>{_e(label)}: {value:,.2f} {unit} ({frac * 100:.0f}%)</title></path>"
         )
         if compact:
             legend.append(
@@ -437,20 +453,13 @@ def treemap(
             # Truncate label to fit.
             max_chars = max(3, int(w / 7))
             shown = label if len(label) <= max_chars else label[: max_chars - 1] + "\u2026"
-            text += (
-                f'<text x="{x + 6}" y="{y + 16}" class="tm-label">'
-                f"{_e(shown)}</text>"
-            )
+            text += f'<text x="{x + 6}" y="{y + 16}" class="tm-label">{_e(shown)}</text>'
         if w > 40 and h > 42:
             text += (
-                f'<text x="{x + 6}" y="{y + 30}" class="tm-val amount">'
-                f"{value:,.0f}{unit}</text>"
+                f'<text x="{x + 6}" y="{y + 30}" class="tm-val amount">{value:,.0f}{unit}</text>'
             )
         if w > 40 and h > 56:
-            text += (
-                f'<text x="{x + 6}" y="{y + 43}" class="tm-pct">'
-                f"{pct:.0f}\u202f%</text>"
-            )
+            text += f'<text x="{x + 6}" y="{y + 43}" class="tm-pct">{pct:.0f}\u202f%</text>'
 
         segments.append(
             f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" '
@@ -462,7 +471,7 @@ def treemap(
     svg = (
         f'<svg viewBox="0 0 {width} {height}" class="chart treemap" role="img" '
         f'width="100%" preserveAspectRatio="xMinYMin meet">'
-        f'{"".join(segments)}</svg>'
+        f"{''.join(segments)}</svg>"
     )
     return svg
 

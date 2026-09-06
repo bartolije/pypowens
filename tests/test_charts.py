@@ -56,8 +56,7 @@ def test_line_chart_labels_bracket_the_data():
     svg = line_chart([("a", 174000.0), ("b", 178200.0)])
     labels = re.findall(r'class="cv amount">([^<]+)</text>', svg)
     numbers = [
-        float(_plain(t).replace(" k€", "").replace(" ", "").replace(",", "."))
-        for t in labels
+        float(_plain(t).replace(" k€", "").replace(" ", "").replace(",", ".")) for t in labels
     ]
     assert min(numbers) * 1000 <= 174000
     assert max(numbers) * 1000 >= 178200
@@ -120,13 +119,14 @@ def test_benchmark_overlay_rebases_on_the_series_start():
 
 # --------------------------------------------------- helpers de présentation
 
+
 def test_format_money_and_currency_symbols():
     from app.helpers import currency_symbol, format_money
 
     assert currency_symbol("EUR") == "€"
     assert currency_symbol("USD") == "$"
-    assert currency_symbol("CHF") == "CHF"      # code inconnu : rendu tel quel
-    assert currency_symbol("€") == "€"          # déjà un symbole
+    assert currency_symbol("CHF") == "CHF"  # code inconnu : rendu tel quel
+    assert currency_symbol("€") == "€"  # déjà un symbole
     # Espaces fine (U+202F) pour les milliers, insécable (U+00A0) avant le
     # symbole : le montant ne doit jamais casser en fin de ligne.
     assert format_money(1234.5, "€") == "1\u202f234,50\u00a0€"

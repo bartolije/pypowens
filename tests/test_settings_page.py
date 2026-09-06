@@ -28,6 +28,7 @@ def _settings(**kw) -> Settings:
 
 # ------------------------------------------------------------- précédence
 
+
 def test_database_overrides_win_over_the_environment():
     settings = _settings(base_currency="EUR", history_months=36)
     merged = apply_overrides(settings, {"base_currency": "chf", "history_months": "12"})
@@ -37,9 +38,7 @@ def test_database_overrides_win_over_the_environment():
 
 def test_empty_or_unreadable_values_fall_back_to_the_default():
     settings = _settings(history_months=36, silent_after_days=3)
-    merged = apply_overrides(
-        settings, {"history_months": "", "silent_after_days": "beaucoup"}
-    )
+    merged = apply_overrides(settings, {"history_months": "", "silent_after_days": "beaucoup"})
     assert merged.history_months == 36
     assert merged.silent_after_days == 3
 
@@ -60,6 +59,7 @@ def test_secrets_are_never_overridable():
 
 # ------------------------------------------------------------------ page
 
+
 def test_page_lists_every_overridable_setting(client):
     body = _text(client.get("/reglages").text)
     assert "Devise de référence" in body
@@ -70,13 +70,19 @@ def test_page_lists_every_overridable_setting(client):
 def test_saving_a_setting_applies_it_immediately(client):
     posted = client.post(
         "/reglages",
-        data={"history_months": "18", "base_currency": "EUR", "silent_after_days": "5",
-              "benchmark_ticker": "IWDA.AS", "benchmark_label": "MSCI World"},
+        data={
+            "history_months": "18",
+            "base_currency": "EUR",
+            "silent_after_days": "5",
+            "benchmark_ticker": "IWDA.AS",
+            "benchmark_label": "MSCI World",
+        },
         follow_redirects=False,
     )
     assert posted.status_code == 303
 
     import app.main
+
     assert app.main.app.state.settings.history_months == 18
     assert app.main.app.state.settings.silent_after_days == 5
     # Et la page le montre comme personnalisé.
@@ -85,8 +91,13 @@ def test_saving_a_setting_applies_it_immediately(client):
     # Vider le champ rend la main au .env.
     client.post(
         "/reglages",
-        data={"history_months": "", "base_currency": "EUR", "silent_after_days": "3",
-              "benchmark_ticker": "IWDA.AS", "benchmark_label": "MSCI World"},
+        data={
+            "history_months": "",
+            "base_currency": "EUR",
+            "silent_after_days": "3",
+            "benchmark_ticker": "IWDA.AS",
+            "benchmark_label": "MSCI World",
+        },
     )
     assert app.main.app.state.settings.history_months == 36
 

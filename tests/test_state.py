@@ -33,6 +33,7 @@ def _settings(monkeypatch, tmp_path, **overrides) -> Settings:
 
 # ------------------------------------------------------------------ state file
 
+
 def test_load_state_missing_file_is_empty(tmp_path):
     assert _load_state(tmp_path / "absent.json") == {}
 
@@ -64,6 +65,7 @@ def test_save_state_roundtrip_and_permissions(tmp_path):
 
 
 # ------------------------------------------------------------------- bootstrap
+
 
 async def test_bootstrap_env_token_wins(monkeypatch, tmp_path):
     settings = _settings(monkeypatch, tmp_path, access_token="env-tok")
@@ -120,6 +122,7 @@ async def test_bootstrap_refuses_corrupt_state(monkeypatch, tmp_path):
 
 
 # ------------------------------------------------------------------- try_renew
+
 
 async def test_try_renew_without_credentials(monkeypatch, tmp_path):
     settings = _settings(monkeypatch, tmp_path, client_id=None, client_secret=None)

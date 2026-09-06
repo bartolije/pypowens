@@ -221,9 +221,7 @@ def _fetch_yahoo_sync(tickers: list[str]) -> dict[str, dict[str, Any]]:
 # ------------------------------------------------------------ SQLite cache
 
 
-def _load_cache(
-    conn: sqlite3.Connection, isins: list[str]
-) -> dict[str, dict[str, Any]]:
+def _load_cache(conn: sqlite3.Connection, isins: list[str]) -> dict[str, dict[str, Any]]:
     """Load cached classifications, skipping entries older than ``_CACHE_DAYS``."""
     cutoff = (date.today() - timedelta(days=_CACHE_DAYS)).isoformat()
     out: dict[str, dict[str, Any]] = {}
@@ -244,9 +242,7 @@ def _load_cache(
     return out
 
 
-def _save_cache(
-    conn: sqlite3.Connection, isin: str, data: dict[str, Any]
-) -> None:
+def _save_cache(conn: sqlite3.Connection, isin: str, data: dict[str, Any]) -> None:
     conn.execute(
         "INSERT OR REPLACE INTO investment_classification"
         " (isin, sector, country, security_type, name, ticker, updated)"

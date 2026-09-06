@@ -48,8 +48,18 @@ TYPE_TO_FAMILY = {
 }
 
 _MONTHS_FR = [
-    "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
-    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre",
+    "Janvier",
+    "Février",
+    "Mars",
+    "Avril",
+    "Mai",
+    "Juin",
+    "Juillet",
+    "Août",
+    "Septembre",
+    "Octobre",
+    "Novembre",
+    "Décembre",
 ]
 
 
@@ -86,9 +96,7 @@ def build_invest_rows(
                 "quantity": inv.quantity,
                 "valuation": inv.valuation,
                 "diff": inv.diff,
-                "diff_percent": (
-                    inv.diff_percent * 100 if inv.diff_percent is not None else None
-                ),
+                "diff_percent": (inv.diff_percent * 100 if inv.diff_percent is not None else None),
                 "currency": inv.currency or base_currency,
             }
             for inv in investments
@@ -97,9 +105,7 @@ def build_invest_rows(
         reverse=True,
     )
     invest_diff = sum((inv.diff or Decimal(0) for inv in investments), Decimal(0))
-    invest_valuation = sum(
-        (inv.valuation or Decimal(0) for inv in investments), Decimal(0)
-    )
+    invest_valuation = sum((inv.valuation or Decimal(0) for inv in investments), Decimal(0))
     invest_cost = invest_valuation - invest_diff
     invest_diff_pct = float(invest_diff / invest_cost * 100) if invest_cost else 0.0
     return rows, invest_diff, invest_diff_pct

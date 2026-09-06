@@ -205,9 +205,7 @@ def qualify_flows(
     return sorted(out, key=lambda f: f.day)
 
 
-def reconstruct_series(
-    values: list[dict[str, Any]], quantities: dict[int, Decimal]
-) -> list[Point]:
+def reconstruct_series(values: list[dict[str, Any]], quantities: dict[int, Decimal]) -> list[Point]:
     """Valorisation jour par jour, reconstruite depuis les VL archivées.
 
     ``quantities`` étant les quantités **d'aujourd'hui**, la série valorise le
@@ -221,9 +219,7 @@ def reconstruct_series(
         quantity = quantities.get(row["investment_id"])
         if quantity is None:
             continue
-        per_line.setdefault(row["investment_id"], {})[row["day"]] = (
-            quantity * row["unit_value"]
-        )
+        per_line.setdefault(row["investment_id"], {})[row["day"]] = quantity * row["unit_value"]
     if not per_line:
         return []
 
@@ -242,9 +238,7 @@ def reconstruct_series(
                 last[inv_id] = series[day]
         if len(last) < len(per_line):
             continue
-        points.append(
-            Point(day=day, value=sum(last.values(), Decimal(0)), reconstructed=True)
-        )
+        points.append(Point(day=day, value=sum(last.values(), Decimal(0)), reconstructed=True))
     return points
 
 
@@ -289,15 +283,11 @@ def twr(points: list[Point], flows: list[Flow], *, add_income: bool) -> float | 
             continue
         if add_income:
             numerator = (
-                current.value
-                - previous.value
-                + _sum_window(income, previous.day, current.day)
+                current.value - previous.value + _sum_window(income, previous.day, current.day)
             )
         else:
             numerator = (
-                current.value
-                - previous.value
-                - _sum_window(external, previous.day, current.day)
+                current.value - previous.value - _sum_window(external, previous.day, current.day)
             )
         factor *= 1.0 + float(numerator) / float(previous.value)
     return factor - 1.0
@@ -418,9 +408,7 @@ _CASH_LABEL = re.compile(r"^\s*(liquidit[ée]s?|cash|esp[èe]ces)\s*$", re.IGNOR
 
 def is_cash_line(*, code: str | None = None, label: str | None = None) -> bool:
     """Cette ligne est-elle une poche d'espèces plutôt qu'un support investi ?"""
-    return bool(
-        (code and _CASH_CODE.search(code)) or (label and _CASH_LABEL.match(label))
-    )
+    return bool((code and _CASH_CODE.search(code)) or (label and _CASH_LABEL.match(label)))
 
 
 def series_coverage(

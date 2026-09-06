@@ -24,7 +24,7 @@ def test_svg_titles_are_preserved_not_removed():
 def test_sortable_headers_are_keyboard_reachable():
     js = (_STATIC / "app.js").read_text()
     assert "th.tabIndex = 0" in js
-    assert 'aria-sort' in js
+    assert "aria-sort" in js
     assert '"keydown"' in js
 
 
@@ -81,6 +81,7 @@ def test_decorative_icons_are_hidden_from_screen_readers(client):
 
 # ------------------------------------------------------------------- macros
 
+
 def test_period_pills_preserve_filters_and_mark_the_current_one(client):
     body = client.get("/patrimoine", params={"type": "Épargne", "group": "1"}).text
     # Le filtre et le groupement survivent à un changement de période…
@@ -90,9 +91,7 @@ def test_period_pills_preserve_filters_and_mark_the_current_one(client):
 
 
 def test_filter_pills_toggle_without_losing_the_other_filters(client):
-    body = client.get(
-        "/patrimoine", params={"type": "Épargne", "institution": "Ma Banque"}
-    ).text
+    body = client.get("/patrimoine", params={"type": "Épargne", "institution": "Ma Banque"}).text
     # Retirer le type garde l'établissement (et inversement) ; Jinja encode
     # l'espace en %20 (urlencode de Werkzeug, pas quote_plus).
     assert "/patrimoine?institution=Ma%20Banque&amp;period=tout" in body
@@ -110,10 +109,11 @@ def test_qs_macro_omits_empty_values(client):
 
 # ------------------------------------------- architecture de la navigation
 
+
 def test_sidebar_keeps_only_the_consultation_pages(client):
     """Administration (connexions, import, réglages) hors du bloc quotidien."""
     body = client.get("/comptes").text
-    sidebar = body[body.index('class="sidebar-nav"'):body.index("</nav>")]
+    sidebar = body[body.index('class="sidebar-nav"') : body.index("</nav>")]
     for page in ("/", "/patrimoine", "/comptes", "/analyse", "/abonnements", "/performance"):
         assert f'href="{page}"' in sidebar, page
     for admin in ("/connexions", "/import", "/recurrences"):
@@ -122,7 +122,7 @@ def test_sidebar_keeps_only_the_consultation_pages(client):
 
 def test_bank_accounts_live_in_the_top_right_corner(client):
     body = client.get("/comptes").text
-    topbar = body[body.index('class="topbar-right"'):body.index("</header>")]
+    topbar = body[body.index('class="topbar-right"') : body.index("</header>")]
     assert 'href="/connexions"' in topbar
     assert "Mes comptes bancaires" in topbar
 

@@ -93,7 +93,10 @@ async def account_detail(
     store.ensure_snapshot(conn, accounts_list.accounts, default_currency=base_currency)
     since = store.period_to_since(period)
     history = store.account_balance_history(
-        conn, account_id=account_id, currency=currency, since=since,
+        conn,
+        account_id=account_id,
+        currency=currency,
+        since=since,
     )
 
     # Variation: compare current balance to the first recorded balance.
@@ -170,16 +173,20 @@ async def account_detail(
             by_day: dict[date, list[dict]] = defaultdict(list)
             for txn in account_txns:
                 txn_date = txn.date or date.min
-                by_day[txn_date].append({
-                    "wording": txn.simplified_wording or txn.wording or "---",
-                    "category": resolve_category_txn(txn, overrides),
-                    "amount": txn.value or Decimal(0),
-                })
+                by_day[txn_date].append(
+                    {
+                        "wording": txn.simplified_wording or txn.wording or "---",
+                        "category": resolve_category_txn(txn, overrides),
+                        "amount": txn.value or Decimal(0),
+                    }
+                )
             for day_key in sorted(by_day, reverse=True):
-                transactions_by_day.append({
-                    "label": day_label_fr(day_key),
-                    "transactions": by_day[day_key],
-                })
+                transactions_by_day.append(
+                    {
+                        "label": day_label_fr(day_key),
+                        "transactions": by_day[day_key],
+                    }
+                )
         except Exception:
             _log.exception("Failed to load transactions for account %s", account_id)
 

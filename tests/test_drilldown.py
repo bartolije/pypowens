@@ -84,10 +84,9 @@ def test_sync_endpoint_redirects(client):
 
 # ------------------------------------------------------------------- callback
 
+
 def test_callback_success_redirects_with_connection_id(client):
-    response = client.get(
-        "/callback", params={"connection_id": 42}, follow_redirects=False
-    )
+    response = client.get("/callback", params={"connection_id": 42}, follow_redirects=False)
     assert response.status_code == 307
     assert "connection_id=42" in response.headers["location"]
 
@@ -131,9 +130,7 @@ def test_callback_refuses_a_code_without_the_issued_state(client):
     l'utilisateur Powens d'un attaquant (fixation de session).
     """
     client.app.state.webview_state = "expected-state"
-    response = client.get(
-        "/callback", params={"code": "attacker-code"}, follow_redirects=False
-    )
+    response = client.get("/callback", params={"code": "attacker-code"}, follow_redirects=False)
     assert response.status_code == 400
     assert "non reconnu" in response.text
 
@@ -159,6 +156,7 @@ def test_callback_state_is_single_use(client):
 
 # ---------------------------------------------------------------------- export
 
+
 def test_export_csv_streams_the_history_with_categories(client):
     response = client.get("/export.csv")
     assert response.status_code == 200
@@ -172,6 +170,7 @@ def test_export_csv_streams_the_history_with_categories(client):
 
 
 # ------------------------------------------------------- virement interne manuel
+
 
 def test_flagging_a_label_as_internal_excludes_it_everywhere(client):
     """CCF → Bourso puis Bourso → 3 comptes : l'heuristique miroir ne voit pas
@@ -190,9 +189,7 @@ def test_flagging_a_label_as_internal_excludes_it_everywhere(client):
     # Après : plus un abonnement…
     assert "NETFLIX.COM" not in client.get("/abonnements").text
     # …marqué comme virement interne sur le drill-down (listé, non compté)…
-    assert "virement interne" in client.get(
-        "/transactions", params={"label": "NETFLIX.COM"}
-    ).text
+    assert "virement interne" in client.get("/transactions", params={"label": "NETFLIX.COM"}).text
     # …et retour à la normale quand on rend la main à l'heuristique.
     client.post(
         "/categorie",
@@ -208,6 +205,7 @@ def test_the_category_form_offers_virement_interne(client):
 
 
 # ----------------------------------------------------- recherche, fusion, renommage
+
 
 def test_search_finds_by_label_and_by_amount(client):
     body = _text(client.get("/recherche", params={"q": "netflix"}).text)
@@ -236,6 +234,7 @@ def test_merging_merchants_groups_them_everywhere(client, fake_client):
     # Défusion : cible vide.
     client.post("/marchands/fusionner", data={"source": "NETFLIX.COM", "cible": ""})
     import app.data
+
     app.data.clear_cache()
 
 
@@ -258,4 +257,5 @@ def test_detail_transactions_tab_is_paginated(client):
 
     # La navigation apparaît dès que le compte dépasse la taille de page (100).
     from app.detail import _PAGE_SIZE
+
     assert _PAGE_SIZE == 100

@@ -40,14 +40,9 @@ def _notify_macos(title: str, message: str) -> bool:
     """Centre de notifications macOS, via osascript."""
     if sys.platform != "darwin":
         return False
-    script = (
-        f'display notification "{_escape(message[:220])}" '
-        f'with title "{_escape(title)}"'
-    )
+    script = f'display notification "{_escape(message[:220])}" with title "{_escape(title)}"'
     try:
-        subprocess.run(
-            ["osascript", "-e", script], check=True, capture_output=True, timeout=10
-        )
+        subprocess.run(["osascript", "-e", script], check=True, capture_output=True, timeout=10)
         return True
     except (OSError, subprocess.SubprocessError):
         _log.warning("notification macOS impossible", exc_info=True)

@@ -46,6 +46,7 @@ def _env_de_deploiement(monkeypatch):
 
 # --------------------------------------------------------------- persistance
 
+
 def test_le_volume_porte_la_base_et_le_token(monkeypatch, tmp_path):
     """Les deux fichiers doivent atterrir sur le volume, pas seulement la base.
 
@@ -82,6 +83,7 @@ def test_un_chemin_explicite_l_emporte_sur_le_volume(monkeypatch, tmp_path):
 
 # ------------------------------------------------------------------ callback
 
+
 def test_le_callback_suit_le_domaine_public(monkeypatch):
     monkeypatch.setenv("RAILWAY_PUBLIC_DOMAIN", "finance.up.railway.app")
 
@@ -108,6 +110,7 @@ def test_le_port_impose_par_l_hebergeur_est_repris(monkeypatch):
 
 # ------------------------------------------------------- écoute non loopback
 
+
 def test_ecouter_au_dela_de_la_loopback_exige_une_porte(monkeypatch):
     monkeypatch.setenv("APP_HOST", "0.0.0.0")
 
@@ -124,6 +127,7 @@ def test_l_authentification_autorise_l_ecoute_publique(monkeypatch):
 
 
 # ------------------------------------------------------------ authentification
+
 
 def test_sans_identifiants_configures_l_app_reste_ouverte(client):
     """L'usage local ne doit gagner aucune friction."""
@@ -186,6 +190,7 @@ def test_une_visite_sans_identifiants_ne_consomme_pas_le_quota(client, monkeypat
 
 # --------------------------------------------------------------------- CSRF
 
+
 def test_un_post_venu_d_ailleurs_reste_refuse_meme_authentifie(client, monkeypatch):
     """Le navigateur rejoue les identifiants Basic sur une requête cross-site."""
     monkeypatch.setenv("APP_AUTH_USER", "jb")
@@ -216,6 +221,7 @@ def test_un_post_emis_par_l_app_passe(client, monkeypatch):
 
 
 # -------------------------------------------------------------- notification
+
 
 def test_la_notification_part_en_webhook(monkeypatch):
     """Aucun écran devant un serveur : osascript n'y notifierait personne."""
@@ -252,6 +258,7 @@ def test_la_notification_reste_coupable_par_l_environnement(monkeypatch):
 
 
 # -------------------------------------------------------- collecte planifiée
+
 
 async def test_la_collecte_planifiee_survit_a_une_panne(monkeypatch):
     """Une API en vrac ne doit pas coûter tous les jours suivants."""

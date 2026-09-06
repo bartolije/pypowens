@@ -94,7 +94,13 @@ def qr_svg(url: str, *, scale: int = 8) -> str:
     # parvenir à le décoder. En 53×53 affichés plus grand, chaque module fait
     # près de 6 px.
     segno.make(url, error="l").save(
-        buffer, kind="svg", scale=scale, dark="#111111", light="#ffffff",
-        border=2, xmldecl=False, svgns=True,
+        buffer,
+        kind="svg",
+        scale=scale,
+        dark="#111111",
+        light="#ffffff",
+        border=2,
+        xmldecl=False,
+        svgns=True,
     )
     return buffer.getvalue().decode("utf-8")

@@ -35,8 +35,7 @@ async def synthese(
 
     # Only accounts in base currency count toward net worth.
     accounts = [
-        a for a in accounts_list.accounts
-        if (a.currency or base_currency).upper() == base_currency
+        a for a in accounts_list.accounts if (a.currency or base_currency).upper() == base_currency
     ]
 
     net = sum((a.balance or Decimal(0) for a in accounts), Decimal(0))
@@ -49,9 +48,7 @@ async def synthese(
 
     total_assets = sum((v for v in subtotals.values() if v > 0), Decimal(0))
     assets: list[dict[str, Any]] = [
-        {"name": name, "subtotal": subtotals[name]}
-        for name in FAMILY_ORDER
-        if subtotals[name] > 0
+        {"name": name, "subtotal": subtotals[name]} for name in FAMILY_ORDER if subtotals[name] > 0
     ]
     allocation = [
         {

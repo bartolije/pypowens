@@ -42,6 +42,7 @@ class Txn:
 
 # ------------------------------------------------------ qualification des flux
 
+
 def test_a_versement_is_external_but_a_boost_is_not():
     """Powens type les deux en ``deposit`` : seul le libellé les sépare."""
     versement = Txn(type="deposit", wording="Versement", value=Decimal(50000))
@@ -90,6 +91,7 @@ def test_qualify_flows_keeps_only_the_account_asked_for():
 
 
 # --------------------------------------------------------------- série de valeurs
+
 
 def test_reconstruct_series_values_todays_holdings_at_past_prices():
     values = [
@@ -145,10 +147,9 @@ def test_reconstruct_skips_days_before_a_line_first_value():
 
 # ------------------------------------------------------------------------- TWR
 
+
 def _series(values: list[str], *, start: date = date(2026, 7, 1)) -> list[Point]:
-    return [
-        Point(day=start + timedelta(days=i), value=Decimal(v)) for i, v in enumerate(values)
-    ]
+    return [Point(day=start + timedelta(days=i), value=Decimal(v)) for i, v in enumerate(values)]
 
 
 def test_twr_is_the_plain_variation_without_any_flow():
@@ -216,6 +217,7 @@ def test_twr_skips_a_period_starting_from_zero():
 
 # ------------------------------------------------------------------------ XIRR
 
+
 def test_xirr_finds_a_simple_annual_return():
     rate = xirr([(date(2025, 1, 1), Decimal(-1000)), (date(2026, 1, 1), Decimal(1100))])
     assert rate is not None
@@ -236,6 +238,7 @@ def test_xirr_returns_none_without_a_sign_change():
 
 
 # --------------------------------------------------------------------- compute
+
 
 def test_compute_separates_the_gain_from_the_deposits():
     points = _series(["100000", "105000", "160000"])
@@ -286,6 +289,7 @@ def test_compute_counts_trades_as_caveats_on_a_reconstructed_series():
 
 
 # ------------------------------------------- ce qui rendait les chiffres réels faux
+
 
 def test_a_share_purchase_does_not_dent_the_performance():
     """Le bug constaté : un achat de 7 668 € sur le PEA affichait -5,4 % au lieu de -1,1 %.
@@ -342,9 +346,7 @@ def test_full_coverage_is_trustworthy():
     values = [{"investment_id": 1, "day": date(2026, 7, 5), "unit_value": Decimal(1)}]
     coverage = series_coverage(values, {1: Decimal(1000)}, Decimal(1000))
     assert coverage == pytest.approx(1.0)
-    perf = compute(
-        account_id=9, points=_series(["100", "110"]), flows=[], coverage=coverage
-    )
+    perf = compute(account_id=9, points=_series(["100", "110"]), flows=[], coverage=coverage)
     assert perf is not None and perf.trustworthy is True
 
 
@@ -363,9 +365,7 @@ def test_cash_is_not_a_hole_in_the_series():
     valuations = {1: Decimal(243502)}
     naive = series_coverage(values, valuations, Decimal(266565))
     assert naive is not None and naive < 0.95  # ce que faisait la version précédente
-    without_cash = series_coverage(
-        values, valuations, Decimal(266565), cash=Decimal("23062.12")
-    )
+    without_cash = series_coverage(values, valuations, Decimal(266565), cash=Decimal("23062.12"))
     assert without_cash is not None and without_cash == pytest.approx(1.0, abs=1e-4)
 
 

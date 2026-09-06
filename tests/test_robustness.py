@@ -20,6 +20,7 @@ def _client(**kwargs) -> PowensClient:
 
 # ------------------------------------------------------------------- retries
 
+
 @respx.mock
 async def test_retries_then_succeeds_on_429():
     route = respx.get(f"{BASE}/users/me").mock(
@@ -80,6 +81,7 @@ async def test_retries_network_error():
 
 # ---------------------------------------------------------------- pagination
 
+
 @respx.mock
 async def test_pagination_stops_on_repeated_next_href():
     """A server echoing the same ``next`` link must not loop forever."""
@@ -98,6 +100,7 @@ async def test_pagination_stops_on_repeated_next_href():
 
 
 # --------------------------------------------------------------------- cache
+
 
 async def test_history_fetched_once_for_widest_window(fake_client):
     """Asking 8 then 24 months used to download the whole history twice."""
@@ -137,6 +140,7 @@ async def test_narrow_first_then_wide_refetches(fake_client):
 
 
 # ------------------------------------------------------------- error handling
+
 
 def test_auth_error_renders_error_page(client, monkeypatch, fake_client):
     """A dead token that cannot be renewed yields a helpful page, not a traceback."""
@@ -209,6 +213,7 @@ def test_rate_limit_renders_error_page(client, monkeypatch, fake_client):
 
 # ------------------------------------------------------------ exposure guard
 
+
 def test_non_loopback_host_is_refused(monkeypatch):
     from app.config import get_settings
 
@@ -229,6 +234,7 @@ def test_non_loopback_host_allowed_with_optin(monkeypatch):
 
 
 # ------------------------------------------------- retries et méthodes non sûres
+
 
 @respx.mock
 async def test_post_is_not_retried_on_5xx():
@@ -264,9 +270,7 @@ async def test_post_is_retried_on_429():
             httpx.Response(200, json={"auth_token": "tok", "id_user": 1}),
         ]
     )
-    async with PowensClient(
-        "test-sandbox", client_id="i", client_secret="s", backoff=0
-    ) as powens:
+    async with PowensClient("test-sandbox", client_id="i", client_secret="s", backoff=0) as powens:
         token = await powens.create_user()
     assert token.id_user == 1
     assert route.call_count == 2
@@ -283,6 +287,7 @@ async def test_retry_after_is_capped():
 
 # ------------------------------------------------------- pagination et sécurité
 
+
 @respx.mock
 async def test_pagination_refuses_to_leak_the_token_to_another_host():
     """Un _links.next vers un hôte tiers exfiltrerait le bearer permanent."""
@@ -292,9 +297,7 @@ async def test_pagination_refuses_to_leak_the_token_to_another_host():
         "transactions": [{"id": 1, "value": "-1.00", "date": "2026-01-01"}],
         "_links": {"next": {"href": "https://attacker.example/steal"}},
     }
-    respx.get(f"{BASE}/users/me/transactions").mock(
-        return_value=httpx.Response(200, json=page)
-    )
+    respx.get(f"{BASE}/users/me/transactions").mock(return_value=httpx.Response(200, json=page))
     async with _client() as powens:
         with pytest.raises(PowensError, match="outside the API host"):
             await powens.list_transactions()
@@ -322,6 +325,7 @@ def test_webview_extra_cannot_override_reserved_params():
 
 
 # ---------------------------------------------------------------- cache (suite)
+
 
 async def test_concurrent_cold_cache_downloads_once(fake_client):
     """Deux requêtes simultanées en cache froid = UN téléchargement (single-flight)."""
@@ -366,6 +370,7 @@ async def test_expired_cache_never_shrinks_the_window(fake_client):
 
 
 # ------------------------------------------------------------- sécurité web
+
 
 def test_cross_site_post_is_refused(client):
     """Sans auth ni cookie, l'Origin est la seule frontière anti-CSRF."""

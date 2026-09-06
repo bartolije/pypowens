@@ -94,8 +94,7 @@ async def bootstrap_client(settings: Settings) -> PowensClient:
     # 3. Create a new user and persist the token.
     token = await client.create_user()
     _log.warning(
-        "aucun token existant : NOUVEL utilisateur Powens créé (id_user=%s), "
-        "persisté dans %s",
+        "aucun token existant : NOUVEL utilisateur Powens créé (id_user=%s), persisté dans %s",
         token.id_user,
         settings.state_path,
     )

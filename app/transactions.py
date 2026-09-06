@@ -85,9 +85,7 @@ async def transactions_page(
         by_month[month_key(line.txn.date)] = by_month.get(
             month_key(line.txn.date), Decimal(0)
         ) + abs(line.amount)
-    chart = line_chart(
-        [(month_label_fr(k), float(v)) for k, v in sorted(by_month.items())]
-    )
+    chart = line_chart([(month_label_fr(k), float(v)) for k, v in sorted(by_month.items())])
 
     overrides = store.all_overrides(conn)
     return templates.TemplateResponse(

@@ -17,7 +17,9 @@ BASE = "https://myapp-sandbox.biapi.pro/2.0"
 def test_resolve_host_variants():
     assert _resolve_host("myapp-sandbox") == "https://myapp-sandbox.biapi.pro"
     assert _resolve_host("myapp-sandbox.biapi.pro") == "https://myapp-sandbox.biapi.pro"
-    assert _resolve_host("https://myapp-sandbox.biapi.pro/2.0/") == "https://myapp-sandbox.biapi.pro"
+    assert (
+        _resolve_host("https://myapp-sandbox.biapi.pro/2.0/") == "https://myapp-sandbox.biapi.pro"
+    )
 
 
 @respx.mock
@@ -151,9 +153,7 @@ async def test_get_indicators_handles_null():
 @respx.mock
 async def test_list_categories():
     respx.get(f"{BASE}/banks/categories").mock(
-        return_value=httpx.Response(
-            200, json={"bank_category": [{"id": 3, "name": "Insurance"}]}
-        )
+        return_value=httpx.Response(200, json={"bank_category": [{"id": 3, "name": "Insurance"}]})
     )
     async with PowensClient("myapp-sandbox", access_token="TOK") as p:
         cats = await p.list_categories()
@@ -308,10 +308,10 @@ def test_datetimes_are_always_naive_and_comparable():
     from pypowens.models import _parse_datetime
 
     forms = [
-        _parse_datetime("2026-01-01 10:00:00"),          # naïf (forme Powens)
-        _parse_datetime("2026-01-01T11:00:00Z"),         # ISO aware UTC
-        _parse_datetime("2026-01-01 12:00:00 +0200"),    # aware avec espace
-        _parse_datetime("2026-01-01T13:00:00+02:00"),    # ISO aware
+        _parse_datetime("2026-01-01 10:00:00"),  # naïf (forme Powens)
+        _parse_datetime("2026-01-01T11:00:00Z"),  # ISO aware UTC
+        _parse_datetime("2026-01-01 12:00:00 +0200"),  # aware avec espace
+        _parse_datetime("2026-01-01T13:00:00+02:00"),  # ISO aware
     ]
     assert all(dt is not None and dt.tzinfo is None for dt in forms)
     assert sorted(forms) == forms  # comparables entre eux, plus de TypeError
@@ -320,6 +320,7 @@ def test_datetimes_are_always_naive_and_comparable():
 
 
 # ------------------------------------------------------------- hygiène HTTP
+
 
 @respx.mock
 async def test_every_request_carries_a_user_agent():
@@ -344,7 +345,7 @@ async def test_non_json_error_body_is_kept_as_excerpt():
             503,
             headers={"Content-Type": "text/html", "X-Request-Id": "cf-abc123"},
             text="<html><body><h1>503 ERROR</h1>The request could not be satisfied"
-                 " (CloudFront)</body></html>",
+            " (CloudFront)</body></html>",
         )
     )
     async with PowensClient("myapp-sandbox", access_token="tok", max_retries=0) as powens:
@@ -359,8 +360,12 @@ async def test_non_json_error_body_is_kept_as_excerpt():
 async def test_request_id_from_the_json_payload_is_exposed():
     respx.get(f"{BASE}/users/me").mock(
         return_value=httpx.Response(
-            404, json={"code": "notFound", "description": "Ressource was not found.",
-                       "request_id": "37a1bc0d"}
+            404,
+            json={
+                "code": "notFound",
+                "description": "Ressource was not found.",
+                "request_id": "37a1bc0d",
+            },
         )
     )
     async with PowensClient("myapp-sandbox", access_token="tok") as powens:

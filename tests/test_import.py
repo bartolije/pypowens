@@ -48,13 +48,14 @@ def _statement(text: bytes = RELEVE, account_id: int = -1):
 
 # ------------------------------------------------------------------ primitives
 
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
         ("1,70", Decimal("1.70")),
         ("1234,56", Decimal("1234.56")),
-        ("1 048,63", Decimal("1048.63")),      # espace comme séparateur de milliers
-        ("1 048,63", Decimal("1048.63")),      # espace insécable
+        ("1 048,63", Decimal("1048.63")),  # espace comme séparateur de milliers
+        ("1 048,63", Decimal("1048.63")),  # espace insécable
         ("-12,00", Decimal("-12.00")),
         ("12,00 €", Decimal("12.00")),
         ("", None),
@@ -63,8 +64,8 @@ def _statement(text: bytes = RELEVE, account_id: int = -1):
         # L'ancien code lisait 1,234.56 comme 1.23456 — corruption ×1000 silencieuse.
         ("1,234.56", Decimal("1234.56")),
         ("-1,234.56", Decimal("-1234.56")),
-        ("1.048,63", Decimal("1048.63")),      # milliers à l'allemande
-        ("1234.56", Decimal("1234.56")),       # point décimal sans milliers
+        ("1.048,63", Decimal("1048.63")),  # milliers à l'allemande
+        ("1234.56", Decimal("1234.56")),  # point décimal sans milliers
     ],
 )
 def test_parse_amount_handles_french_formats(raw, expected):
@@ -104,6 +105,7 @@ def test_infer_type_from_the_statement_prefix(wording, expected):
 
 
 # --------------------------------------------------------------------- parsing
+
 
 def test_debit_is_negative_and_credit_positive():
     parsed = _statement()
@@ -159,6 +161,7 @@ def test_latin1_encoded_file_is_decoded():
 
 # ---------------------------------------------------------------- fingerprints
 
+
 def test_two_identical_operations_on_the_same_day_are_both_kept():
     """Deux stationnements à 1,30 € le même jour ne sont pas un doublon d'import."""
     csv = (
@@ -183,6 +186,7 @@ def test_fingerprint_separates_accounts():
 
 
 # ---------------------------------------------------------------------- store
+
 
 @pytest.fixture
 def conn(tmp_path):
@@ -242,6 +246,7 @@ def test_imported_transactions_can_be_windowed(conn):
 
 # ------------------------------------------------------- fusion avec le pipeline
 
+
 def _loaded(conn):
     return [Transaction.from_api(raw) for raw in store.imported_transactions(conn)]
 
@@ -265,9 +270,7 @@ def test_the_mortgage_instalment_becomes_a_tracked_commitment(conn):
         f'"04/{month:02d}/2026";"04/{month:02d}/2026";"ECH PRET 0000AB00000000";"1234,56";""'
         for month in range(2, 8)
     )
-    csv = (
-        '"Date operation";"Date valeur";"Libelle";"Debit";"Credit"\n' + rows + "\n"
-    ).encode()
+    csv = ('"Date operation";"Date valeur";"Libelle";"Debit";"Credit"\n' + rows + "\n").encode()
     parsed = parse_statement(csv, account_id=store.account_id(db_id))
     store.save_imported(conn, db_id, parsed.transactions, parsed.fingerprints, source="a.csv")
 
@@ -316,6 +319,7 @@ def test_an_inter_bank_transfer_pair_is_detected_once_both_sides_are_loaded(conn
 # Un relevé est importé quand aucun connecteur ne remonte le compte. Le jour où un
 # connecteur s'y met, les deux sources se recouvrent : sans rattachement, la période
 # commune est comptée deux fois et le solde apparaît sur deux comptes.
+
 
 def _linked(conn, *, label: str = "CCF", powens_id: int = 1) -> int:
     db_id = store.upsert_imported_account(conn, label)
@@ -395,8 +399,7 @@ def test_linking_forgets_the_balance_snapshots_of_the_imported_account(conn):
     store.link_imported_account(conn, db_id, 1)
 
     remaining = {
-        row["account_id"]
-        for row in conn.execute("SELECT account_id FROM balance_snapshot")
+        row["account_id"] for row in conn.execute("SELECT account_id FROM balance_snapshot")
     }
     assert remaining == {1}
 
@@ -431,6 +434,7 @@ def test_the_migration_adds_the_column_to_an_existing_database(tmp_path):
 #
 # Le scénario réel : un relevé de 18 mois importé la veille, puis un connecteur qui se
 # met à remonter les 3 derniers mois du même compte.
+
 
 def _text(html: str) -> str:
     plain = re.sub(r"<[^>]+>", " ", html)

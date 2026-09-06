@@ -33,10 +33,16 @@ def _only(txns, **kwargs):
 
 # ------------------------------------------------------------------- kept
 
+
 def test_identical_card_charges_are_a_subscription():
     txns = series(
-        start_id=100, account=1, wording="DEEZER", value=-11.99,
-        count=12, step_days=30, end="2026-06-20",
+        start_id=100,
+        account=1,
+        wording="DEEZER",
+        value=-11.99,
+        count=12,
+        step_days=30,
+        end="2026-06-20",
     )
     assert "DEEZER" in _only(txns)
 
@@ -68,13 +74,12 @@ def test_sepa_stays_a_contract_when_two_of_them_interleave():
     txns = []
     for i, month in enumerate(range(1, 7)):
         txns.append(tx(300 + i * 2, 1, f"2026-{month:02d}-12", -19.00, "MON ENERGIE", type="order"))
-        txns.append(
-            tx(301 + i * 2, 1, f"2026-{month:02d}-12", -27.19, "MON ENERGIE", type="order")
-        )
+        txns.append(tx(301 + i * 2, 1, f"2026-{month:02d}-12", -27.19, "MON ENERGIE", type="order"))
     assert "MON ENERGIE" in _only(txns)
 
 
 # ------------------------------------------------------------------ rejected
+
 
 def test_varying_card_amounts_are_not_a_subscription():
     """Groceries: same merchant, regular cadence, amount all over the place."""
@@ -97,8 +102,13 @@ def test_varying_card_amounts_are_not_a_subscription():
 def test_everyday_categories_are_never_subscriptions():
     """Two identical restaurant bills a year apart are not an annual renewal."""
     txns = series(
-        start_id=500, account=1, wording="RESTAURANT DU COIN", value=-41.96,
-        count=2, step_days=365, end="2026-06-20",
+        start_id=500,
+        account=1,
+        wording="RESTAURANT DU COIN",
+        value=-41.96,
+        count=2,
+        step_days=365,
+        end="2026-06-20",
     )
     detected = detect_recurring(txns, today=TODAY)
     assert detected and detected[0].periodicity == "Annuel"
@@ -108,14 +118,24 @@ def test_everyday_categories_are_never_subscriptions():
 def test_two_card_charges_must_land_on_the_anniversary():
     """Same amount twice, but 40 days off the anniversary: coincidence, not renewal."""
     loose = series(
-        start_id=600, account=1, wording="BOUTIQUE ALPHA", value=-30.20,
-        count=2, step_days=330, end="2026-06-20",
+        start_id=600,
+        account=1,
+        wording="BOUTIQUE ALPHA",
+        value=-30.20,
+        count=2,
+        step_days=330,
+        end="2026-06-20",
     )
     assert _only(loose) == {}
 
     tight = series(
-        start_id=700, account=1, wording="BOUTIQUE BETA", value=-30.20,
-        count=2, step_days=365, end="2026-06-20",
+        start_id=700,
+        account=1,
+        wording="BOUTIQUE BETA",
+        value=-30.20,
+        count=2,
+        step_days=365,
+        end="2026-06-20",
     )
     assert "BOUTIQUE BETA" in _only(tight)
 
@@ -140,6 +160,7 @@ def test_permissive_pass_still_sees_what_the_strict_pass_drops():
 
 # --------------------------------------------------------------- traceability
 
+
 def test_history_and_drift_expose_the_price_trend():
     txns = [
         tx(900 + i, 1, d, v, "MON FOURNISSEUR", type="order")
@@ -159,8 +180,13 @@ def test_history_and_drift_expose_the_price_trend():
 
 def test_drift_is_none_without_a_comparison_point():
     txns = series(
-        start_id=950, account=1, wording="MON TRUC", value=-10.00,
-        count=2, step_days=30, end="2026-06-20",
+        start_id=950,
+        account=1,
+        wording="MON TRUC",
+        value=-10.00,
+        count=2,
+        step_days=30,
+        end="2026-06-20",
     )
     item = detect_recurring(txns, today=TODAY, min_occurrences=2)[0]
     item.history = item.history[:1]
@@ -175,12 +201,22 @@ def test_an_overdue_series_is_flagged_stale():
     monthly series that band is days 46-60, which is what this pins.
     """
     overdue = series(
-        start_id=1000, account=1, wording="ANCIEN ABO", value=-9.99,
-        count=4, step_days=30, end="2026-05-10",
+        start_id=1000,
+        account=1,
+        wording="ANCIEN ABO",
+        value=-9.99,
+        count=4,
+        step_days=30,
+        end="2026-05-10",
     )
     live = series(
-        start_id=1100, account=1, wording="ABO EN COURS", value=-9.99,
-        count=4, step_days=30, end="2026-06-20",
+        start_id=1100,
+        account=1,
+        wording="ABO EN COURS",
+        value=-9.99,
+        count=4,
+        step_days=30,
+        end="2026-06-20",
     )
     items = {it.key: it for it in detect_recurring(overdue + live, today=TODAY)}
     assert items["ANCIEN ABO"].stale is True
@@ -190,20 +226,36 @@ def test_an_overdue_series_is_flagged_stale():
 
 def test_a_long_dead_series_is_dropped_entirely():
     dead = series(
-        start_id=1500, account=1, wording="ABO MORT", value=-9.99,
-        count=4, step_days=30, end="2026-04-20",
+        start_id=1500,
+        account=1,
+        wording="ABO MORT",
+        value=-9.99,
+        count=4,
+        step_days=30,
+        end="2026-04-20",
     )
     assert detect_recurring(dead, today=TODAY) == []
 
 
 def test_rail_names_the_payment_channel():
     card = series(
-        start_id=1200, account=1, wording="PAR CARTE", value=-5.00,
-        count=4, step_days=30, end="2026-06-20",
+        start_id=1200,
+        account=1,
+        wording="PAR CARTE",
+        value=-5.00,
+        count=4,
+        step_days=30,
+        end="2026-06-20",
     )
     sepa = series(
-        start_id=1300, account=1, wording="PAR PRLV", value=-5.00,
-        count=4, step_days=30, end="2026-06-20", type="order",
+        start_id=1300,
+        account=1,
+        wording="PAR PRLV",
+        value=-5.00,
+        count=4,
+        step_days=30,
+        end="2026-06-20",
+        type="order",
     )
     items = {it.key: it for it in detect_recurring(card + sepa, today=TODAY)}
     assert items["PAR CARTE"].rail == "carte"
@@ -213,8 +265,13 @@ def test_rail_names_the_payment_channel():
 def test_is_subscription_is_usable_on_its_own():
     item = detect_recurring(
         series(
-            start_id=1400, account=1, wording="MON ABO", value=-9.99,
-            count=6, step_days=30, end="2026-06-20",
+            start_id=1400,
+            account=1,
+            wording="MON ABO",
+            value=-9.99,
+            count=6,
+            step_days=30,
+            end="2026-06-20",
         ),
         today=TODAY,
     )[0]
@@ -232,7 +289,7 @@ def test_last_amount_is_the_current_price_not_the_median():
         )
     ]
     item = _only(txns)["MON ASSUREUR AUTO"]
-    assert item.amount == Decimal("1190.39")       # median: robust
+    assert item.amount == Decimal("1190.39")  # median: robust
     assert item.last_amount == Decimal("1214.18")  # what is paid today
     assert item.first_amount == Decimal("1139.10")
 
@@ -274,8 +331,14 @@ def test_share_is_not_applied_to_sepa_mandates():
     adjustments = [
         tx(1950 + i, 1, d, v, "MON ASSUREUR SEPA", type="order")
         for i, (d, v) in enumerate(
-            [("2026-01-20", -8.22), ("2026-02-20", -14.50), ("2026-03-20", -31.00),
-             ("2026-04-20", -7.10), ("2026-05-20", -22.40), ("2026-06-20", -19.90)]
+            [
+                ("2026-01-20", -8.22),
+                ("2026-02-20", -14.50),
+                ("2026-03-20", -31.00),
+                ("2026-04-20", -7.10),
+                ("2026-05-20", -22.40),
+                ("2026-06-20", -19.90),
+            ]
         )
     ]
     assert "MON ASSUREUR SEPA" in _only(regular + adjustments)
@@ -295,8 +358,8 @@ def test_a_repriced_contract_is_not_reported_as_cancelled():
         )
     ]
     item = _only(txns)["MON TRESOR PUBLIC"]
-    assert item.stale is True          # the 1 367/1 435 cluster stopped in 2024...
-    assert item.repriced is True       # ...but the mandate was debited again in 2025
+    assert item.stale is True  # the 1 367/1 435 cluster stopped in 2024...
+    assert item.repriced is True  # ...but the mandate was debited again in 2025
     assert item.merchant_last == (date(2025, 10, 3), Decimal("2115.00"))
 
 

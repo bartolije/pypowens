@@ -35,6 +35,7 @@ class _Txn:
 
 # ------------------------------------------------------------- parse_amount
 
+
 @given(st.text(max_size=40))
 def test_parse_amount_never_raises(raw):
     """Une cellule quelconque donne un Decimal ou None — jamais une exception."""
@@ -91,6 +92,7 @@ def test_parsed_amounts_are_always_finite(raw):
 
 # --------------------------------------------------------------- parse_date
 
+
 @given(st.text(max_size=30))
 def test_parse_date_never_raises(raw):
     result = parse_date(raw)
@@ -110,6 +112,7 @@ def test_impossible_dates_are_rejected_not_guessed(day, month):
 
 
 # ------------------------------------------------------------- clean_wording
+
 
 @given(st.text(max_size=60))
 def test_clean_wording_never_raises_and_stays_shorter(raw):
@@ -134,21 +137,31 @@ def test_merchant_key_is_deterministic(raw):
 
 # --------------------------------------------------------------- infer_type
 
+
 @given(st.text(max_size=40))
 def test_infer_type_always_returns_a_known_type(raw):
     known = {
-        "card", "order", "loan_repayment", "withdrawal", "transfer",
-        "bank", "payback", "deposit", "check", "unknown",
+        "card",
+        "order",
+        "loan_repayment",
+        "withdrawal",
+        "transfer",
+        "bank",
+        "payback",
+        "deposit",
+        "check",
+        "unknown",
     }
     assert infer_type(raw) in known
 
 
 # -------------------------------------------------------------- fingerprint
 
+
 @given(
     st.integers(min_value=-1000, max_value=1000),
     st.dates(min_value=date(2000, 1, 1), max_value=date(2099, 1, 1)),
-    st.decimals(min_value=-10**5, max_value=10**5, places=2, allow_nan=False),
+    st.decimals(min_value=-(10**5), max_value=10**5, places=2, allow_nan=False),
     st.text(max_size=40),
 )
 def test_fingerprint_is_stable_and_specific(account, day, value, wording):
@@ -160,6 +173,7 @@ def test_fingerprint_is_stable_and_specific(account, day, value, wording):
 
 
 # ----------------------------------------------------------- parse_statement
+
 
 @given(
     st.lists(

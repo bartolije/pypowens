@@ -52,8 +52,13 @@ def _by_key(items: list[RecurringItem]) -> dict[str, RecurringItem]:
 
 def test_netflix_monthly():
     txns = series(
-        start_id=100, account=1, wording="NETFLIX.COM", value=-13.49,
-        count=12, step_days=30, end="2026-06-20",
+        start_id=100,
+        account=1,
+        wording="NETFLIX.COM",
+        value=-13.49,
+        count=12,
+        step_days=30,
+        end="2026-06-20",
     )
     items = detect_recurring(txns, today=TODAY)
     assert len(items) == 1
@@ -72,8 +77,14 @@ def test_netflix_monthly():
 
 def test_insurance_quarterly():
     txns = series(
-        start_id=200, account=1, wording="PRLV SEPA AXA ASSURANCE", value=-180,
-        count=8, step_days=91, end="2026-06-10", type="bank",
+        start_id=200,
+        account=1,
+        wording="PRLV SEPA AXA ASSURANCE",
+        value=-180,
+        count=8,
+        step_days=91,
+        end="2026-06-10",
+        type="bank",
     )
     items = detect_recurring(txns, today=TODAY)
     assert len(items) == 1
@@ -87,8 +98,14 @@ def test_insurance_quarterly():
 
 def test_yearly_subscription_three_occurrences():
     txns = series(
-        start_id=300, account=1, wording="PRLV OVHCLOUD", value=-69.90,
-        count=3, step_days=365, end="2026-06-01", type="bank",
+        start_id=300,
+        account=1,
+        wording="PRLV OVHCLOUD",
+        value=-69.90,
+        count=3,
+        step_days=365,
+        end="2026-06-01",
+        type="bank",
     )
     items = detect_recurring(txns, today=TODAY)
     assert len(items) == 1
@@ -101,8 +118,14 @@ def test_yearly_subscription_three_occurrences():
 def test_yearly_accepted_with_two_occurrences():
     """The min_occurrences=2 rule for long cadences (365d apart)."""
     txns = series(
-        start_id=350, account=1, wording="PRLV AMAZON PRIME", value=-49.90,
-        count=2, step_days=365, end="2026-05-15", type="bank",
+        start_id=350,
+        account=1,
+        wording="PRLV AMAZON PRIME",
+        value=-49.90,
+        count=2,
+        step_days=365,
+        end="2026-05-15",
+        type="bank",
     )
     items = detect_recurring(txns, today=TODAY)
     assert len(items) == 1
@@ -118,8 +141,13 @@ def test_one_off_purchase_not_detected():
 def test_two_monthly_occurrences_not_detected():
     """2 occurrences at a short cadence must not qualify (needs >= 3)."""
     txns = series(
-        start_id=410, account=1, wording="BOUTIQUE XYZ", value=-20,
-        count=2, step_days=30, end="2026-06-20",
+        start_id=410,
+        account=1,
+        wording="BOUTIQUE XYZ",
+        value=-20,
+        count=2,
+        step_days=30,
+        end="2026-06-20",
     )
     assert detect_recurring(txns, today=TODAY) == []
 
@@ -127,8 +155,14 @@ def test_two_monthly_occurrences_not_detected():
 def test_variable_amount_flagged():
     values = [-10, -40, -12, -45]
     txns = [
-        tx(500 + i, 1, (date(2026, 6, 20) - timedelta(days=30 * (3 - i))).isoformat(),
-           v, "PRLV POWERCO", type="bank")
+        tx(
+            500 + i,
+            1,
+            (date(2026, 6, 20) - timedelta(days=30 * (3 - i))).isoformat(),
+            v,
+            "PRLV POWERCO",
+            type="bank",
+        )
         for i, v in enumerate(values)
     ]
     items = detect_recurring(txns, today=TODAY)
@@ -141,11 +175,22 @@ def test_variable_amount_flagged():
 
 def test_dual_pricing_same_biller_split():
     """A biller with two distinct amounts yields two separate series."""
-    txns = (
-        series(start_id=600, account=1, wording="APPLE.COM BILL", value=-2.99,
-               count=6, step_days=30, end="2026-06-18")
-        + series(start_id=700, account=1, wording="APPLE.COM BILL", value=-9.99,
-                 count=6, step_days=30, end="2026-06-19")
+    txns = series(
+        start_id=600,
+        account=1,
+        wording="APPLE.COM BILL",
+        value=-2.99,
+        count=6,
+        step_days=30,
+        end="2026-06-18",
+    ) + series(
+        start_id=700,
+        account=1,
+        wording="APPLE.COM BILL",
+        value=-9.99,
+        count=6,
+        step_days=30,
+        end="2026-06-19",
     )
     items = detect_recurring(txns, today=TODAY)
     assert len(items) == 2
@@ -156,8 +201,14 @@ def test_dual_pricing_same_biller_split():
 
 def test_internal_transfer_excluded():
     transfers = series(
-        start_id=800, account=1, wording="VIREMENT LIVRET A", value=-500,
-        count=4, step_days=30, end="2026-06-20", type="transfer",
+        start_id=800,
+        account=1,
+        wording="VIREMENT LIVRET A",
+        value=-500,
+        count=4,
+        step_days=30,
+        end="2026-06-20",
+        type="transfer",
     )
     internal = {t.id for t in transfers}
 
@@ -171,16 +222,27 @@ def test_internal_transfer_excluded():
 def test_dead_subscription_dropped():
     """Series whose last payment is far in the past is not 'active'."""
     txns = series(
-        start_id=900, account=1, wording="OLD GYM", value=-29.99,
-        count=6, step_days=30, end="2025-06-01",  # >2 intervals before TODAY
+        start_id=900,
+        account=1,
+        wording="OLD GYM",
+        value=-29.99,
+        count=6,
+        step_days=30,
+        end="2025-06-01",  # >2 intervals before TODAY
     )
     assert detect_recurring(txns, today=TODAY) == []
 
 
 def test_credit_kind_detects_income():
     txns = series(
-        start_id=950, account=2, wording="VIR SALAIRE ACME", value=2500,
-        count=6, step_days=30, end="2026-06-28", type="transfer",
+        start_id=950,
+        account=2,
+        wording="VIR SALAIRE ACME",
+        value=2500,
+        count=6,
+        step_days=30,
+        end="2026-06-28",
+        type="transfer",
     )
     debits = detect_recurring(txns, today=TODAY, kind="debit")
     assert debits == []
@@ -192,12 +254,34 @@ def test_credit_kind_detects_income():
 
 def test_sorted_by_period_then_monthly_equiv():
     txns = (
-        series(start_id=1000, account=1, wording="NETFLIX.COM", value=-13.49,
-               count=12, step_days=30, end="2026-06-20")
-        + series(start_id=1100, account=1, wording="PRLV SEPA AXA ASSURANCE", value=-180,
-                 count=8, step_days=91, end="2026-06-10", type="bank")
-        + series(start_id=1200, account=1, wording="SPOTIFY", value=-9.99,
-                 count=10, step_days=30, end="2026-06-22")
+        series(
+            start_id=1000,
+            account=1,
+            wording="NETFLIX.COM",
+            value=-13.49,
+            count=12,
+            step_days=30,
+            end="2026-06-20",
+        )
+        + series(
+            start_id=1100,
+            account=1,
+            wording="PRLV SEPA AXA ASSURANCE",
+            value=-180,
+            count=8,
+            step_days=91,
+            end="2026-06-10",
+            type="bank",
+        )
+        + series(
+            start_id=1200,
+            account=1,
+            wording="SPOTIFY",
+            value=-9.99,
+            count=10,
+            step_days=30,
+            end="2026-06-22",
+        )
     )
     items = detect_recurring(txns, today=TODAY)
     periods = [it.period_months for it in items]

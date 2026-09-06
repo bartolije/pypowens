@@ -24,6 +24,7 @@ def _text(html: str) -> str:
 
 # ------------------------------------------------------------------- la page
 
+
 def test_performance_page_renders_without_any_archive(client):
     """Aucune VL archivée : la page doit le dire, pas planter ni inventer un chiffre."""
     body = _text(client.get("/performance").text)
@@ -63,6 +64,7 @@ def test_nav_exposes_the_page(client):
 
 
 # -------------------------------------------------------------- le collecteur
+
 
 @pytest.fixture
 def conn(tmp_path):
@@ -114,6 +116,7 @@ async def test_collect_survives_a_line_without_history(fake_client, conn, monkey
 
 
 # ------------------------------------------------------- requalification d'un flux
+
 
 def test_a_flow_can_be_requalified_and_reset(conn):
     store.set_flow_override(conn, 4242, "income")
@@ -186,9 +189,9 @@ def test_a_window_longer_than_the_archive_says_so(client):
 def test_the_holdings_table_can_be_sorted(client):
     """Trier sur le texte affiché échouerait : « 38 641,50 € » n'est pas un nombre."""
     body = client.get("/performance").text
-    assert 'sortable' in body
+    assert "sortable" in body
     # Titre, montant investi et plus-value : les trois tris demandés.
-    assert "<th class=\"num\">Investi</th>" in body
+    assert '<th class="num">Investi</th>' in body
     assert 'data-sort="ETF MONDE"' in body
     assert "Cliquer un en-tête trie le tableau" in _text(body)
 
@@ -215,19 +218,22 @@ def test_flow_requalification_is_reachable_and_persists(client):
     # (Le jeu de test n'a pas de transaction sur le PEA, donc pas de bloc
     # « Flux de la période » rendu ici — la route, elle, se teste directement.)
     response = client.post(
-        "/performance/flux", data={"txn_id": "42", "kind": "income"},
+        "/performance/flux",
+        data={"txn_id": "42", "kind": "income"},
         follow_redirects=False,
     )
     assert response.status_code == 303
 
     import app.main
     from app import store as store_mod
+
     conn = app.main.app.state.store
     assert store_mod.flow_overrides(conn) == {42: "income"}
 
     # __auto__ efface l'override et rend la main à l'heuristique.
     client.post(
-        "/performance/flux", data={"txn_id": "42", "kind": "__auto__"},
+        "/performance/flux",
+        data={"txn_id": "42", "kind": "__auto__"},
         follow_redirects=False,
     )
     assert store_mod.flow_overrides(conn) == {}
