@@ -255,7 +255,7 @@ cohérente ; `scripts/backup-prod.sh` la tire sur le poste de travail chaque jou
 main pour vérifier :
 
 ```bash
-PYPOWENS_URL=https://finance.jbartoli.fr APP_AUTH_USER=… APP_AUTH_PASSWORD=… scripts/backup-prod.sh
+PYPOWENS_URL=https://finance.exemple.fr APP_AUTH_USER=… APP_AUTH_PASSWORD=… scripts/backup-prod.sh
 ```
 
 La sortie annonce le nombre de soldes archivés et le dernier jour : ce sont les

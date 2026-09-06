@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS benchmark_value (
 );
 
 -- Renommage local d'un compte (le nom Powens est souvent générique : trois
--- « M BARTOLI JEREMIE » indistinguables). Appliqué à la lecture des comptes.
+-- « M DUPONT JEAN » indistinguables). Appliqué à la lecture des comptes.
 CREATE TABLE IF NOT EXISTS account_alias (
     account_id INTEGER PRIMARY KEY,
     name       TEXT NOT NULL
@@ -410,7 +410,7 @@ def account_signature(account: Any) -> str | None:
 
     * l'**IBAN** quand il existe — c'est l'identité bancaire, unique et stable,
       et le seul moyen de distinguer deux comptes du même nom (deux comptes
-      courants « M BARTOLI JEREMIE » chez la même banque) ;
+      courants « M DUPONT JEAN » chez la même banque) ;
     * sinon **(connexion, nom)**. Ni le ``number`` ni le ``type`` ne peuvent
       servir : sur un prêt observé, le ``number`` était un hash régénéré à
       chaque recréation (``5bb6c9e6…`` puis ``8519e6d0…``) et le ``type``

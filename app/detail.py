@@ -240,7 +240,7 @@ async def rename_account(
 ) -> RedirectResponse:
     """Renomme localement un compte (vide = retour au nom Powens).
 
-    Les noms Powens sont souvent indistinguables (trois « M BARTOLI JEREMIE ») ;
+    Les noms Powens sont souvent indistinguables (trois « M DUPONT JEAN ») ;
     le renommage est local, appliqué à la lecture, et suit le compte partout —
     tableaux, bandeau, snapshots et notes de périmètre.
     """

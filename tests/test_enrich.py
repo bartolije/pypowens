@@ -73,12 +73,12 @@ def test_merchant_key_is_stable_across_wording_variants():
 def test_merchant_key_survives_a_reference_glued_to_the_keyword():
     """Same insurer, two statement formats: it must stay one merchant.
 
-    Banks write "CONTRAT0000021673190104" with no separator, which a plain word
+    Banks write "CONTRAT0000012345678901" with no separator, which a plain word
     boundary never cuts — the premium history then splits across two keys and the
     current amount stops being the one displayed.
     """
     plain = Txn(simplified_wording="ASSUREUR")
-    referenced = Txn(simplified_wording="ASSUREUR I0000972468700-CONTRAT0000021673190104 35X")
+    referenced = Txn(simplified_wording="ASSUREUR I0000123456789-CONTRAT0000012345678901 35X")
     assert merchant_key(plain) == merchant_key(referenced) == "ASSUREUR"
 
 
@@ -286,9 +286,9 @@ def test_short_keywords_still_match_as_whole_words(wording, category):
     [
         # Répétition : la banque redit deux fois la même chose, références comprises.
         (
-            "Wombat Gambetta PRLV On Air Lyon Saxe-Gambetta - PRLV On Air Lyon "
-            "Saxe-Gambetta - ona-08- -lOVzU388 ona-08- -lOVzU388",
-            "Wombat Gambetta PRLV On Air Lyon Saxe-Gambetta",
+            "Bistrot Central PRLV On Air Ville Centre-Ville - PRLV On Air Lyon "
+            "Centre-Ville - abc-01- -aBcD1234 abc-01- -aBcD1234",
+            "Bistrot Central PRLV On Air Ville Centre-Ville",
         ),
         # Bascule de casse : l'émetteur en capitales, la prose de la banque après.
         # Le « E » final est un fragment de troncature, pas un mot.
@@ -298,11 +298,11 @@ def test_short_keywords_still_match_as_whole_words(wording, category):
             "TOTALENERGIES ELECTRICITE",
         ),
         # Virement : le bénéficiaire en capitales, le motif libre après.
-        ("INST LAETITIA DENIS Anniversaire Emilien", "INST LAETITIA DENIS"),
+        ("INST MARIE MARTIN Anniversaire Louis", "INST MARIE MARTIN"),
         # Un libellé qui NE commence pas en capitales garde sa casse mélangée.
         (
-            "EDF clients particuliers BARTOLI JEREMIE Numero de client : 602965391",
-            "EDF clients particuliers BARTOLI JEREMIE",
+            "EDF clients particuliers DUPONT JEAN Numero de client : 123456789",
+            "EDF clients particuliers DUPONT JEAN",
         ),
         # Rien à couper.
         ("NETFLIX.COM", "NETFLIX.COM"),
@@ -314,9 +314,9 @@ def test_split_wording_on_real_statements(raw, expected):
 
 def test_the_cut_part_is_kept_not_thrown_away():
     """Ce qui est retiré s'affiche en dessous : rien ne doit disparaître."""
-    essential, detail = split_wording("INST LAETITIA DENIS Anniversaire Emilien")
-    assert essential == "INST LAETITIA DENIS"
-    assert detail == "Anniversaire Emilien"
+    essential, detail = split_wording("INST MARIE MARTIN Anniversaire Louis")
+    assert essential == "INST MARIE MARTIN"
+    assert detail == "Anniversaire Louis"
 
 
 def test_short_words_never_trigger_the_repetition_cut():

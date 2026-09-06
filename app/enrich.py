@@ -54,7 +54,7 @@ _LEADING_PREFIX = re.compile(
     re.IGNORECASE,
 )
 # The trailing ``(?:\b|(?=\d))`` matters: banks glue the reference straight onto the
-# keyword ("CONTRAT0000021673190104"), where a plain ``\b`` never matches — the same
+# keyword ("CONTRAT0000012345678901"), where a plain ``\b`` never matches — the same
 # insurer then yields two merchant keys and its premium history splits in half.
 # Requiring a digit (rather than dropping the boundary) keeps "REFECTOIRE" intact.
 _NOISE_CUT = re.compile(
@@ -76,8 +76,8 @@ _MULTISPACE = re.compile(r"\s+")
 def _cut_at_repetition(words: list[str]) -> int:
     """Index du premier mot DÉJÀ vu — les banques se répètent beaucoup.
 
-    « Wombat Gambetta PRLV On Air Lyon Saxe-Gambetta - PRLV On Air Lyon
-    Saxe-Gambetta - ona-08-… » : le libellé utile s'arrête à la deuxième
+    « Bistrot Central PRLV On Air Ville Centre-Ville - PRLV On Air Ville
+    Centre-Ville - abc-01-… » : le libellé utile s'arrête à la deuxième
     occurrence de « PRLV ». Seuls les mots d'au moins quatre lettres comptent,
     sinon « DE », « ET » ou « LA » couperaient n'importe quelle phrase. La
     comparaison tolère les troncatures (« Electr » ≈ « Electricite »), que les
@@ -100,8 +100,8 @@ def _cut_at_case_change(words: list[str]) -> int:
 
     Les banques écrivent l'émetteur en capitales et collent ensuite leur propre
     prose : « TOTALENERGIES ELECTRICITE E Prelevement TotalEnergies… », ou le
-    motif libre saisi par l'utilisateur : « INST LAETITIA DENIS Anniversaire
-    Emilien ». Deux mots capitalisés au minimum sont exigés, sans quoi un
+    motif libre saisi par l'utilisateur : « INST MARIE MARTIN Anniversaire
+    Louis ». Deux mots capitalisés au minimum sont exigés, sans quoi un
     simple « EDF clients particuliers » serait tronqué à son premier mot.
     """
     capitals = 0
@@ -180,8 +180,8 @@ def split_wording(text: str) -> tuple[str, str]:
     """Coupe un libellé en (essentiel, références).
 
     Un prélèvement porte souvent tout le dossier client :
-    « EDF CLIENTS PARTICULIERS BARTOLI JEREMIE Numero de client : 602965391
-    2226218A9PE8OSDT RUM MM9760296539120001 ». Seul le début identifie
+    « EDF CLIENTS PARTICULIERS DUPONT JEAN Numero de client : 123456789
+    1234567A0BC1DEFG RUM MM9712345678920001 ». Seul le début identifie
     l'émetteur ; le reste est une référence de mandat, utile à conserver mais
     pas à afficher en grand. La coupe réutilise exactement le nettoyage qui
     sert déjà au regroupement par marchand — donc ce qui s'affiche en gros est
@@ -300,7 +300,7 @@ CATEGORY_RULES: list[tuple[str, tuple[str, ...]]] = [
 # virement entre ses propres comptes — EXCLUE des dépenses, revenus, abonnements
 # et analyses, exactement comme les paires miroir détectées automatiquement.
 # C'est la soupape manuelle pour ce que l'heuristique ne peut pas deviner :
-# « VIR Jeremie Bartoli » d'une banque vers une autre, jambes typées
+# « VIR Jean Dupont » d'une banque vers une autre, jambes typées
 # différemment par les deux connecteurs, ou montant éclaté vers plusieurs
 # comptes à l'arrivée.
 INTERNAL_CATEGORY = "Virement interne"

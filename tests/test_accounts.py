@@ -342,5 +342,5 @@ def test_patrimoine_default_order_is_value_descending(client):
     body = client.get("/patrimoine").text
     pea = body.index("PEA")
     livret = body.index("Livret")
-    courant = body.index("M BARTOLI") if "M BARTOLI" in body else body.index("Compte courant")
+    courant = body.index("M DUPONT") if "M DUPONT" in body else body.index("Compte courant")
     assert pea < livret < courant  # 42 000 > 15 000 > 2 500

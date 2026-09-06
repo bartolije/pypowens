@@ -453,8 +453,8 @@ class _Acc:
 
 def test_signature_prefers_iban_then_connection_and_name():
     # Deux comptes du même nom chez la même banque : seul l'IBAN les sépare.
-    a = _Acc(1, "M BARTOLI JEREMIE", iban="FR7630004037438933")
-    b = _Acc(2, "M BARTOLI JEREMIE", iban="FR7630004089361704")
+    a = _Acc(1, "M DUPONT JEAN", iban="FR7630006000011234567001")
+    b = _Acc(2, "M DUPONT JEAN", iban="FR7630006000011234567002")
     assert store.account_signature(a) != store.account_signature(b)
     # Sans IBAN : connexion + nom.
     assert store.account_signature(_Acc(3, "PRET IMMO", connection=8)) == "conn:8|PRET IMMO"
