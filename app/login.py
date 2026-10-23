@@ -1,4 +1,4 @@
-"""Page de connexion : le formulaire, les deux facteurs, la déconnexion.
+"""Page de connexion : le formulaire, la page du code, la déconnexion.
 
 Séparé de ``auth`` (qui porte le middleware) pour que ce module puisse importer
 les gabarits sans que l'authentification dépende de Jinja.
@@ -46,10 +46,16 @@ def _page(request: Request, *, suite: str, error: str | None = None, status: int
             "active": None,
             "suite": suite,
             "error": error,
-            "mfa": auth.mfa_enabled(),
         },
         status_code=status,
     )
+
+
+def _refused(request: Request, *, suite: str, error: str) -> Response:
+    """Retour à la première page : le défi éventuel est servi, on l'efface."""
+    response = _page(request, suite=suite, error=error, status=401)
+    auth.close_challenge(response)
+    return response
 
 
 @router.get(auth.LOGIN_PATH, response_class=HTMLResponse)
@@ -65,7 +71,6 @@ async def login_submit(
     request: Request,
     username: str = Form(default=""),
     password: str = Form(default=""),
-    code: str = Form(default=""),
     suite: str = Form(default=""),
 ) -> Response:
     expected = auth_credentials()
@@ -83,28 +88,70 @@ async def login_submit(
             status=429,
         )
 
-    mfa = auth.mfa_enabled()
     password_ok = auth.credentials_match((username, password), expected)
-    # Deux facteurs INDÉPENDANTS : les deux doivent passer. Un code faux compte
-    # comme un échec de connexion, donc six chiffres ne se devinent pas plus
-    # librement qu'un mot de passe ne se force.
-    second_factor_ok = (
-        auth.verify_totp(getattr(request.app.state, "store", None), code) if mfa else True
-    )
 
-    if not (password_ok and second_factor_ok):
+    if auth.mfa_enabled():
+        # Juste ou faux, le mot de passe mène à la page du code : le verdict
+        # reste côté serveur (cf. ``auth._Challenges``). Chaque passage compte
+        # comme un échec jusqu'à la connexion complète, qui remet les compteurs
+        # à zéro : sinon le frein, lui, dirait quels mots de passe étaient
+        # justes. Et chaque essai de code coûte toujours une tentative.
         auth.record_failure(key)
         auth.record_account_failure(username)
-        # Un message unique : dire lequel des champs est faux dirait à un
-        # attaquant que le mot de passe, lui, est bon — et qu'il ne reste que
-        # six chiffres à trouver.
-        error = "Identifiants ou code incorrects." if mfa else "Identifiants incorrects."
-        return _page(request, suite=suite, error=error, status=401)
+        response = RedirectResponse(auth.LOGIN_CODE_PATH, status_code=303)
+        auth.open_challenge(response, request, password_ok=password_ok, suite=suite)
+        return response
+
+    if not password_ok:
+        auth.record_failure(key)
+        auth.record_account_failure(username)
+        return _page(request, suite=suite, error="Identifiants incorrects.", status=401)
 
     auth.clear_failures(key)
     auth.clear_account_failures(username)
     response = RedirectResponse(_target(suite), status_code=303)
     auth.start_session(response, request, expected[0])
+    return response
+
+
+@router.get(auth.LOGIN_CODE_PATH, response_class=HTMLResponse)
+async def code_page(request: Request) -> Response:
+    """Seconde page : le code seul. Sans défi en cours, retour à la première."""
+    if auth_credentials() is None or auth.current_user(request) is not None:
+        return RedirectResponse("/", status_code=303)
+    if not auth.challenge_pending(request):
+        return RedirectResponse(auth.LOGIN_PATH, status_code=303)
+    return templates.TemplateResponse(
+        request, "login_code.html", {"request": request, "active": None}
+    )
+
+
+@router.post(auth.LOGIN_CODE_PATH, response_class=HTMLResponse)
+async def code_submit(request: Request, code: str = Form(default="")) -> Response:
+    expected = auth_credentials()
+    if expected is None:
+        return RedirectResponse("/", status_code=303)
+
+    challenge = auth.take_challenge(request)
+    if challenge is None:
+        return _refused(request, suite="", error="Connexion expirée : recommencez.")
+    password_ok, suite = challenge
+
+    # Vérifié même après un mot de passe faux, comme quand les deux facteurs
+    # partageaient un formulaire : le code est consommé dans tous les cas et le
+    # refus suit le même chemin.
+    code_ok = auth.verify_totp(getattr(request.app.state, "store", None), code)
+    if not (password_ok and code_ok):
+        # Un message unique : dire lequel des facteurs est faux dirait à un
+        # attaquant que le mot de passe, lui, est bon — et qu'il ne reste que
+        # six chiffres à trouver.
+        return _refused(request, suite=suite, error="Identifiants ou code incorrects.")
+
+    auth.clear_failures(auth._client_key(request))
+    auth.clear_account_failures(expected[0])
+    response = RedirectResponse(_target(suite), status_code=303)
+    auth.start_session(response, request, expected[0])
+    auth.close_challenge(response)
     return response
 
 

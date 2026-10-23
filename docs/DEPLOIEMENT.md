@@ -141,6 +141,10 @@ Un code à six chiffres en plus du mot de passe, sur le modèle de n'importe que
 authenticator (TOTP, RFC 6238). Facultatif : sans `APP_TOTP_SECRET`, rien ne
 change.
 
+Le code se saisit sur une seconde page (`/connexion/code`), après l'identifiant
+et le mot de passe. Ne pas le remettre dans le même formulaire : ProtonPass ne
+reconnaît alors plus la page comme une connexion et n'y remplit que le code.
+
 ```bash
 uv run python scripts/setup_mfa.py --railway   # génère, enrôle, pose, déploie
 ```

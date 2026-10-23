@@ -6,6 +6,24 @@ All notable changes to this project. Format loosely based on
 
 ## [0.2.0] — unreleased
 
+### 23/10/2026 — connexion en deux pages pour l'autofill ProtonPass
+
+#### Fixed
+- **ProtonPass ne remplissait que le code**, jamais l'identifiant ni le mot de
+  passe. Son détecteur (`@protontech/autofill`, rejoué dans Chrome sans tête)
+  classe le formulaire unique identifiant + mot de passe + code en `noop`
+  (score « login » nul, mot de passe non détecté) ; sans le champ code, le même
+  formulaire sort « login ». Le code passe donc sur sa propre page,
+  `/connexion/code` : ProtonPass remplit la première et propose le TOTP de la
+  même entrée sur la seconde.
+  - le mot de passe mène **toujours** à la page du code, juste ou faux : le
+    verdict reste côté serveur (cookie `pf_mfa` = identifiant aléatoire, 5 min,
+    un seul essai de code), un refus ne dit toujours pas quel facteur a échoué ;
+  - chaque passage par la page du mot de passe compte au frein jusqu'à une
+    connexion complète, pour que le compteur ne trahisse pas un bon mot de
+    passe ; chaque essai de code coûte toujours une tentative ;
+  - sans second facteur, la connexion reste sur une seule page.
+
 ### 04/09/2026 — second facteur, sessions révocables, freins non contournables
 
 Six durcissements de l'authentification, portés de l'audit mené sur

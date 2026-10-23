@@ -39,7 +39,7 @@ import os
 import sqlite3
 import time
 from collections.abc import Awaitable, Callable
-from secrets import compare_digest
+from secrets import compare_digest, token_urlsafe
 
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, RedirectResponse, Response
@@ -59,6 +59,12 @@ SESSION_COOKIE = "pf_session"
 # de cause (un téléphone qui n'est jamais prêté, par exemple).
 SESSION_MAX_AGE = 24 * 3600
 LOGIN_PATH = "/connexion"
+# Seconde page de la connexion quand le second facteur est actif (cf. _Challenges).
+LOGIN_CODE_PATH = "/connexion/code"
+CHALLENGE_COOKIE = "pf_mfa"
+# De quoi ouvrir ProtonPass ou l'authenticator, pas de quoi laisser traîner une
+# connexion abandonnée à mi-chemin.
+CHALLENGE_SECONDS = 300
 
 
 def session_max_age() -> int:
@@ -79,10 +85,10 @@ def session_max_age() -> int:
 # Chemins servis sans authentification :
 # * ``/health`` est sondé par l'hébergeur AVANT de basculer le trafic — un 401
 #   ferait passer un déploiement sain pour une panne ;
-# * ``/connexion`` est la porte elle-même ;
+# * ``/connexion`` (et sa page du code) est la porte elle-même ;
 # * les statiques (feuille de style, police, icône) doivent charger sur la page
 #   de connexion, et ne disent rien de personne.
-_EXEMPT_PATHS = frozenset({"/health", LOGIN_PATH, "/favicon.ico"})
+_EXEMPT_PATHS = frozenset({"/health", LOGIN_PATH, LOGIN_CODE_PATH, "/favicon.ico"})
 _EXEMPT_PREFIXES = ("/static/",)
 
 # Assez de tolérance pour des erreurs de frappe, trop peu pour une attaque.
@@ -142,17 +148,63 @@ class _Brake:
         self._failures.clear()
 
 
+class _Challenges:
+    """Connexions en attente de leur code, gardées côté serveur.
+
+    Le mot de passe et le code se saisissent sur deux pages : ProtonPass ne
+    reconnaît pas comme une connexion un formulaire qui mêle les deux, et n'y
+    remplit alors que le code. La page du mot de passe mène TOUJOURS à celle du
+    code, mot de passe juste ou faux : le navigateur ne reçoit qu'un identifiant
+    aléatoire, le verdict reste ici. Un refus ne dit donc toujours pas lequel des
+    deux facteurs a échoué. Chaque défi ne sert qu'à un seul essai de code.
+    """
+
+    def __init__(self, lifetime: int = CHALLENGE_SECONDS) -> None:
+        self.lifetime = lifetime
+        self._pending: dict[str, tuple[float, bool, str]] = {}
+
+    def issue(self, password_ok: bool, suite: str) -> str:
+        moment = time.monotonic()
+        # Purge des défis échus, puis plafond : une rafale (déjà freinée) ne
+        # fait pas grossir le dictionnaire sans fin.
+        for stale in [cid for cid, entry in self._pending.items() if entry[0] <= moment]:
+            del self._pending[stale]
+        while len(self._pending) >= _MAX_TRACKED:
+            del self._pending[next(iter(self._pending))]  # le plus ancien d'abord
+        cid = token_urlsafe(32)
+        self._pending[cid] = (moment + self.lifetime, password_ok, suite)
+        return cid
+
+    def pending(self, cid: str | None) -> bool:
+        entry = self._pending.get(cid or "")
+        return entry is not None and entry[0] > time.monotonic()
+
+    def consume(self, cid: str | None) -> tuple[bool, str] | None:
+        """``(mot de passe juste, page demandée)`` ; ``None`` si le défi est
+        inconnu, déjà servi ou échu."""
+        entry = self._pending.pop(cid or "", None)
+        if entry is None or entry[0] <= time.monotonic():
+            return None
+        return entry[1], entry[2]
+
+    def reset(self) -> None:
+        self._pending.clear()
+
+
 _client_brake = _Brake(_MAX_FAILURES, _LOCKOUT_SECONDS)
 _account_brake = _Brake(_MAX_ACCOUNT_FAILURES, _ACCOUNT_LOCKOUT_SECONDS)
+_challenges = _Challenges()
 
 # Vue en lecture conservée pour les tests historiques.
 _failures = _client_brake._failures
 
 
 def reset_failures() -> None:
-    """Vide les compteurs d'échecs (tests, et redémarrage à chaud)."""
+    """Vide les compteurs d'échecs et les connexions en attente (tests, et
+    redémarrage à chaud)."""
     _client_brake.reset()
     _account_brake.reset()
+    _challenges.reset()
 
 
 def _client_key(request: Request) -> str:
@@ -413,6 +465,32 @@ def start_session(response: Response, request: Request, user: str) -> None:
         secure=_https(request),
         path="/",
     )
+
+
+def open_challenge(response: Response, request: Request, *, password_ok: bool, suite: str) -> None:
+    """Ouvre la seconde page de la connexion (cf. ``_Challenges``)."""
+    response.set_cookie(
+        CHALLENGE_COOKIE,
+        _challenges.issue(password_ok, suite),
+        max_age=CHALLENGE_SECONDS,
+        httponly=True,
+        samesite="lax",
+        secure=_https(request),
+        path=LOGIN_PATH,
+    )
+
+
+def challenge_pending(request: Request) -> bool:
+    return _challenges.pending(request.cookies.get(CHALLENGE_COOKIE))
+
+
+def take_challenge(request: Request) -> tuple[bool, str] | None:
+    """Consomme le défi de la requête : un seul essai de code par mot de passe."""
+    return _challenges.consume(request.cookies.get(CHALLENGE_COOKIE))
+
+
+def close_challenge(response: Response) -> None:
+    response.delete_cookie(CHALLENGE_COOKIE, path=LOGIN_PATH)
 
 
 def end_session(response: Response, request: Request | None = None) -> None:

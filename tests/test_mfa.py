@@ -8,6 +8,7 @@ serait un champ de formulaire décoratif.
 
 from __future__ import annotations
 
+import base64
 import time
 
 import pytest
@@ -40,24 +41,66 @@ def secured(client, monkeypatch):
     auth.reset_failures()
 
 
-def _login(client, *, password=PASSWORD, code=None, user="jb"):
+def _password_step(client, *, password=PASSWORD, user="jb", suite=None):
+    """Première page : identifiant et mot de passe."""
     data = {"username": user, "password": password}
-    if code is not None:
-        data["code"] = code
+    if suite is not None:
+        data["suite"] = suite
     return client.post("/connexion", data=data, headers=BROWSER, follow_redirects=False)
+
+
+def _code_step(client, code):
+    """Seconde page : le code seul."""
+    return client.post(
+        "/connexion/code", data={"code": code}, headers=BROWSER, follow_redirects=False
+    )
+
+
+def _login(client, *, password=PASSWORD, code="", user="jb"):
+    """Le parcours complet ; renvoie la réponse de la page du code."""
+    _password_step(client, password=password, user=user)
+    return _code_step(client, code)
 
 
 # ------------------------------------------------------------------ le parcours
 
 
-def test_the_code_field_only_appears_when_a_second_factor_is_configured(secured, monkeypatch):
+def test_the_password_page_never_shows_the_code_field(secured, monkeypatch):
+    """ProtonPass classe un formulaire qui mêle mot de passe et code comme « pas
+    une connexion » et n'y remplit que le code : la première page doit rester
+    une connexion ordinaire, second facteur ou non."""
     body = secured.get("/connexion", headers=BROWSER).text
+    assert 'name="code"' not in body
+    assert "one-time-code" not in body
+    assert 'autocomplete="username"' in body
+    assert 'autocomplete="current-password"' in body
+
+
+def test_the_password_leads_to_the_code_page(secured):
+    response = _password_step(secured)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == auth.LOGIN_CODE_PATH
+    assert auth.CHALLENGE_COOKIE in response.cookies
+    assert auth.SESSION_COOKIE not in response.cookies, "pas encore de session"
+    cookie = response.headers["set-cookie"].lower()
+    assert "path=/connexion" in cookie and "httponly" in cookie
+
+    body = secured.get(auth.LOGIN_CODE_PATH, headers=BROWSER).text
     assert 'name="code"' in body
     assert 'autocomplete="one-time-code"' in body, "sinon ProtonPass ne le remplit pas"
+    assert 'name="password"' not in body
 
+
+def test_without_a_second_factor_the_login_stays_on_one_page(secured, monkeypatch):
     monkeypatch.delenv("APP_TOTP_SECRET")
-    body = secured.get("/connexion", headers=BROWSER).text
-    assert 'name="code"' not in body, "un champ vide obligatoire fermerait la porte"
+
+    response = _password_step(secured)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/"
+    assert auth.SESSION_COOKIE in response.cookies
+    assert auth.CHALLENGE_COOKIE not in response.cookies
 
 
 def test_both_factors_open_the_session(secured):
@@ -68,12 +111,24 @@ def test_both_factors_open_the_session(secured):
     assert secured.get("/", headers=BROWSER).status_code == 200
 
 
-def test_the_password_alone_is_not_enough(secured):
-    response = _login(secured, code="")
+def test_the_requested_page_survives_the_code_step(secured):
+    """La page demandée avant la connexion suit le défi côté serveur."""
+    suite = base64.urlsafe_b64encode(b"/transactions").decode()
+    _password_step(secured, suite=suite)
 
+    response = _code_step(secured, _code())
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/transactions"
+
+
+def test_the_password_alone_is_not_enough(secured):
+    _password_step(secured)
+
+    assert secured.get("/", headers=BROWSER, follow_redirects=False).status_code == 303
+    response = _code_step(secured, "")
     assert response.status_code == 401
     assert auth.SESSION_COOKIE not in response.cookies
-    assert secured.get("/", headers=BROWSER, follow_redirects=False).status_code == 303
 
 
 def test_the_code_alone_is_not_enough(secured):
@@ -81,6 +136,18 @@ def test_the_code_alone_is_not_enough(secured):
 
     assert response.status_code == 401
     assert auth.SESSION_COOKIE not in response.cookies
+
+
+def test_the_password_page_never_says_whether_the_password_was_right(secured):
+    """Juste ou faux, même réponse : la première page ne trahit rien."""
+    right = _password_step(secured)
+    secured.cookies.clear()
+    wrong = _password_step(secured, password="au hasard")
+
+    assert right.status_code == wrong.status_code == 303
+    assert right.headers["location"] == wrong.headers["location"] == auth.LOGIN_CODE_PATH
+    assert auth.CHALLENGE_COOKIE in wrong.cookies
+    assert secured.get(auth.LOGIN_CODE_PATH, headers=BROWSER).status_code == 200
 
 
 def test_the_error_message_never_says_which_factor_failed(secured):
@@ -96,6 +163,52 @@ def test_the_error_message_never_says_which_factor_failed(secured):
 def test_a_neighbouring_code_still_works(secured):
     """Tolérance d'un pas : sinon un code juste est refusé au changement de pas."""
     assert _login(secured, code=_code(offset=-1)).status_code == 303
+
+
+def test_a_challenge_serves_a_single_code_attempt(secured):
+    """Un mot de passe = un essai de code : le défi ne se rejoue pas pour
+    continuer à deviner les six chiffres."""
+    challenge = _password_step(secured).cookies[auth.CHALLENGE_COOKIE]
+    assert _code_step(secured, "000000").status_code == 401
+
+    secured.cookies.clear()
+    secured.cookies.set(auth.CHALLENGE_COOKIE, challenge, path="/connexion")
+    replayed = _code_step(secured, _code())
+
+    assert replayed.status_code == 401
+    assert "Connexion expirée" in replayed.text
+    assert auth.SESSION_COOKIE not in replayed.cookies
+
+
+def test_the_code_page_requires_a_challenge(secured):
+    page = secured.get(auth.LOGIN_CODE_PATH, headers=BROWSER, follow_redirects=False)
+    assert page.status_code == 303 and page.headers["location"] == auth.LOGIN_PATH
+
+    response = _code_step(secured, _code())
+    assert response.status_code == 401
+    assert auth.SESSION_COOKIE not in response.cookies
+
+
+def test_an_expired_challenge_is_refused(secured, monkeypatch):
+    monkeypatch.setattr(auth._challenges, "lifetime", -1)
+    _password_step(secured)
+
+    page = secured.get(auth.LOGIN_CODE_PATH, headers=BROWSER, follow_redirects=False)
+    assert page.status_code == 303
+    response = _code_step(secured, _code())
+    assert response.status_code == 401
+    assert "Connexion expirée" in response.text
+
+
+def test_pending_challenges_are_bounded(monkeypatch):
+    monkeypatch.setattr(auth, "_MAX_TRACKED", 3)
+    challenges = auth._Challenges()
+    ids = [challenges.issue(True, "") for _ in range(5)]
+
+    assert len(challenges._pending) == 3
+    assert not challenges.pending(ids[0]), "le plus ancien part le premier"
+    assert challenges.consume(ids[-1]) == (True, "")
+    assert challenges.consume(ids[-1]) is None
 
 
 # --------------------------------------------------------------------- anti-rejeu
@@ -237,10 +350,35 @@ def test_the_token_works_without_any_second_factor_too(client, monkeypatch):
 
 def test_guessing_the_six_digits_is_rate_limited_like_a_password(secured):
     """Six chiffres, c'est un million de possibilités : sans frein, une
-    demi-heure de requêtes suffirait."""
+    demi-heure de requêtes suffirait. Chaque essai de code coûte un passage
+    par la page du mot de passe, qui est freinée."""
     for _ in range(auth._MAX_FAILURES):
         assert _login(secured, code="000000").status_code == 401
 
-    blocked = _login(secured, code=_code())  # même avec le bon code
+    blocked = _password_step(secured)
     assert blocked.status_code == 429
-    assert auth.SESSION_COOKIE not in blocked.cookies
+    assert auth.CHALLENGE_COOKIE not in blocked.cookies
+    # Aucun défi émis : même le bon code ne mène nulle part
+    response = _code_step(secured, _code())
+    assert response.status_code == 401
+    assert auth.SESSION_COOKIE not in response.cookies
+
+
+def test_the_password_page_alone_is_rate_limited(secured):
+    """Sans jamais aller au code, les passages s'épuisent quand même : le frein
+    ne peut donc pas servir à trier les bons mots de passe des mauvais."""
+    for _ in range(auth._MAX_FAILURES):
+        assert _password_step(secured).status_code == 303
+
+    assert _password_step(secured).status_code == 429
+
+
+def test_a_complete_login_resets_the_brake(secured):
+    for _ in range(auth._MAX_FAILURES - 1):
+        _login(secured, password="au hasard", code="000000")
+    assert _login(secured, code=_code()).status_code == 303
+
+    secured.cookies.clear()
+    for _ in range(auth._MAX_FAILURES):
+        response = _password_step(secured, password="au hasard")
+    assert response.status_code == 303, "compteur reparti de zéro après la connexion"

@@ -789,6 +789,14 @@ form.alert-action { margin: 0; }
   font-weight: 600;
 }
 
+.login-restart {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 0.8125rem;
+}
+.login-restart a { color: var(--text-muted); }
+.login-restart a:hover { color: var(--text-primary); }
+
 /* Déconnexion : un bouton, mais qui doit se lire comme les liens voisins. */
 .sidebar-logout {
   width: 100%;

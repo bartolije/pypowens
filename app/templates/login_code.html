@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Code d'authentification · Powens Finance</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v={{ static_v }}">
+  <link rel="stylesheet" href="/static/vendor/fonts.css?v={{ static_v }}">
+  <link rel="stylesheet" href="/static/style.css?v={{ static_v }}">
+</head>
+<body class="login-body">
+  <main class="login-card">
+    <div class="login-brand">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+      <span>Powens Finance</span>
+    </div>
+    <p class="login-intro">Second facteur : le code à six chiffres de l'authenticator.</p>
+
+    {# Seul sur sa page, le champ ``one-time-code`` est celui sur lequel
+       ProtonPass propose le code de l'entrée remplie juste avant. #}
+    <form method="post" action="/connexion/code" class="login-form">
+      <div class="login-field">
+        <label for="code">Code d'authentification</label>
+        <input type="text" id="code" name="code" autocomplete="one-time-code"
+               inputmode="numeric" pattern="[0-9 ]*" maxlength="9"
+               placeholder="123456" autocapitalize="none" autocorrect="off"
+               spellcheck="false" required autofocus>
+      </div>
+      <button type="submit" class="btn btn-primary login-submit">Valider</button>
+    </form>
+    <p class="login-restart"><a href="/connexion">Recommencer la connexion</a></p>
+  </main>
+</body>
+</html>
