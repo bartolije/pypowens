@@ -6,6 +6,21 @@ All notable changes to this project. Format loosely based on
 
 ## [0.2.0] — unreleased
 
+### 23/10/2026 — « Reprendre » BoursoBank finissait sur un 502
+
+#### Fixed
+- **« Reprendre » sur BoursoBank aboutissait à la page 502 de Cloudflare.**
+  La connexion est en `webauthRequired`, mais contrairement à Sumeria, Powens
+  ne range aucun lien dans `error_message` (« Token not found or expired. The
+  connection must be updated », sans `expire`). La route réclamait un lien neuf
+  (PUT, plus de 30 s avec la relance), n'en trouvait toujours pas et répondait
+  502. Un connecteur en webauth qui ne publie pas de lien passe désormais
+  directement par le Webview « reconnect », sans PUT. Un lien qu'on n'arrive
+  pas à régénérer mène aussi au Webview plutôt qu'à une impasse.
+- **Les erreurs Powens répondent 503 et non plus 502.** Derrière Cloudflare,
+  un 502 de l'origine est remplacé par la page de Cloudflare, et la page de
+  diagnostic de l'app n'était jamais affichée.
+
 ### 23/10/2026 — connexion en deux pages pour l'autofill ProtonPass
 
 #### Fixed

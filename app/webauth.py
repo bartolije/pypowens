@@ -40,6 +40,20 @@ def authorize_url(connection: Any) -> str | None:
     return url if urlsplit(url).scheme == "https" else None
 
 
+def publishes_link(connection: Any) -> bool:
+    """Powens range-t-il le lien de la banque dans ``error_message`` ?
+
+    Pas tous les connecteurs en webauth : BoursoBank répond « Token not found
+    or expired. The connection must be updated », sans URL ni échéance. Lui
+    réclamer un lien neuf (PUT) ne sert à rien — cela relance une synchro
+    complète, plus de 30 s d'attente — : c'est le Webview « reconnect » qui
+    mène à sa page d'authentification. Un message vide ne tranche pas : on
+    tente alors la régénération.
+    """
+    raw = getattr(connection, "raw", None) or {}
+    return not raw.get("error_message") or authorize_url(connection) is not None
+
+
 def is_expired(connection: Any, *, now: datetime | None = None) -> bool:
     """L'URL d'autorisation est-elle périmée ?
 

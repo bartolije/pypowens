@@ -223,6 +223,19 @@ def test_connect_proceeds_when_the_config_cannot_be_read(client, fake_client, mo
     assert "webview.powens.com" in response.headers["location"]
 
 
+def test_a_powens_error_is_not_a_502(client, fake_client, monkeypatch):
+    """Derrière Cloudflare, un 502 de l'origine est remplacé par sa propre page :
+    le diagnostic de l'app ne serait jamais affiché."""
+
+    async def boom(*args, **kwargs):
+        raise PowensAPIError(500, code="boom")
+
+    monkeypatch.setattr(fake_client, "get_temporary_code", boom)
+    response = client.get("/connect", follow_redirects=False)
+    assert response.status_code == 503
+    assert "Erreur côté Powens" in response.text
+
+
 # ------------------------------------------------- debt vs assets on /patrimoine
 
 

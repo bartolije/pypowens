@@ -115,6 +115,54 @@ def test_a_classic_connector_still_goes_through_the_webview(client, fake_client)
     app.data.clear_cache()
 
 
+BOURSO = "Token not found or expired. The connection must be updated"
+
+
+def test_publishes_link():
+    assert webauth.publishes_link(_Conn(error_message=REAL)) is True
+    assert webauth.publishes_link(_Conn(error_message=BOURSO)) is False
+    assert webauth.publishes_link(_Conn()) is True  # message vide : on tente
+
+
+def test_a_webauth_connector_without_a_link_goes_through_the_webview(client, fake_client):
+    """Cas vécu le 23/10/2026 : BoursoBank ne range aucun lien dans son message.
+
+    « Reprendre » réclamait un lien neuf (PUT, plus de 30 s) puis finissait sur
+    un 502, que Cloudflare remplaçait par sa propre page."""
+    import app.data
+
+    fake_client._connections[0].update({"state": "webauthRequired", "error_message": BOURSO})
+    fake_client.synced_connections = []
+    app.data.clear_cache()
+
+    response = client.get("/reconnecter/1", follow_redirects=False)
+    assert response.status_code == 307
+    location = response.headers["location"]
+    assert location.startswith("https://webview.powens.com/fr/reconnect?")
+    assert "connection_id=1" in location
+    assert fake_client.synced_connections == []  # aucun PUT inutile
+
+    fake_client._connections[0].update({"state": None, "error_message": None})
+    app.data.clear_cache()
+
+
+def test_a_link_that_cannot_be_regenerated_falls_back_to_the_webview(client, fake_client):
+    """Plus d'impasse : sans lien après régénération, le Webview prend le relais."""
+    import app.data
+
+    fake_client._connections[0].update({"state": "webauthRequired", "error_message": None})
+    fake_client.synced_connections = []
+    app.data.clear_cache()
+
+    response = client.get("/reconnecter/1", follow_redirects=False)
+    assert fake_client.synced_connections == [1]  # la régénération a été tentée
+    assert response.status_code == 307
+    assert "/fr/reconnect" in response.headers["location"]
+
+    fake_client._connections[0]["state"] = None
+    app.data.clear_cache()
+
+
 # ------------------------------------------------- parcours réservé au mobile
 
 

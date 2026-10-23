@@ -437,9 +437,11 @@ async def powens_rate_limit(request: Request, exc: PowensRateLimitError) -> HTML
 
 @app.exception_handler(PowensAPIError)
 async def powens_api_error(request: Request, exc: PowensAPIError) -> HTMLResponse:
+    # 503 et non 502 : derrière Cloudflare, un 502 de l'origine est remplacé par
+    # la page d'erreur de Cloudflare, et ce diagnostic n'est jamais affiché.
     return _error_page(
         request,
-        status_code=502,
+        status_code=503,
         title="Erreur côté Powens",
         detail="L'API Powens a renvoyé une réponse inattendue.",
         hints=["Si le problème persiste, vérifier l'état de l'app dans la console Powens."],
@@ -544,10 +546,17 @@ async def reconnect(
       page d'accueil de l'établissement, sans rien à faire. L'URL d'autorisation
       est rangée par Powens dans ``error_message`` ; elle expire (deux heures),
       d'où la régénération ci-dessous quand elle est périmée ;
-    * tous les autres : le Webview, comme pour une première connexion.
+    * tous les autres : le Webview, comme pour une première connexion. Y compris
+      les connecteurs en webauth qui ne publient pas de lien (BoursoBank), et
+      ceux dont le lien n'a pas pu être régénéré : mieux vaut le Webview
+      qu'une impasse.
     """
     connection = next((c for c in await load_connections(client) if c.id == connection_id), None)
-    if connection is not None and webauth.needs_webauth(connection):
+    if (
+        connection is not None
+        and webauth.needs_webauth(connection)
+        and webauth.publishes_link(connection)
+    ):
         url = webauth.authorize_url(connection)
         if url is None or webauth.is_expired(connection):
             # Périmée ou absente : demander à Powens d'en produire une neuve,
@@ -586,21 +595,6 @@ async def reconnect(
                     "expire": (connection.raw.get("expire") if connection else None),
                 },
             )
-        return _error_page(
-            request,
-            status_code=502,
-            title="Authentification bancaire indisponible",
-            detail=(
-                "Powens n'a pas fourni de lien d'authentification pour cette "
-                "banque. Le lien est valable deux heures ; celui-ci a expiré et "
-                "sa régénération a échoué."
-            ),
-            hints=[
-                "Réessayer dans quelques minutes.",
-                "Si l'échec persiste, supprimer puis recréer la connexion "
-                "depuis « + Ajouter une banque ».",
-            ],
-        )
 
     refused = await _redirect_uri_check(request, client, settings)
     if refused is not None:
